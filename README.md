@@ -134,6 +134,18 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Save.*` | Speicherformat Version 2 (RLE je veränderter Chunk, Inventar, Gesundheit, Modus; Version 1 bleibt lesbar) |
 | `tests/` | Tests |
 
+## Geplant
+
+Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
+
+1. **Sound:** Effekte und Musik. Vorher wird die Audio-Bibliothek geklärt.
+2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
+3. **Lava:** Lava-Block auf Basis der Wassersimulation, mit langsamerem Fluss, Schaden und Brennen sowie Lava-Seen in Höhlen. Dazu die Interaktion mit Wasser (Obsidian oder Bruchstein).
+4. **Third-Person-Ansicht:** Kamera hinter oder vor dem Charakter (z. B. umschaltbar), mit eigenem Spielermodell aus Quadern wie bei den Mobs. Die Kamera darf vom Gelände nicht blockiert werden.
+5. **Textur-Editor:** Im Spiel erreichbar über ein Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Voraussetzung ist ein Einstellungsmenü, das es noch nicht gibt (bisher nur die Pause mit Esc).
+6. **Crafting und Werkzeuge.**
+7. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+
 ## Drittanbieter
 
 - [GLFW](https://www.glfw.org/) 3.4 (zlib/libpng-Lizenz)
