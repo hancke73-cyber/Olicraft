@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include "Block.h"
+#include "Inventory.h"
 
 namespace oc {
 
@@ -16,6 +17,10 @@ struct PlayerState {
     bool flying = false;
     int slot = 0;
     float timeOfDay = 0.30f;  // 0..1, 0.25 = Mittag
+    int health = 20;
+    bool creative = false;
+    bool hasInventory = false;  // false bei alten Spielstaenden (Version 1)
+    Inventory inventory;
 };
 
 struct SavedChunk {

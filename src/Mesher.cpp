@@ -3,30 +3,12 @@
 #include <cstdint>
 
 #include "Atlas.h"
+#include "Faces.h"
 
 namespace oc {
 
 namespace {
 
-struct FaceDef {
-    int n[3];
-    int t1[3];
-    int t2[3];
-    float shade;
-};
-
-// t1 x t2 == n, damit die Reihenfolge (0,0),(1,0),(1,1),(0,1) von aussen gegen den Uhrzeigersinn laeuft.
-const FaceDef FACES[6] = {
-    {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, 0.66f},    // +X
-    {{-1, 0, 0}, {0, 0, 1}, {0, 1, 0}, 0.66f},   // -X
-    {{0, 1, 0}, {0, 0, 1}, {1, 0, 0}, 1.00f},    // +Y (oben)
-    {{0, -1, 0}, {1, 0, 0}, {0, 0, 1}, 0.50f},   // -Y (unten)
-    {{0, 0, 1}, {1, 0, 0}, {0, 1, 0}, 0.82f},    // +Z
-    {{0, 0, -1}, {0, 1, 0}, {1, 0, 0}, 0.82f},   // -Z
-};
-
-const int CORNER_I[4] = {0, 1, 1, 0};
-const int CORNER_J[4] = {0, 0, 1, 1};
 const float AO_CURVE[4] = {0.50f, 0.68f, 0.84f, 1.00f};
 
 struct Ctx {
@@ -92,7 +74,7 @@ float liquidTop(const Ctx& c, int x, int y, int z) {
 
 // Sichtbarer Hoehenbereich [lo, hi] der Flaeche f eines Wasserblocks, false = nichts zu zeichnen
 bool liquidSpan(const Ctx& c, int x, int y, int z, int f, float& lo, float& hi) {
-    const FaceDef& fd = FACES[f];
+    const FaceDef& fd = faceDef(f);
     BlockId nb = c.at(x + fd.n[0], y + fd.n[1], z + fd.n[2]);
     hi = liquidTop(c, x, y, z);
     lo = 0.0f;
@@ -107,7 +89,7 @@ bool liquidSpan(const Ctx& c, int x, int y, int z, int f, float& lo, float& hi) 
 }
 
 void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, float lo, float hi, std::vector<Vertex>& out) {
-    const FaceDef& fd = FACES[f];
+    const FaceDef& fd = faceDef(f);
     const BlockInfo& bi = blockInfo(b);
     const bool liquid = bi.liquid;
     const Tile tile = f == 2 ? bi.top : (f == 3 ? bi.bottom : bi.side);
@@ -120,20 +102,12 @@ void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, float lo, flo
     Vertex v[4];
     float aoSum[4];
     for (int k = 0; k < 4; ++k) {
-        const int i = CORNER_I[k], j = CORNER_J[k];
+        const int i = FACE_CORNER_I[k], j = FACE_CORNER_J[k];
         float off[3];
         for (int a = 0; a < 3; ++a) off[a] = static_cast<float>((fd.n[a] > 0 ? 1 : 0) + i * fd.t1[a] + j * fd.t2[a]);
 
-        // UV-Orientierung (v zeigt bei Seitenflaechen nach oben)
         float uu, vv;
-        switch (f) {
-            case 0: uu = 1.0f - j; vv = static_cast<float>(i); break;
-            case 1: uu = static_cast<float>(i); vv = static_cast<float>(j); break;
-            case 2: uu = static_cast<float>(j); vv = static_cast<float>(i); break;
-            case 3: uu = static_cast<float>(i); vv = static_cast<float>(j); break;
-            case 4: uu = static_cast<float>(i); vv = static_cast<float>(j); break;
-            default: uu = 1.0f - j; vv = static_cast<float>(i); break;
-        }
+        faceUV(f, i, j, uu, vv);
 
         float py = off[1];
         if (liquid) {
@@ -203,7 +177,7 @@ void buildChunkMesh(const BlockId* padded, MeshOutput& out) {
                 const bool liquid = blockInfo(b).liquid;
                 std::vector<Vertex>& dst = liquid ? out.water : out.opaque;
                 for (int f = 0; f < 6; ++f) {
-                    const FaceDef& fd = FACES[f];
+                    const FaceDef& fd = faceDef(f);
                     BlockId nb = c.at(x + fd.n[0], y + fd.n[1], z + fd.n[2]);
                     if (!shouldDrawFace(b, nb)) continue;
                     float lo = 0.0f, hi = 1.0f;

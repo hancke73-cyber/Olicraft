@@ -6,14 +6,18 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 
 - Unendliche, chunkbasierte Welt (16 x 128 x 16), Gelände aus Perlin-Rauschen: Ozeane, Strände, Hügel, Berge mit Schneekappen, Wüsten, Wälder, Höhlen
 - Bäume (über Chunkgrenzen hinweg konsistent), Meer mit halbtransparentem Wasser, Schwimmen
-- Abbauen und Setzen von Blöcken per Raycast, Hotbar mit 9 Blöcken
-- Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen
+- Fließendes Wasser: Quellen breiten sich bis 7 Blöcke aus, fließen bergab, bilden Wasserfälle, zwei Quellen ergeben eine neue (unendliche Quelle), Wasser zieht sich zurück, wenn die Quelle fehlt
+- Abbauen und Setzen von Blöcken per Raycast
+- Survival- und Kreativmodus (Umschalten mit G): Abbauzeit je Block, Drops als Gegenstände am Boden, Gesundheit mit Herzen, Fallschaden, Ertrinken (Luftblasen), Regeneration, Tod und Wiedergeburt
+- Inventar (E): 27 Rucksack-Slots plus 9 Hotbar-Slots, Stapel bis 64, Mausbedienung wie in Minecraft (links ganzen Stapel, rechts Hälfte oder eines, Umschalt-Klick verschiebt). Im Kreativmodus zusätzlich eine Auswahl aller Blöcke
+- Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies spawnen nachts und in dunklen Höhlen, verfolgen und greifen an und verbrennen im Tageslicht
+- Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten) mit Sonne, Mond und Sternen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
 - Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
 
-Bewusst nicht enthalten: Mobs, Inventar und Crafting, fließendes Wasser, Mehrspieler, Sound.
+Bewusst nicht enthalten: Crafting, Werkzeuge, Hunger, Sound, Mehrspieler.
 
 ## Steuerung
 
@@ -24,17 +28,22 @@ Bewusst nicht enthalten: Mobs, Inventar und Crafting, fließendes Wasser, Mehrsp
 | Leertaste | Springen, im Wasser schwimmen, beim Fliegen steigen |
 | Strg | Sprinten |
 | Umschalt | Beim Fliegen sinken |
-| F oder Leertaste doppelt | Fliegen an/aus |
-| Linksklick (halten) | Block abbauen |
-| Rechtsklick (halten) | Block setzen |
-| Mittelklick | Block unter dem Fadenkreuz in den aktiven Hotbar-Slot übernehmen |
+| F oder Leertaste doppelt | Fliegen an/aus (nur Kreativ) |
+| Linksklick (halten) | Block abbauen, Mob angreifen |
+| Rechtsklick (halten) | Block setzen, mit rohem Fleisch in der Hand essen |
+| Mittelklick | Block unter dem Fadenkreuz übernehmen (Kreativ: in den aktiven Slot, sonst Slot wählen) |
 | 1 bis 9, Mausrad | Hotbar-Slot wählen |
+| E | Inventar öffnen/schließen |
+| Q | Einen Gegenstand aus dem aktiven Slot werfen (Strg+Q: ganzer Stapel) |
+| G | Zwischen Survival und Kreativ wechseln |
 | T | Zwischen Tag und Nacht springen |
 | F1 | HUD ein/aus |
 | F2 | Screenshot nach `screenshots/` |
 | F5 | Speichern (zusätzlich alle 90 s und beim Beenden) |
 | F11 | Vollbild |
-| Esc | Pause. Klick setzt fort, Q beendet das Spiel |
+| Esc | Inventar schließen, sonst Pause. Klick setzt fort, Q beendet das Spiel |
+
+Im Inventar: Linksklick nimmt oder legt einen ganzen Stapel, Rechtsklick nimmt die Hälfte bzw. legt eines ab, Umschalt+Linksklick verschiebt zwischen Hotbar und Rucksack, ein Klick außerhalb des Fensters wirft den gehaltenen Stapel weg. Nach dem Tod lässt dich die Leertaste am Startpunkt wiederkehren (Inventar bleibt erhalten).
 
 Position, FPS, Uhrzeit und gewählter Block stehen in der Fenstertitelzeile.
 
@@ -95,11 +104,11 @@ cmake --build build -j
 --save-path PFAD   Speicherdatei (Standard: saves/world.dat)
 ```
 
-Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--bench N` (automatischer Flug, gibt Frame-Zeiten aus).
+Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--health N`, `--demo mobs|water|inv` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
 
 ## Tests
 
-Die Tests laufen ohne OpenGL-Kontext und prüfen Rauschen, Terrain-Determinismus, Chunkgrenzen, Raycast, Spielerphysik, Mesher und Speichern.
+Die Tests laufen ohne OpenGL-Kontext und prüfen Rauschen, Terrain-Determinismus, Chunkgrenzen, Raycast, Spielerphysik, Mesher, Wassersimulation, Inventar, Items, Mobs (Physik, KI, Spawnen, Beute) und das Speicherformat.
 
 ```bash
 cmake -S . -B build -DOLICRAFT_BUILD_TESTS=ON
@@ -118,8 +127,11 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/TerrainGen.*`, `src/Noise.*` | Weltgenerierung |
 | `src/Mesher.*`, `src/Chunk.*` | Geometrie je Chunk (Face-Culling, AO, Himmelslicht), GPU-Puffer |
 | `src/Renderer.*`, `src/Shader.*`, `src/Atlas.*` | Rendering, Himmel, HUD, prozeduraler Texturatlas |
-| `src/Player.*` | Bewegung und Kollision |
-| `src/Save.*` | Speicherformat (RLE je veränderter Chunk) |
+| `src/Player.*`, `src/Physics.*` | Bewegung und Kollision (auch für Mobs und Gegenstände) |
+| `src/Entities.*` | Mobs (KI, Spawnen, Modelle aus Quadern) und Gegenstände am Boden |
+| `src/Items.*`, `src/Inventory.*` | Gegenstände, Stapel, Klicklogik |
+| `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
+| `src/Save.*` | Speicherformat Version 2 (RLE je veränderter Chunk, Inventar, Gesundheit, Modus; Version 1 bleibt lesbar) |
 | `tests/` | Tests |
 
 ## Drittanbieter

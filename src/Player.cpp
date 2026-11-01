@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "Block.h"
+#include "Physics.h"
 #include "World.h"
 
 namespace oc {
@@ -36,49 +37,10 @@ bool Player::intersectsBlock(int x, int y, int z) const {
            pos.z - hw < z + 1;
 }
 
-bool Player::collides(const World& world) const {
-    const float hw = WIDTH * 0.5f;
-    int x0 = static_cast<int>(std::floor(pos.x - hw + EPS)), x1 = static_cast<int>(std::floor(pos.x + hw - EPS));
-    int y0 = static_cast<int>(std::floor(pos.y + EPS)), y1 = static_cast<int>(std::floor(pos.y + HEIGHT - EPS));
-    int z0 = static_cast<int>(std::floor(pos.z - hw + EPS)), z1 = static_cast<int>(std::floor(pos.z + hw - EPS));
-    for (int y = y0; y <= y1; ++y)
-        for (int z = z0; z <= z1; ++z)
-            for (int x = x0; x <= x1; ++x)
-                if (world.isSolidAt(x, y, z)) return true;
-    return false;
-}
-
 void Player::moveAxis(int axis, float delta, const World& world) {
-    const float hw = WIDTH * 0.5f;
-    float remaining = delta;
-    while (std::fabs(remaining) > 1e-6f) {
-        float step = std::max(-0.4f, std::min(0.4f, remaining));
-        remaining -= step;
-        pos[axis] += step;
-        if (!collides(world)) continue;
-
-        // Auf die Blockkante zurueckschieben
-        if (axis == 1) {
-            if (step > 0) {
-                int cell = static_cast<int>(std::floor(pos.y + HEIGHT - EPS));
-                pos.y = static_cast<float>(cell) - HEIGHT - EPS;
-            } else {
-                int cell = static_cast<int>(std::floor(pos.y + EPS));
-                pos.y = static_cast<float>(cell + 1) + EPS;
-                onGround = true;
-            }
-        } else {
-            if (step > 0) {
-                int cell = static_cast<int>(std::floor(pos[axis] + hw - EPS));
-                pos[axis] = static_cast<float>(cell) - hw - EPS;
-            } else {
-                int cell = static_cast<int>(std::floor(pos[axis] - hw + EPS));
-                pos[axis] = static_cast<float>(cell + 1) + hw + EPS;
-            }
-        }
-        vel[axis] = 0.0f;
-        break;
-    }
+    bool landed = false;
+    moveBodyAxis(world, pos, vel, axis, delta, WIDTH, HEIGHT, &landed);
+    if (landed) onGround = true;
 }
 
 bool Player::bodyInWater(const World& world) const {
@@ -127,12 +89,25 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
         if (in.jump && onGround) vel.y = JUMP_SPEED;
     }
 
+    const float startY = pos.y;
     onGround = false;
+    headInWater = world.inWaterAt(eyePos());
     moveAxis(0, vel.x * dt, world);
     moveAxis(2, vel.z * dt, world);
     moveAxis(1, vel.y * dt, world);
 
     if (flying && onGround) flying = false;  // Landen beendet den Flug
+
+    // Fallhoehe fuer Fallschaden
+    if (onGround) {
+        if (airborne_) landedFall = std::max(landedFall, peakY_ - pos.y);
+        airborne_ = false;
+        peakY_ = pos.y;
+    } else {
+        airborne_ = true;
+        peakY_ = std::max(peakY_, startY);
+        if (inWater || flying) peakY_ = pos.y;  // Wasser faengt den Sturz ab
+    }
 
     if (pos.y < -20.0f) {  // Sicherheitsnetz
         pos.y = static_cast<float>(CHUNK_H);

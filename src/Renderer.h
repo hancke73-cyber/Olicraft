@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 
 #include "Block.h"
+#include "Hud.h"
 #include "Shader.h"
 #include "World.h"
 
@@ -22,9 +23,10 @@ struct FrameInfo {
     int renderDistance = 8;  // in Chunks
     bool hasTarget = false;
     glm::ivec3 target{0};
-    int hotbarSlot = 0;
-    const BlockId* hotbar = nullptr;
-    bool showHud = true;
+    HudState hud;
+    // Entity-Geometrie (kamerarelative Weltkoordinaten), vom Spiel mit EntityManager::buildMesh erzeugt
+    const std::vector<Vertex>* entityVerts = nullptr;
+    const std::vector<Vertex>* entityHurtVerts = nullptr;
 };
 
 class Renderer {
@@ -46,29 +48,25 @@ public:
     uint64_t drawnQuads() const { return drawnQuads_; }
 
 private:
-    struct HudVertex {
-        float x, y, u, v, r, g, b, a;
-    };
-
     void drawSky(const FrameInfo& f, const glm::vec3& skyColor);
     void drawWorld(const World& world, const FrameInfo& f, const glm::vec3& fogColor, float sunLevel);
     void drawSelection(const FrameInfo& f);
     void drawHud(const FrameInfo& f);
+    void drawEntities(const FrameInfo& f, const glm::mat4& projView);
 
-    void hudQuad(float x0, float y0, float x1, float y1, glm::vec4 c);
-    void hudTexQuad(const glm::vec2 p[4], const glm::vec2 uv[4], glm::vec4 c);
-    void hudBlockIcon(float cx, float cy, float size, BlockId id);
     void flushHud(const FrameInfo& f);
 
     Shader chunkShader_, colorShader_, hudShader_;
     GLuint atlas_ = 0;
+    GLuint guiTex_ = 0;
+    GpuMesh entityMesh_, entityHurtMesh_;
+    HudBatch hudBatch_;
 
     GLuint skyVao_ = 0, skyVbo_ = 0;      // dynamische Quads fuer Sonne/Mond
     GLuint starVao_ = 0, starVbo_ = 0;
     int starCount_ = 0;
     GLuint lineVao_ = 0, lineVbo_ = 0;    // Auswahlrahmen
     GLuint hudVao_ = 0, hudVbo_ = 0;
-    std::vector<HudVertex> hud_;
 
     int drawnChunks_ = 0;
     uint64_t drawnQuads_ = 0;

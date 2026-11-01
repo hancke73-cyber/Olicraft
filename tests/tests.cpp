@@ -4,10 +4,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
 #include "Block.h"
+#include "Entities.h"
+#include "Hud.h"
+#include "Inventory.h"
+#include "Items.h"
 #include "Mesher.h"
 #include "Noise.h"
 #include "Player.h"
@@ -537,6 +542,311 @@ static void testFluidMesh() {
     CHECK(std::fabs(maxY - 42.0f) < 1e-4f);
 }
 
+static void testItemsAndInventory() {
+    CHECK(itemValid(GRASS) && itemValid(WATER) && itemValid(ITEM_MEAT));
+    CHECK(!itemValid(AIR) && !itemValid(WATER_3) && !itemValid(WATER_FALL) && !itemValid(999));
+    CHECK(blockDropItem(GRASS) == DIRT);
+    CHECK(blockDropItem(STONE) == COBBLE);
+    CHECK(blockDropItem(LOG) == LOG);
+    CHECK(blockDropItem(BEDROCK) == ITEM_NONE);
+    CHECK(blockDropItem(GLASS) == ITEM_NONE);
+    CHECK(blockDropItem(WATER) == ITEM_NONE);
+    CHECK(itemInfo(STONE).isBlock && !itemInfo(ITEM_MEAT).isBlock);
+    for (int i = 0; i < creativeItemCount(); ++i) CHECK(itemValid(creativeItem(i)));
+
+    Inventory inv;
+    CHECK(inv.isEmpty());
+    CHECK(inv.add(STONE, 40) == 0);
+    CHECK(inv.slots[0].id == STONE && inv.slots[0].count == 40);
+    CHECK(inv.add(STONE, 40) == 0);  // 24 in den ersten Stapel, 16 in den naechsten
+    CHECK(inv.slots[0].count == 64 && inv.slots[1].count == 16);
+    CHECK(inv.count(STONE) == 80);
+    CHECK(inv.add(DIRT, 1) == 0 && inv.slots[2].id == DIRT);
+    CHECK(inv.take(0, 4) && inv.slots[0].count == 60);
+    CHECK(!inv.take(2, 2));  // nicht genug
+    CHECK(inv.take(2, 1) && inv.slots[2].empty());
+
+    // Voller Rucksack: Rest wird zurueckgegeben
+    Inventory full;
+    for (auto& s : full.slots) s = {SAND, 64};
+    CHECK(full.add(SAND, 5) == 5);
+    CHECK(full.add(DIRT, 5) == 5);
+    full.slots[20] = {SAND, 60};
+    CHECK(full.add(SAND, 10) == 6);
+    CHECK(full.slots[20].count == 64);
+    CHECK(inv.add(AIR, 3) == 3);  // ungueltig
+
+    // Klicklogik
+    ItemStack slot{STONE, 10}, cur;
+    Inventory::click(slot, cur, false);  // aufnehmen
+    CHECK(slot.empty() && cur.id == STONE && cur.count == 10);
+    Inventory::click(slot, cur, false);  // ablegen
+    CHECK(cur.empty() && slot.count == 10);
+    Inventory::click(slot, cur, true);  // Haelfte aufnehmen (aufgerundet)
+    CHECK(cur.count == 5 && slot.count == 5);
+    Inventory::click(slot, cur, true);  // eines ablegen
+    CHECK(cur.count == 4 && slot.count == 6);
+    ItemStack other{DIRT, 3};
+    Inventory::click(other, cur, false);  // tauschen
+    CHECK(other.id == STONE && other.count == 4 && cur.id == DIRT && cur.count == 3);
+    ItemStack a{STONE, 62}, b{STONE, 5};
+    Inventory::click(a, b, false);  // zusammenfuehren
+    CHECK(a.count == 64 && b.count == 3);
+
+    // Umschalt-Klick
+    Inventory q;
+    q.slots[3] = {COBBLE, 7};
+    q.quickMove(3);
+    CHECK(q.slots[3].empty() && q.slots[Inventory::HOTBAR].id == COBBLE);
+    q.quickMove(Inventory::HOTBAR);
+    CHECK(q.slots[0].id == COBBLE && q.slots[0].count == 7);
+
+    // Layout: Treffer liegen in den berechneten Feldern
+    for (bool creative : {false, true}) {
+        InvLayout L = InvLayout::make(1280, 720, creative);
+        CHECK(L.inside(L.panelPos + glm::vec2(2.0f)));
+        for (int i = 0; i < Inventory::SIZE; ++i) {
+            glm::vec2 c = L.slotPos(i) + glm::vec2(L.pitch() * 0.5f);
+            CHECK(L.hitSlot(c) == i);
+            CHECK(L.inside(c));
+        }
+        if (creative)
+            for (int i = 0; i < creativeItemCount(); ++i)
+                CHECK(L.hitPalette(L.palettePos(i) + glm::vec2(L.pitch() * 0.5f)) == i);
+        CHECK(L.hitSlot(glm::vec2(1.0f, 1.0f)) == -1);
+    }
+    // Schrift: Breite und HUD-Aufbau
+    CHECK(textWidthPx("") == 0 && textWidthPx("A") == 5 && textWidthPx("AB") == 11);
+    HudBatch batch;
+    HudState st;
+    st.inventory = &inv;
+    st.health = 7;
+    buildHud(batch, st, 1280, 720);
+    CHECK(!batch.verts.empty() && batch.verts.size() % 6 == 0);
+    size_t covered = 0;
+    for (auto& c : batch.cmds) covered += c.count;
+    CHECK(covered == batch.verts.size());
+    st.inventoryOpen = true;
+    st.creative = true;
+    buildHud(batch, st, 1280, 720);
+    CHECK(!batch.verts.empty());
+}
+
+static void testSaveV2() {
+    const std::string path = "olicraft_test_save2/w.dat";
+    std::filesystem::remove_all("olicraft_test_save2");
+    SaveFile sf;
+    sf.seed = 77;
+    sf.player.health = 13;
+    sf.player.creative = true;
+    sf.player.inventory.slots[0] = {STONE, 33};
+    sf.player.inventory.slots[20] = {ITEM_MEAT, 5};
+    std::string err;
+    CHECK(writeSaveFile(path, sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile(path, back, &err));
+    CHECK(back.player.hasInventory && back.player.health == 13 && back.player.creative);
+    CHECK(back.player.inventory.slots[0] == ItemStack({STONE, 33}));
+    CHECK(back.player.inventory.slots[20] == ItemStack({ITEM_MEAT, 5}));
+    CHECK(back.player.inventory.slots[1].empty());
+
+    // Version 1 (aelter) bleibt lesbar
+    {
+        std::ofstream f("olicraft_test_save2/v1.dat", std::ios::binary);
+        auto u32 = [&](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+        auto f32 = [&](float v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+        u32(0x52434C4Fu);
+        u32(1);
+        u32(55);
+        for (int i = 0; i < 6; ++i) f32(1.0f + i);
+        u32(3);  // slot
+        f.put(1);  // flying
+        u32(0);    // keine Chunks
+    }
+    SaveFile old;
+    CHECK(readSaveFile("olicraft_test_save2/v1.dat", old, &err));
+    CHECK(old.seed == 55 && !old.player.hasInventory && old.player.slot == 3 && old.player.flying);
+    std::filesystem::remove_all("olicraft_test_save2");
+}
+
+static void testEntities() {
+    World w(42);
+    w.setMeshingEnabled(false);
+    glm::vec3 spawn = w.findSpawn();
+    w.loadAround(spawn, 3);
+
+    // flache Testflaeche hoch oben
+    const int gy = 100;
+    for (int x = -20; x <= 20; ++x)
+        for (int z = -20; z <= 20; ++z) {
+            for (int y = gy; y < gy + 12; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    Player player;
+    player.pos = glm::vec3(0.5f, static_cast<float>(gy), 0.5f);
+    Inventory inv;
+    EntityEnv env;
+    env.allowSpawns = false;
+    env.daylight = 1.0f;
+    EntityManager em(5);
+
+    // Gegenstand faellt, bleibt liegen, wird erst nach der Verzoegerung eingesammelt
+    em.spawnItem({STONE, 3}, glm::vec3(10.5f, gy + 5.0f, 10.5f), glm::vec3(0.0f), 0.5f);
+    for (int i = 0; i < 60; ++i) em.update(0.05f, w, player, inv, env);
+    CHECK(em.items().size() == 1);
+    CHECK(std::fabs(em.items()[0].pos.y - gy) < 0.02f);
+    CHECK(inv.isEmpty());
+    player.pos = glm::vec3(10.5f, static_cast<float>(gy), 9.5f);
+    em.update(0.05f, w, player, inv, env);
+    CHECK(em.items().empty() && inv.count(STONE) == 3);
+    // Verzoegerung
+    em.spawnItem({DIRT, 1}, player.pos, glm::vec3(0.0f), 0.5f);
+    em.update(0.05f, w, player, inv, env);
+    CHECK(inv.count(DIRT) == 0 && em.items().size() == 1);
+    for (int i = 0; i < 20; ++i) em.update(0.05f, w, player, inv, env);
+    CHECK(inv.count(DIRT) == 1 && em.items().empty());
+    // voller Rucksack: Gegenstand bleibt liegen
+    Inventory full;
+    for (auto& s : full.slots) s = {SAND, 64};
+    em.spawnItem({SAND, 2}, player.pos, glm::vec3(0.0f), 0.0f);
+    for (int i = 0; i < 10; ++i) em.update(0.05f, w, player, full, env);
+    CHECK(em.items().size() == 1 && em.items()[0].stack.count == 2);
+    em.clear();
+
+    // Mob faellt, landet, wandert
+    player.pos = glm::vec3(0.5f, static_cast<float>(gy), 0.5f);
+    Mob& pig = em.spawnMob(MobType::Pig, glm::vec3(5.5f, gy + 4.0f, 5.5f));
+    for (int i = 0; i < 40; ++i) em.update(0.05f, w, player, inv, env);
+    {
+        Mob& m = em.mobs()[0];
+        CHECK(m.onGround && std::fabs(m.pos.y - gy) < 0.02f);
+    }
+    (void)pig;
+    const glm::vec3 p0 = em.mobs()[0].pos;
+    float maxMove = 0;
+    for (int i = 0; i < 400; ++i) {
+        em.update(0.05f, w, player, inv, env);
+        maxMove = std::max(maxMove, glm::length(em.mobs()[0].pos - p0));
+    }
+    CHECK(maxMove > 1.0f);  // er hat sich irgendwann bewegt
+    CHECK(em.mobs()[0].pos.y > gy - 0.5f);
+    em.clear();
+
+    // Stufe hochspringen: Wanderrichtung +x, Stufe (1 Block) bei x = 8
+    for (int z = -5; z <= 5; ++z) w.setBlock(8, gy, z, STONE);
+    Mob& cow = em.spawnMob(MobType::Cow, glm::vec3(4.5f, gy, 0.5f));
+    cow.state = Mob::Wander;
+    cow.wanderYaw = 0.0f;
+    cow.yaw = 0.0f;
+    cow.stateTimer = 1000.0f;
+    for (int i = 0; i < 200; ++i) {
+        Mob& m = em.mobs()[0];
+        m.state = Mob::Wander;
+        m.wanderYaw = 0.0f;
+        m.stateTimer = 1000.0f;
+        em.update(0.05f, w, player, inv, env);
+    }
+    CHECK(em.mobs()[0].pos.x > 9.0f);
+    em.clear();
+
+    // Zombie greift an, mit Abklingzeit; im Kreativmodus ignoriert er den Spieler
+    player.pos = glm::vec3(0.5f, static_cast<float>(gy), 0.5f);
+    em.spawnMob(MobType::Zombie, glm::vec3(2.0f, gy, 0.5f));
+    int hits = 0;
+    for (int i = 0; i < 60; ++i) {  // 3 s
+        em.update(0.05f, w, player, inv, env);
+        hits += static_cast<int>(em.playerHits().size());
+        for (auto& h : em.playerHits()) CHECK(h.damage == 3);
+        em.playerHits().clear();
+    }
+    CHECK(hits >= 2 && hits <= 4);
+    env.creative = true;
+    for (int i = 0; i < 40; ++i) {
+        em.update(0.05f, w, player, inv, env);
+        hits += static_cast<int>(em.playerHits().size());
+        em.playerHits().clear();
+    }
+    CHECK(hits <= 4);
+    env.creative = false;
+    em.clear();
+
+    // Zombies verbrennen im Tageslicht
+    player.pos = glm::vec3(-15.5f, static_cast<float>(gy), -15.5f);
+    em.spawnMob(MobType::Zombie, glm::vec3(10.5f, gy, 10.5f));
+    for (int i = 0; i < 20 * 15; ++i) em.update(0.05f, w, player, inv, env);
+    CHECK(em.mobs().empty());  // tot und entfernt
+    em.clear();
+
+    // Treffer, Rueckstoss, Flucht, Beute
+    player.pos = glm::vec3(0.5f, static_cast<float>(gy), 0.5f);
+    em.spawnMob(MobType::Pig, glm::vec3(3.5f, gy, 0.5f));
+    float t = 0;
+    glm::vec3 org = player.eyePos();
+    const glm::vec3 toPig = glm::normalize(glm::vec3(3.5f, gy + 0.4f, 0.5f) - org);
+    Mob* hitMob = em.raycastMob(org, toPig, 6.0f, t);
+    CHECK(hitMob != nullptr && t > 2.0f && t < 3.2f);
+    if (!hitMob) return;
+    CHECK(em.raycastMob(org, -toPig, 6.0f, t) == nullptr);
+    CHECK(em.raycastMob(org, toPig, 1.0f, t) == nullptr);
+    CHECK(em.raycastMob(org, glm::vec3(1.0f, 0.0f, 0.0f), 6.0f, t) == nullptr);  // geht ueber das Schwein hinweg
+    em.hurtMob(*hitMob, 2, player.pos);
+    CHECK(hitMob->health == 8 && hitMob->hurtTimer > 0 && hitMob->panicTimer > 0);
+    CHECK(hitMob->vel.x > 3.0f && hitMob->vel.y > 0);
+    const float x0 = hitMob->pos.x;
+    for (int i = 0; i < 30; ++i) em.update(0.05f, w, player, inv, env);
+    CHECK(em.mobs()[0].pos.x > x0 + 1.0f);  // flieht vom Spieler weg
+    em.hurtMob(em.mobs()[0], 50, player.pos);
+    CHECK(em.mobs()[0].dead());
+    CHECK(!em.items().empty() && em.items()[0].stack.id == ITEM_MEAT);
+    CHECK(em.items()[0].stack.count >= 1 && em.items()[0].stack.count <= 3);
+    for (int i = 0; i < 30; ++i) em.update(0.05f, w, player, inv, env);
+    CHECK(em.mobs().empty());
+    // Tote Mobs lassen sich nicht mehr treffen
+    em.clear();
+
+    // Spawnen: tagsueber Tiere, nachts Zombies, nie im Kreativmodus
+    EntityEnv spawnEnv;
+    spawnEnv.allowSpawns = true;
+    spawnEnv.daylight = 1.0f;
+    player.pos = spawn;
+    for (int i = 0; i < 400; ++i) em.update(0.05f, w, player, inv, spawnEnv);
+    CHECK(em.countMobs(true) <= 8);  // tagsueber nur in Hoehlen
+    for (const Mob& m : em.mobs())
+        if (mobSpec(m.type).hostile) CHECK(!w.inWaterAt(m.pos));
+    CHECK(em.countMobs(false) >= 1 && em.countMobs(false) <= 12);
+    int passives = em.countMobs(false);
+    EntityEnv night = spawnEnv;
+    night.daylight = 0.0f;
+    for (int i = 0; i < 1200; ++i) {
+        em.update(0.05f, w, player, inv, night);
+        em.playerHits().clear();
+    }
+    CHECK(em.countMobs(true) >= 1 && em.countMobs(true) <= 8);
+    for (const Mob& m : em.mobs()) {
+        float d = std::hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z);
+        CHECK(d < 100.0f);
+    }
+    (void)passives;
+    em.clear();
+    EntityEnv cre = night;
+    cre.creative = true;
+    for (int i = 0; i < 400; ++i) em.update(0.05f, w, player, inv, cre);
+    CHECK(em.countMobs(true) == 0);
+
+    // Darstellung: Vertexanzahl durch 4 teilbar und endlich
+    em.clear();
+    em.spawnMob(MobType::Zombie, glm::vec3(1.0f, gy, 1.0f));
+    em.spawnMob(MobType::Sheep, glm::vec3(2.0f, gy, 1.0f)).hurtTimer = 1.0f;
+    em.spawnItem({ITEM_MEAT, 1}, glm::vec3(0.0f, gy, 0.0f), glm::vec3(0.0f));
+    em.spawnItem({STONE, 1}, glm::vec3(0.5f, gy, 0.0f), glm::vec3(0.0f));
+    std::vector<Vertex> a, b2;
+    em.buildMesh(w, glm::vec3(0.0f, gy + 2.0f, -3.0f), 1.0f, a, b2);
+    CHECK(!a.empty() && !b2.empty() && a.size() % 4 == 0 && b2.size() % 4 == 0);
+    bool finite = true;
+    for (const Vertex& v : a) finite = finite && std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+    CHECK(finite);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -561,6 +871,9 @@ int main() {
     testFluids();
     testFluidMesh();
     testSpawn();
+    testItemsAndInventory();
+    testSaveV2();
+    testEntities();
     std::printf("%d Pruefungen, %d fehlgeschlagen\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;
 }

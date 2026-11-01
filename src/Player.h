@@ -26,6 +26,8 @@ public:
     bool flying = false;
     bool onGround = false;
     bool inWater = false;
+    bool headInWater = false;
+    float landedFall = 0.0f;  // Fallhoehe beim letzten Aufprall (vom Spiel auszulesen und zurueckzusetzen)
 
     glm::vec3 eyePos() const { return pos + glm::vec3(0.0f, EYE, 0.0f); }
     glm::vec3 front() const;
@@ -36,8 +38,9 @@ public:
     bool intersectsBlock(int x, int y, int z) const;
 
 private:
+    float peakY_ = 0.0f;
+    bool airborne_ = false;
     void moveAxis(int axis, float delta, const World& world);
-    bool collides(const World& world) const;
     bool bodyInWater(const World& world) const;
 };
 

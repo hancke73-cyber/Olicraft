@@ -17,13 +17,17 @@ static void printHelp() {
         "  --fullscreen      Vollbild\n"
         "  --no-vsync        VSync aus\n"
         "  --no-save         Nichts laden oder speichern\n"
+        "  --creative        Kreativmodus erzwingen (Standard: Survival, im Spiel mit G umschaltbar)\n"
+        "  --survival        Survival erzwingen\n"
+        "  --no-mobs         Keine Tiere und Monster\n"
         "  --save-path PFAD  Speicherdatei (Standard: saves/world.dat)\n"
         "  --help            Diese Hilfe\n"
         "\n"
-        "Steuerung: WASD, Maus, Leertaste springen, Strg sprinten, F fliegen,\n"
-        "  Linksklick abbauen, Rechtsklick setzen, Mittelklick Block uebernehmen,\n"
-        "  1-9 / Mausrad Hotbar, T Tageszeit, F1 HUD, F2 Screenshot, F5 Speichern,\n"
-        "  F11 Vollbild, Esc Pause (dort Q beendet das Spiel).");
+        "Steuerung: WASD, Maus, Leertaste springen, Strg sprinten, F fliegen (Kreativ),\n"
+        "  Linksklick abbauen/angreifen, Rechtsklick setzen/essen, Mittelklick Block uebernehmen,\n"
+        "  E Inventar, Q Gegenstand werfen, G Modus wechseln, 1-9 / Mausrad Hotbar,\n"
+        "  T Tageszeit, F1 HUD, F2 Screenshot, F5 Speichern, F11 Vollbild,\n"
+        "  Esc Pause (dort Q beendet das Spiel).");
 }
 
 int main(int argc, char** argv) {
@@ -88,6 +92,21 @@ int main(int argc, char** argv) {
         } else if (a == "--bench") {
             need(1);
             opt.benchFrames = std::atoi(argv[++i]);
+        } else if (a == "--creative") {
+            opt.forceMode = 1;
+        } else if (a == "--survival") {
+            opt.forceMode = 0;
+        } else if (a == "--no-mobs") {
+            opt.mobs = false;
+        } else if (a == "--demo") {
+            need(1);
+            opt.demo = argv[++i];
+        } else if (a == "--selftest") {
+            opt.selfTest = true;
+            opt.noSave = false;
+        } else if (a == "--health") {
+            need(1);
+            opt.health = std::atoi(argv[++i]);
         } else if (a == "--fly") {
             opt.fly = true;
         } else {

@@ -10,6 +10,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Atlas.h"
+#include "GuiTexture.h"
 #include "Noise.h"
 
 namespace oc {
@@ -48,13 +49,14 @@ uniform vec3 uFogColor;
 uniform float uFogStart;
 uniform float uFogEnd;
 uniform int uCutout;
+uniform vec3 uTint;
 out vec4 FragColor;
 void main() {
     vec4 t = texture(uAtlas, vUV);
     if (uCutout == 1 && t.a < 0.5) discard;
     float cave = min(0.26, uSun);
     float light = mix(cave, uSun, vSky);
-    vec3 c = t.rgb * vShade * light;
+    vec3 c = t.rgb * vShade * light * uTint;
     float f = clamp((vDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
     c = mix(c, uFogColor, f);
     FragColor = vec4(c, uCutout == 1 ? 1.0 : t.a);
@@ -96,10 +98,12 @@ const char* HUD_FS = R"(#version 330 core
 in vec2 vUV;
 in vec4 vColor;
 uniform sampler2D uAtlas;
+uniform sampler2D uGui;
+uniform int uUseAtlas;
 out vec4 FragColor;
 void main() {
     if (vUV.x < 0.0) { FragColor = vColor; return; }
-    vec4 t = texture(uAtlas, vUV);
+    vec4 t = uUseAtlas == 1 ? texture(uAtlas, vUV) : texture(uGui, vUV);
     if (t.a < 0.1) discard;
     FragColor = vec4(t.rgb * vColor.rgb, t.a * vColor.a);
 }
@@ -158,6 +162,18 @@ bool Renderer::init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 3);  // Stufen bluten nicht ueber Kachelgrenzen (8px-Bloecke)
     glGenerateMipmap(GL_TEXTURE_2D);
+
+    // GUI-Textur (Schrift, Symbole)
+    {
+        std::vector<uint8_t> g = generateGuiPixels();
+        glGenTextures(1, &guiTex_);
+        glBindTexture(GL_TEXTURE_2D, guiTex_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, GUI_TEX_W, GUI_TEX_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, g.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
 
     // Sonne/Mond (2 Quads), dynamisch
     glGenVertexArrays(1, &skyVao_);
@@ -231,6 +247,9 @@ void Renderer::shutdown() {
     initialized_ = false;
     destroySharedQuadIndexBuffer();
     if (atlas_) glDeleteTextures(1, &atlas_);
+    if (guiTex_) glDeleteTextures(1, &guiTex_);
+    entityMesh_.release();
+    entityHurtMesh_.release();
     GLuint vaos[] = {skyVao_, starVao_, lineVao_, hudVao_};
     GLuint vbos[] = {skyVbo_, starVbo_, lineVbo_, hudVbo_};
     glDeleteVertexArrays(4, vaos);
@@ -269,10 +288,10 @@ void Renderer::render(const World& world, const FrameInfo& f) {
 
     if (!f.underwater) drawSky(f, sky);
     drawWorld(world, f, fogColor, sunLevel);
-    if (f.showHud) {
+    if (f.hud.show) {
         drawSelection(f);
-        drawHud(f);
     }
+    drawHud(f);
 }
 
 void Renderer::drawSky(const FrameInfo& f, const glm::vec3& skyColor) {
@@ -383,6 +402,7 @@ void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3
     glDisable(GL_BLEND);
     glDepthMask(GL_TRUE);
     chunkShader_.setInt("uCutout", 1);
+    chunkShader_.setVec3("uTint", glm::vec3(1.0f));
     for (const Item& it : visible) {
         if (it.c->opaque.empty()) continue;
         chunkShader_.setVec3("uOffset", it.offset);
@@ -390,12 +410,15 @@ void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3
         drawnQuads_ += it.c->opaque.quadCount();
     }
 
+    drawEntities(f, projView);
+
     // Wasser (fern nach nah)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
     glDisable(GL_CULL_FACE);
     chunkShader_.setInt("uCutout", 0);
+    chunkShader_.setVec3("uTint", glm::vec3(1.0f));
     for (auto it = visible.rbegin(); it != visible.rend(); ++it) {
         if (it->c->water.empty()) continue;
         chunkShader_.setVec3("uOffset", it->offset);
@@ -427,51 +450,47 @@ void Renderer::drawSelection(const FrameInfo& f) {
     glDisable(GL_BLEND);
 }
 
-void Renderer::hudQuad(float x0, float y0, float x1, float y1, glm::vec4 c) {
-    const glm::vec2 p[4] = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
-    const glm::vec2 uv[4] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};
-    hudTexQuad(p, uv, c);
-}
-
-void Renderer::hudTexQuad(const glm::vec2 p[4], const glm::vec2 uv[4], glm::vec4 c) {
-    const int order[6] = {0, 1, 2, 0, 2, 3};
-    for (int i : order) hud_.push_back({p[i].x, p[i].y, uv[i].x, uv[i].y, c.r, c.g, c.b, c.a});
-}
-
-void Renderer::hudBlockIcon(float cx, float cy, float s, BlockId id) {
-    const BlockInfo& bi = blockInfo(id);
-    const UVRect top = tileUV(bi.top), side = tileUV(bi.side);
-    const float w = 0.866f * s;
-    {  // Oberseite
-        const glm::vec2 p[4] = {{cx, cy - s}, {cx + w, cy - 0.5f * s}, {cx, cy}, {cx - w, cy - 0.5f * s}};
-        const glm::vec2 uv[4] = {{top.u0, top.v1}, {top.u1, top.v1}, {top.u1, top.v0}, {top.u0, top.v0}};
-        hudTexQuad(p, uv, glm::vec4(1.0f));
+void Renderer::drawEntities(const FrameInfo& f, const glm::mat4& projView) {
+    (void)projView;
+    if (!f.entityVerts && !f.entityHurtVerts) return;
+    chunkShader_.setVec3("uOffset", glm::vec3(0.0f));
+    chunkShader_.setInt("uCutout", 1);
+    if (f.entityVerts) {
+        entityMesh_.upload(*f.entityVerts);
+        chunkShader_.setVec3("uTint", glm::vec3(1.0f));
+        entityMesh_.draw();
+        drawnQuads_ += entityMesh_.quadCount();
     }
-    {  // linke Seite
-        const glm::vec2 p[4] = {{cx - w, cy - 0.5f * s}, {cx, cy}, {cx, cy + s}, {cx - w, cy + 0.5f * s}};
-        const glm::vec2 uv[4] = {{side.u0, side.v1}, {side.u1, side.v1}, {side.u1, side.v0}, {side.u0, side.v0}};
-        hudTexQuad(p, uv, glm::vec4(0.78f, 0.78f, 0.78f, 1.0f));
+    if (f.entityHurtVerts) {
+        entityHurtMesh_.upload(*f.entityHurtVerts);
+        chunkShader_.setVec3("uTint", glm::vec3(1.0f, 0.38f, 0.38f));
+        entityHurtMesh_.draw();
+        drawnQuads_ += entityHurtMesh_.quadCount();
     }
-    {  // rechte Seite
-        const glm::vec2 p[4] = {{cx, cy}, {cx + w, cy - 0.5f * s}, {cx + w, cy + 0.5f * s}, {cx, cy + s}};
-        const glm::vec2 uv[4] = {{side.u0, side.v1}, {side.u1, side.v1}, {side.u1, side.v0}, {side.u0, side.v0}};
-        hudTexQuad(p, uv, glm::vec4(0.58f, 0.58f, 0.58f, 1.0f));
-    }
+    chunkShader_.setVec3("uTint", glm::vec3(1.0f));
+    glBindVertexArray(0);
 }
 
 void Renderer::flushHud(const FrameInfo& f) {
-    if (hud_.empty()) return;
+    if (hudBatch_.verts.empty()) return;
     hudShader_.use();
     hudShader_.setVec2("uScreen", glm::vec2(static_cast<float>(f.width), static_cast<float>(f.height)));
     hudShader_.setInt("uAtlas", 0);
+    hudShader_.setInt("uGui", 1);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, atlas_);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, guiTex_);
+    glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(hudVao_);
     glBindBuffer(GL_ARRAY_BUFFER, hudVbo_);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(hud_.size() * sizeof(HudVertex)), hud_.data(), GL_STREAM_DRAW);
-    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(hud_.size()));
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(hudBatch_.verts.size() * sizeof(HudVertex)),
+                 hudBatch_.verts.data(), GL_STREAM_DRAW);
+    for (const HudBatch::Cmd& cmd : hudBatch_.cmds) {
+        hudShader_.setInt("uUseAtlas", cmd.tex == HUD_TEX_ATLAS ? 1 : 0);
+        glDrawArrays(GL_TRIANGLES, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count));
+    }
     glBindVertexArray(0);
-    hud_.clear();
 }
 
 void Renderer::drawHud(const FrameInfo& f) {
@@ -480,39 +499,9 @@ void Renderer::drawHud(const FrameInfo& f) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    const float w = static_cast<float>(f.width), h = static_cast<float>(f.height);
-    const float s = std::max(1.0f, std::floor(h / 360.0f));  // GUI-Skalierung
-
-    if (f.underwater) hudQuad(0, 0, w, h, glm::vec4(0.08f, 0.25f, 0.55f, 0.35f));
-
-    // Fadenkreuz
-    {
-        const float cx = std::floor(w * 0.5f), cy = std::floor(h * 0.5f);
-        const float arm = 5.0f * s, th = std::max(1.0f, s);
-        hudQuad(cx - arm - 1, cy - th * 0.5f - 1, cx + arm + 1, cy + th * 0.5f + 1, glm::vec4(0, 0, 0, 0.45f));
-        hudQuad(cx - th * 0.5f - 1, cy - arm - 1, cx + th * 0.5f + 1, cy + arm + 1, glm::vec4(0, 0, 0, 0.45f));
-        hudQuad(cx - arm, cy - th * 0.5f, cx + arm, cy + th * 0.5f, glm::vec4(1, 1, 1, 0.9f));
-        hudQuad(cx - th * 0.5f, cy - arm, cx + th * 0.5f, cy + arm, glm::vec4(1, 1, 1, 0.9f));
-    }
-
-    // Hotbar
-    if (f.hotbar) {
-        const float slot = 20.0f * s;
-        const float total = slot * HOTBAR_SIZE;
-        const float x0 = std::floor((w - total) * 0.5f);
-        const float y0 = h - slot - 4.0f * s;
-        hudQuad(x0 - 2 * s, y0 - 2 * s, x0 + total + 2 * s, y0 + slot + 2 * s, glm::vec4(0, 0, 0, 0.55f));
-        for (int i = 0; i < HOTBAR_SIZE; ++i) {
-            const float sx = x0 + i * slot;
-            const bool sel = i == f.hotbarSlot;
-            if (sel) hudQuad(sx - 2 * s, y0 - 2 * s, sx + slot + 2 * s, y0 + slot + 2 * s, glm::vec4(1, 1, 1, 0.95f));
-            hudQuad(sx + s, y0 + s, sx + slot - s, y0 + slot - s, sel ? glm::vec4(0.25f, 0.25f, 0.25f, 0.9f)
-                                                                       : glm::vec4(0.12f, 0.12f, 0.12f, 0.75f));
-        }
-        flushHud(f);  // Hintergruende zuerst, dann Symbole
-        for (int i = 0; i < HOTBAR_SIZE; ++i)
-            hudBlockIcon(x0 + i * slot + slot * 0.5f, y0 + slot * 0.5f, 7.2f * s, f.hotbar[i]);
-    }
+    HudState st = f.hud;
+    st.underwater = f.underwater;
+    buildHud(hudBatch_, st, f.width, f.height);
     flushHud(f);
 
     glEnable(GL_DEPTH_TEST);
