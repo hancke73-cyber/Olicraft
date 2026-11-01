@@ -138,6 +138,13 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Save.*` | Speicherformat Version 2 (RLE je veränderter Chunk, Inventar, Gesundheit, Modus; Version 1 bleibt lesbar) |
 | `tests/` | Tests |
 
+## Bekannte Probleme
+
+Gemeldet, noch nicht behoben:
+
+1. **Aus dem Wasser an Land kommen:** Man kommt vom Wasser nicht auf das Ufer, der Sprung im Wasser reicht nicht über die Uferkante.
+2. **Zombies tagsüber:** Ein Zombie hat tagsüber angegriffen. Zombies sollen nur nachts auftreten.
+
 ## Geplant
 
 Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
