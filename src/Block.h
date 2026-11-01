@@ -24,6 +24,15 @@ enum Block : BlockId {
     BEDROCK,
     GLASS,
     SNOW,
+    // Fliessendes Wasser: WATER ist die Quelle (Stufe 0), WATER_1..7 sind Stroemungsstufen, WATER_FALL faellt.
+    WATER_1,
+    WATER_2,
+    WATER_3,
+    WATER_4,
+    WATER_5,
+    WATER_6,
+    WATER_7,
+    WATER_FALL,
     BLOCK_COUNT
 };
 
@@ -55,12 +64,24 @@ struct BlockInfo {
     bool cullSame;   // Flaechen zwischen gleichen Bloecken weglassen
     bool breakable;
     Tile top, bottom, side;
+    float hardness;  // Abbauzeit in Sekunden (Survival, mit blossen Haenden)
+    BlockId drop;    // Block, der beim Abbauen faellt (AIR = nichts)
 };
 
 const BlockInfo& blockInfo(BlockId id);
 
 inline bool isOpaque(BlockId id) { return blockInfo(id).opaque; }
 inline bool isSolid(BlockId id) { return blockInfo(id).solid; }
+inline bool isLiquid(BlockId id) { return id == WATER || (id >= WATER_1 && id <= WATER_FALL); }
+// Stroemungsstufe 1..7 (WATER_1..WATER_7), sonst 0
+inline int flowLevel(BlockId id) { return (id >= WATER_1 && id <= WATER_7) ? id - WATER_1 + 1 : 0; }
+// Hoehe der Wasseroberflaeche in einem Block (0..1), ohne Beruecksichtigung von Wasser darueber
+inline float liquidHeight(BlockId id) {
+    if (id == WATER_FALL) return 1.0f;
+    if (id == WATER) return 8.0f / 9.0f;
+    int l = flowLevel(id);
+    return l ? static_cast<float>(8 - l) / 9.0f : 0.0f;
+}
 
 // Auswahl in der Hotbar
 constexpr int HOTBAR_SIZE = 9;

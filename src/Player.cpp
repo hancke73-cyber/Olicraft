@@ -82,10 +82,7 @@ void Player::moveAxis(int axis, float delta, const World& world) {
 }
 
 bool Player::bodyInWater(const World& world) const {
-    int x = static_cast<int>(std::floor(pos.x));
-    int z = static_cast<int>(std::floor(pos.z));
-    int y = static_cast<int>(std::floor(pos.y + 0.4f));
-    return blockInfo(world.getBlock(x, y, z)).liquid;
+    return world.inWaterAt(glm::vec3(pos.x, pos.y + 0.4f, pos.z));
 }
 
 void Player::update(float dt, const MoveInput& in, const World& world) {

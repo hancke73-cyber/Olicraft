@@ -48,7 +48,7 @@ void World::markDirty(int cx, int cz, bool urgent) {
     }
 }
 
-bool World::setBlock(int x, int y, int z, BlockId b) {
+bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
     if (y < 0 || y >= CHUNK_H) return false;
     int cx = floorDiv(x, CHUNK_W), cz = floorDiv(z, CHUNK_W);
     Chunk* c = find(cx, cz);
@@ -66,8 +66,112 @@ bool World::setBlock(int x, int y, int z, BlockId b) {
     if (lz == 0) dzs[nz++] = -1;
     if (lz == CHUNK_W - 1) dzs[nz++] = 1;
     for (int i = 0; i < nx; ++i)
-        for (int j = 0; j < nz; ++j) markDirty(cx + dxs[i], cz + dzs[j], true);
+        for (int j = 0; j < nz; ++j) markDirty(cx + dxs[i], cz + dzs[j], urgent);
     return true;
+}
+
+bool World::setBlock(int x, int y, int z, BlockId b) {
+    if (!setBlockImpl(x, y, z, b, true)) return false;
+    scheduleFluidAround(x, y, z);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Wasser
+// ---------------------------------------------------------------------------
+
+static uint64_t fluidKey(int x, int y, int z) {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(x) & 0xFFFFFFu) << 32) |
+           (static_cast<uint64_t>(static_cast<uint32_t>(z) & 0xFFFFFFu) << 8) | static_cast<uint64_t>(y & 0xFF);
+}
+
+void World::scheduleFluid(int x, int y, int z) {
+    if (y < 0 || y >= CHUNK_H) return;
+    if (fluidPendingSet_.insert(fluidKey(x, y, z)).second) fluidPending_.emplace_back(x, y, z);
+}
+
+void World::scheduleFluidAround(int x, int y, int z) {
+    static const int D[7][3] = {{0, 0, 0}, {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    for (const auto& d : D) scheduleFluid(x + d[0], y + d[1], z + d[2]);
+}
+
+BlockId World::blockOrSolid(int x, int y, int z) const {
+    if (y < 0) return STONE;
+    if (y >= CHUNK_H) return AIR;
+    int cx = floorDiv(x, CHUNK_W), cz = floorDiv(z, CHUNK_W);
+    const Chunk* c = find(cx, cz);
+    if (!c) return STONE;
+    return c->get(x - cx * CHUNK_W, y, z - cz * CHUNK_W);
+}
+
+// Gewuenschter Zustand einer Zelle aus ihrer Nachbarschaft (Pull-Modell wie in Minecraft)
+BlockId World::computeFluid(int x, int y, int z) const {
+    if (isLiquid(blockOrSolid(x, y + 1, z))) return WATER_FALL;
+
+    static const int D[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    int best = 8, sources = 0;
+    for (const auto& d : D) {
+        const int nx = x + d[0], nz = z + d[1];
+        BlockId nb = blockOrSolid(nx, y, nz);
+        if (!isLiquid(nb)) continue;
+        int lvl;
+        if (nb == WATER) {
+            lvl = 1;
+            ++sources;
+        } else {
+            // Stroemung und fallendes Wasser breiten sich nur seitlich aus, wenn darunter nichts zum Fallen ist
+            if (blockOrSolid(nx, y - 1, nz) == AIR) continue;
+            lvl = nb == WATER_FALL ? 1 : flowLevel(nb) + 1;
+        }
+        best = std::min(best, lvl);
+    }
+    if (best > 7) return AIR;
+    BlockId below = blockOrSolid(x, y - 1, z);
+    if (sources >= 2 && (isSolid(below) || below == WATER)) return WATER;  // zwei Quellen ergeben eine neue
+    return static_cast<BlockId>(WATER_1 + best - 1);
+}
+
+void World::updateFluidCell(int x, int y, int z) {
+    int cx = floorDiv(x, CHUNK_W), cz = floorDiv(z, CHUNK_W);
+    // nur wenn die Nachbarschaft geladen ist (sonst fliesst Wasser in ungeladene Chunks)
+    for (int dz = -1; dz <= 1; ++dz)
+        for (int dx = -1; dx <= 1; ++dx)
+            if (!find(cx + dx, cz + dz)) return;
+    BlockId cur = getBlock(x, y, z);
+    if (cur != AIR && !(isLiquid(cur) && cur != WATER)) return;  // fest oder Quelle
+    BlockId next = computeFluid(x, y, z);
+    if (next == cur) return;
+    setBlockImpl(x, y, z, next, false);
+    scheduleFluidAround(x, y, z);
+}
+
+void World::tick(float dt) {
+    fluidAccum_ += dt;
+    int steps = 0;
+    while (fluidAccum_ >= 0.25f && steps < 3) {
+        fluidAccum_ -= 0.25f;
+        ++steps;
+        std::vector<glm::ivec3> cur;
+        cur.swap(fluidPending_);
+        fluidPendingSet_.clear();
+        const size_t limit = 6000;
+        for (size_t i = 0; i < cur.size(); ++i) {
+            if (i >= limit) {  // Rest im naechsten Schritt
+                scheduleFluid(cur[i].x, cur[i].y, cur[i].z);
+                continue;
+            }
+            updateFluidCell(cur[i].x, cur[i].y, cur[i].z);
+        }
+    }
+    if (steps == 3) fluidAccum_ = 0.0f;  // nicht aufholen, wenn das Spiel stark hakte
+}
+
+bool World::inWaterAt(const glm::vec3& p) const {
+    int x = static_cast<int>(std::floor(p.x)), y = static_cast<int>(std::floor(p.y)), z = static_cast<int>(std::floor(p.z));
+    BlockId b = getBlock(x, y, z);
+    if (!isLiquid(b)) return false;
+    float top = isLiquid(getBlock(x, y + 1, z)) ? 1.0f : liquidHeight(b);
+    return p.y - static_cast<float>(y) < top;
 }
 
 Chunk& World::ensureChunk(int cx, int cz) {

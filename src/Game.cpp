@@ -294,6 +294,7 @@ void Game::update(float dt) {
         target_ = RayHit{};
     }
 
+    if (!paused_) world_->tick(dt);
     world_->update(player_.pos, opt_.renderDistance, 5.0);
 
     if (wantSave_) {
@@ -358,10 +359,7 @@ void Game::render() {
     f.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(fbW_) / static_cast<float>(fbH_), 0.05f, farPlane);
     f.timeOfDay = timeOfDay_;
     f.renderDistance = opt_.renderDistance;
-    f.underwater = blockInfo(world_->getBlock(static_cast<int>(std::floor(f.camPos.x)),
-                                              static_cast<int>(std::floor(f.camPos.y)),
-                                              static_cast<int>(std::floor(f.camPos.z))))
-                       .liquid;
+    f.underwater = world_->inWaterAt(f.camPos);
     f.hasTarget = target_.hit;
     f.target = target_.block;
     f.hotbarSlot = slot_;

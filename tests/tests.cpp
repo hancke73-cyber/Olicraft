@@ -411,6 +411,132 @@ static void testSave() {
     std::filesystem::remove_all("olicraft_test_save");
 }
 
+
+static void settleFluids(World& w, int ticks) {
+    for (int i = 0; i < ticks; ++i) w.tick(0.25f);
+}
+
+static void clearArea(World& w, int x0, int x1, int y0, int y1, int z0, int z1) {
+    for (int x = x0; x <= x1; ++x)
+        for (int z = z0; z <= z1; ++z)
+            for (int y = y0; y <= y1; ++y) w.setBlock(x, y, z, AIR);
+}
+
+static void testFluids() {
+    World w(11);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    clearArea(w, -14, 14, 86, 110, -14, 14);
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z) w.setBlock(x, 99, z, STONE);
+
+    // 1. Ausbreitung auf flacher Flaeche: Stufe = Abstand, maximal 7
+    w.setBlock(0, 100, 0, WATER);
+    settleFluids(w, 30);
+    CHECK(w.getBlock(1, 100, 0) == WATER_1);
+    CHECK(w.getBlock(3, 100, 0) == WATER_3);
+    CHECK(w.getBlock(7, 100, 0) == WATER_7);
+    CHECK(w.getBlock(8, 100, 0) == AIR);
+    CHECK(w.getBlock(-4, 100, 0) == WATER_4);
+    CHECK(w.getBlock(1, 100, 1) == WATER_2);  // Manhattan-Abstand
+    CHECK(w.getBlock(0, 101, 0) == AIR);
+    CHECK(w.chunkAt(0, 0)->modified);
+
+    // 2. Quelle entfernen: das Wasser verschwindet wieder
+    w.setBlock(0, 100, 0, AIR);
+    settleFluids(w, 40);
+    int leftover = 0;
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z)
+            if (isLiquid(w.getBlock(x, 100, z))) ++leftover;
+    CHECK(leftover == 0);
+    CHECK(w.pendingFluidCount() == 0);
+
+    // 3. Wasserfall in ein Loch, unten breitet es sich aus
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z)
+            for (int y = 89; y <= 98; ++y) w.setBlock(x, y, z, STONE);  // massiver Block unter der Platte
+    for (int y = 90; y <= 99; ++y) w.setBlock(0, y, 5, AIR);              // Schacht
+    for (int x = -6; x <= 6; ++x) w.setBlock(x, 90, 5, AIR);              // Tunnel unten
+    w.setBlock(0, 100, 5, WATER);
+    settleFluids(w, 40);
+    bool column = true;
+    for (int y = 90; y <= 99; ++y) column = column && w.getBlock(0, y, 5) == WATER_FALL;
+    CHECK(column);
+    CHECK(w.getBlock(1, 90, 5) == WATER_1);
+    CHECK(w.getBlock(3, 90, 5) == WATER_3);
+    CHECK(w.getBlock(6, 90, 5) == WATER_6);
+    // oben breitet sich ebenfalls aus, aber nicht ueber den Rand des Lochs nach unten
+    CHECK(w.getBlock(1, 100, 5) == WATER_1);
+    // Quelle weg: Saeule leert sich
+    w.setBlock(0, 100, 5, AIR);
+    settleFluids(w, 60);
+    bool dry = true;
+    for (int y = 90; y <= 100; ++y) dry = dry && !isLiquid(w.getBlock(0, y, 5));
+    CHECK(dry);
+
+    // 4. Zwei Quellen erzeugen eine dritte (Unendliche Quelle)
+    for (int x = -8; x <= -2; ++x) {
+        w.setBlock(x, 100, -8, STONE);  // Boden/Rand wird unten gesetzt, hier Seitenwaende
+    }
+    for (int x = -8; x <= -2; ++x) w.setBlock(x, 100, -8, AIR);
+    for (int x = -9; x <= -1; ++x) {
+        w.setBlock(x, 100, -9, STONE);
+        w.setBlock(x, 100, -7, STONE);
+    }
+    w.setBlock(-9, 100, -8, STONE);
+    w.setBlock(-1, 100, -8, STONE);
+    w.setBlock(-6, 100, -8, WATER);
+    w.setBlock(-4, 100, -8, WATER);
+    settleFluids(w, 12);
+    CHECK(w.getBlock(-5, 100, -8) == WATER);
+    // und entfernt man eine Quelle, bleibt das Wasser bestehen
+    w.setBlock(-6, 100, -8, AIR);
+    settleFluids(w, 12);
+    CHECK(w.getBlock(-6, 100, -8) != AIR);
+
+    // 5. Wasser fuellt eine gegrabene Grube neben einem See (Pull aus Nachbarn)
+    w.setBlock(10, 100, 10, WATER);
+    settleFluids(w, 4);
+    w.setBlock(11, 99, 10, AIR);  // Boden neben der Quelle aufbrechen
+    w.setBlock(11, 98, 10, AIR);  // Loch bis auf den Stein bei y = 89 ist zu tief, daher nur teilweise fuellen
+    settleFluids(w, 12);
+    CHECK(isLiquid(w.getBlock(11, 99, 10)));
+    CHECK(isLiquid(w.getBlock(11, 98, 10)));
+
+    // inWaterAt beruecksichtigt die Oberflaechenhoehe
+    w.setBlock(-12, 100, 12, WATER);
+    CHECK(w.inWaterAt(glm::vec3(-11.5f, 100.5f, 12.5f)));    // Quelle: Hoehe 8/9
+    CHECK(!w.inWaterAt(glm::vec3(-11.5f, 100.95f, 12.5f)));  // darueber
+    CHECK(!w.inWaterAt(glm::vec3(-11.5f, 101.2f, 12.5f)));
+}
+
+static void testFluidMesh() {
+    std::vector<BlockId> pad(PAD_VOLUME, AIR);
+    auto set = [&](int x, int y, int z, BlockId b) { pad[padIndex(x + 1, y, z + 1)] = b; };
+    set(5, 40, 5, STONE);
+    set(6, 40, 5, STONE);
+    set(5, 41, 5, WATER);
+    set(6, 41, 5, WATER_4);
+    MeshOutput out;
+    buildChunkMesh(pad.data(), out);
+    // Quelle: Oberseite + 3 Seiten + ein Teilstueck zur niedrigeren Nachbarzelle; Stroemung: Oberseite + 3 Seiten
+    CHECK(out.water.size() == 9 * 4);
+    bool hasStep = false;
+    for (const Vertex& v : out.water)
+        if (std::fabs(v.y - (41.0f + 4.0f / 9.0f)) < 1e-4f) hasStep = true;  // Stufe 4: Hoehe 4/9
+    CHECK(hasStep);
+    // Fallendes Wasser hat volle Hoehe
+    std::vector<BlockId> p2(PAD_VOLUME, AIR);
+    p2[padIndex(3 + 1, 41, 3 + 1)] = WATER_FALL;
+    p2[padIndex(3 + 1, 40, 3 + 1)] = STONE;
+    MeshOutput o2;
+    buildChunkMesh(p2.data(), o2);
+    float maxY = 0;
+    for (const Vertex& v : o2.water) maxY = std::max(maxY, v.y);
+    CHECK(std::fabs(maxY - 42.0f) < 1e-4f);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -432,6 +558,8 @@ int main() {
     testPlayer();
     testMesher();
     testSave();
+    testFluids();
+    testFluidMesh();
     testSpawn();
     std::printf("%d Pruefungen, %d fehlgeschlagen\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;

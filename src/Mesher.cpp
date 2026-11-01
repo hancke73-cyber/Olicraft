@@ -28,7 +28,6 @@ const FaceDef FACES[6] = {
 const int CORNER_I[4] = {0, 1, 1, 0};
 const int CORNER_J[4] = {0, 0, 1, 1};
 const float AO_CURVE[4] = {0.50f, 0.68f, 0.84f, 1.00f};
-constexpr float WATER_TOP = 0.88f;
 
 struct Ctx {
     const BlockId* p;
@@ -79,20 +78,42 @@ bool shouldDrawFace(BlockId b, BlockId nb) {
     const BlockInfo& bi = blockInfo(b);
     const BlockInfo& ni = blockInfo(nb);
     if (ni.opaque) return false;
-    if (bi.liquid) return !ni.liquid;
+    if (bi.liquid) return true;  // Hoehenvergleiche folgen in liquidSpan()
     if (bi.cullSame && nb == b) return false;
     return true;
 }
 
-void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, std::vector<Vertex>& out) {
+// Obere Kante der Fluessigkeit in der Zelle (Wasser darueber = volle Hoehe)
+float liquidTop(const Ctx& c, int x, int y, int z) {
+    BlockId b = c.at(x, y, z);
+    if (isLiquid(c.at(x, y + 1, z))) return 1.0f;
+    return liquidHeight(b);
+}
+
+// Sichtbarer Hoehenbereich [lo, hi] der Flaeche f eines Wasserblocks, false = nichts zu zeichnen
+bool liquidSpan(const Ctx& c, int x, int y, int z, int f, float& lo, float& hi) {
+    const FaceDef& fd = FACES[f];
+    BlockId nb = c.at(x + fd.n[0], y + fd.n[1], z + fd.n[2]);
+    hi = liquidTop(c, x, y, z);
+    lo = 0.0f;
+    if (f == 2) return !isLiquid(nb) && !isOpaque(nb);  // Oberflaeche
+    if (f == 3) return !isLiquid(nb) && !isOpaque(nb);  // Unterseite ueber Luft
+    if (isOpaque(nb)) return false;
+    if (isLiquid(nb)) {
+        lo = liquidTop(c, x + fd.n[0], y, z + fd.n[2]);
+        return lo < hi - 1e-4f;
+    }
+    return true;
+}
+
+void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, float lo, float hi, std::vector<Vertex>& out) {
     const FaceDef& fd = FACES[f];
     const BlockInfo& bi = blockInfo(b);
     const bool liquid = bi.liquid;
     const Tile tile = f == 2 ? bi.top : (f == 3 ? bi.bottom : bi.side);
     const UVRect uv = tileUV(tile);
 
-    float topH = 1.0f;
-    if (liquid) topH = (c.at(x, y + 1, z) == b) ? 1.0f : WATER_TOP;
+    const float topH = hi;
 
     const int fx = x + fd.n[0], fy = y + fd.n[1], fz = z + fd.n[2];
 
@@ -115,8 +136,13 @@ void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, std::vector<V
         }
 
         float py = off[1];
-        if (liquid && off[1] > 0.5f) py = topH;
-        if (liquid && f != 2 && f != 3) vv *= topH;  // Seitenflaechen: Textur mitskalieren
+        if (liquid) {
+            if (f == 2) py = topH;                           // Oberflaeche
+            else if (f != 3) {                               // Seitenflaeche: Bereich [lo, hi]
+                py = off[1] > 0.5f ? topH : lo;
+                vv = py;                                     // Textur laeuft mit der Hoehe
+            }
+        }
 
         v[k].x = static_cast<float>(x) + off[0];
         v[k].y = static_cast<float>(y) + py;
@@ -174,11 +200,15 @@ void buildChunkMesh(const BlockId* padded, MeshOutput& out) {
             for (int x = 0; x < CHUNK_W; ++x) {
                 BlockId b = padded[padIndex(x + 1, y, z + 1)];
                 if (b == AIR) continue;
-                std::vector<Vertex>& dst = blockInfo(b).liquid ? out.water : out.opaque;
+                const bool liquid = blockInfo(b).liquid;
+                std::vector<Vertex>& dst = liquid ? out.water : out.opaque;
                 for (int f = 0; f < 6; ++f) {
                     const FaceDef& fd = FACES[f];
                     BlockId nb = c.at(x + fd.n[0], y + fd.n[1], z + fd.n[2]);
-                    if (shouldDrawFace(b, nb)) emitFace(c, x, y, z, f, b, dst);
+                    if (!shouldDrawFace(b, nb)) continue;
+                    float lo = 0.0f, hi = 1.0f;
+                    if (liquid && !liquidSpan(c, x, y, z, f, lo, hi)) continue;
+                    emitFace(c, x, y, z, f, b, lo, hi, dst);
                 }
             }
         }

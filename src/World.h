@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -49,6 +50,13 @@ public:
     bool isSolidAt(int x, int y, int z) const;    // ungeladene Chunks gelten als fest (Spieler faellt nicht durch)
     bool isChunkLoaded(int cx, int cz) const { return find(cx, cz) != nullptr; }
     bool setBlock(int x, int y, int z, BlockId b);
+
+    // Fluessigkeiten: Wasser fliesst in Schritten von 0.25 s (wie in Minecraft)
+    void tick(float dt);
+    void scheduleFluidAround(int x, int y, int z);
+    size_t pendingFluidCount() const { return fluidPending_.size(); }
+    // Liegt der Punkt (Weltkoordinaten) unter der Wasseroberflaeche?
+    bool inWaterAt(const glm::vec3& p) const;
     const Chunk* chunkAt(int cx, int cz) const { return find(cx, cz); }
 
     // Chunk-Streaming; budgetMs begrenzt die Arbeit pro Frame
@@ -78,12 +86,20 @@ private:
     void meshChunk(Chunk& c);
     bool neighborsLoaded(int cx, int cz) const;
     void markDirty(int cx, int cz, bool urgent);
+    bool setBlockImpl(int x, int y, int z, BlockId b, bool urgent);
+    void scheduleFluid(int x, int y, int z);
+    void updateFluidCell(int x, int y, int z);
+    BlockId computeFluid(int x, int y, int z) const;
+    BlockId blockOrSolid(int x, int y, int z) const;  // ungeladen/unten = Stein
 
     TerrainGenerator terrain_;
     std::unordered_map<ChunkKey, std::unique_ptr<Chunk>, ChunkKeyHash> chunks_;
     std::unordered_map<ChunkKey, std::vector<BlockId>, ChunkKeyHash> stored_;  // entladene, veraenderte Chunks
     std::vector<BlockId> padded_;
     bool meshing_ = true;
+    std::vector<glm::ivec3> fluidPending_;
+    std::unordered_set<uint64_t> fluidPendingSet_;
+    float fluidAccum_ = 0.0f;
 };
 
 }  // namespace oc
