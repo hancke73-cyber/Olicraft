@@ -71,6 +71,10 @@ build\OliCraft.exe
 
 Das Spiel aus dem Ordner starten, in dem `saves/` und `screenshots/` entstehen sollen (Explorer-Doppelklick auf die .exe genügt).
 
+### Fertige Windows-Datei
+
+`dist/OliCraft-windows-x64.exe` ist ein mit MinGW-w64 unter Linux gebauter Release-Build (64 Bit, braucht nur Windows-Systembibliotheken und eine OpenGL-3.3-fähige Grafikkarte). Er ist nicht signiert, Windows SmartScreen kann deshalb warnen ("Weitere Informationen", "Trotzdem ausführen"). Er wird nicht bei jeder Änderung neu erzeugt, der aktuelle Stand ist der Quelltext.
+
 ### Linux
 
 Benötigt die X11-Entwicklungspakete für GLFW. Unter Debian/Ubuntu:
