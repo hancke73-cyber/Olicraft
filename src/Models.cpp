@@ -26,6 +26,16 @@ const std::vector<ModelPart>& partsFor(SkinId id) {
         {{0, 6, 2}, {4, 12, 4}, {0, 12, 2}, A_LEG_B, 0, 16, false},
         {{0, 6, -2}, {4, 12, 4}, {0, 12, -2}, A_LEG_A, 0, 16, true},
     };
+    static const std::vector<ModelPart> villager = {
+        // Kopf, Koerper, Arme (haengen, schwingen), Beine, Nase
+        {{0, 28, 0}, {8, 8, 8}, {0, 24, 0}, A_HEAD, 0, 0, false},
+        {{0, 18, 0}, {4, 12, 8}, {0, 18, 0}, A_NONE, 16, 16, false},
+        {{0, 18, 6}, {4, 12, 4}, {0, 24, 6}, A_ARM_SWING_A, 40, 16, false},
+        {{0, 18, -6}, {4, 12, 4}, {0, 24, -6}, A_ARM_SWING_B, 40, 16, true},
+        {{0, 6, 2}, {4, 12, 4}, {0, 12, 2}, A_LEG_B, 0, 16, false},
+        {{0, 6, -2}, {4, 12, 4}, {0, 12, -2}, A_LEG_A, 0, 16, true},
+        {{5, 26, 0}, {2, 4, 2}, {0, 24, 0}, A_HEAD, 24, 0, false},
+    };
     static const std::vector<ModelPart> pig = {
         {{0, 10, 0}, {16, 8, 10}, {0, 10, 0}, A_NONE, 0, 0, false},
         {{11, 11, 0}, {8, 8, 8}, {7, 11, 0}, A_HEAD, 0, 24, false},
@@ -58,6 +68,7 @@ const std::vector<ModelPart>& partsFor(SkinId id) {
         case SKIN_PIG: return pig;
         case SKIN_COW: return cow;
         case SKIN_SHEEP: return sheep;
+        case SKIN_VILLAGER: return villager;
         default: return zombie;
     }
 }

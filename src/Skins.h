@@ -5,7 +5,7 @@
 namespace oc {
 
 // Figuren-Texturen ("Skins"): aufgeklappte Quadernetze wie bei Minecraft.
-enum SkinId { SKIN_PLAYER = 0, SKIN_PIG, SKIN_COW, SKIN_SHEEP, SKIN_ZOMBIE, SKIN_COUNT };
+enum SkinId { SKIN_PLAYER = 0, SKIN_PIG, SKIN_COW, SKIN_SHEEP, SKIN_ZOMBIE, SKIN_VILLAGER, SKIN_COUNT };
 
 struct SkinInfo {
     const char* name;      // Anzeigename

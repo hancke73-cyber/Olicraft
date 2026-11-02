@@ -53,7 +53,7 @@ struct ItemEntity {
     bool onGround = false;
 };
 
-enum class MobType : uint8_t { Pig, Cow, Sheep, Zombie };
+enum class MobType : uint8_t { Pig, Cow, Sheep, Zombie, Villager };
 
 struct MobSpec {
     const char* name;
@@ -88,6 +88,10 @@ struct Mob {
     float deathTimer = -1.0f;  // >= 0: tot, liegt am Boden und verschwindet
     float stuckTimer = 0.0f;
     float idleSoundTimer = 4.0f;  // bis zum naechsten Ruf
+    // Dorfbewohner: Heimatdorf (Zentrum) und Beruf
+    int homeX = 0, homeZ = 0, villageId = 0;
+    int profession = 0;
+    bool hasHome = false;
 
     bool dead() const { return deathTimer >= 0.0f; }
 };
@@ -130,7 +134,9 @@ public:
     const std::vector<Mob>& mobs() const { return mobs_; }
     std::vector<Mob>& mobs() { return mobs_; }
     const std::vector<ItemEntity>& items() const { return items_; }
-    int countMobs(bool hostile) const;
+    int countMobs(bool hostile) const;  // ohne Dorfbewohner
+    // Dorfbewohner der Doerfer in der Naehe erscheinen lassen (einmal je Dorf und Sitzung)
+    void spawnVillagers(World& world, const Player& player);
 
 private:
     void updateItem(ItemEntity& it, float dt, World& world);
@@ -145,6 +151,8 @@ private:
     void emitMobSound(const Mob& m, int kind);  // 0 Ruf, 1 Treffer, 2 Tod, 3 Angriff
     Rng rng_;
     float spawnTimer_ = 2.0f;
+    float villageTimer_ = 0.5f;
+    std::vector<uint32_t> villageDone_;  // Dorf-IDs, deren Bewohner schon erschienen sind
 };
 
 }  // namespace oc

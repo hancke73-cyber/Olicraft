@@ -48,6 +48,8 @@ public:
 
     int32_t seed() const { return terrain_.seed(); }
 
+    const TerrainGenerator& terrain() const { return terrain_; }
+
     // Zugriff
     BlockId getBlock(int x, int y, int z) const;  // AIR ausserhalb / ungeladen
     bool isSolidAt(int x, int y, int z) const;    // ungeladene Chunks gelten als fest (Spieler faellt nicht durch)

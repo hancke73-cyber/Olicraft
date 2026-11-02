@@ -704,7 +704,15 @@ void World::exportFurnaces(std::vector<FurnaceSave>& out) const {
 
 Chest& World::chestAt(int x, int y, int z) {
     auto it = chests_.find(furnaceKey(x, y, z));
-    if (it == chests_.end()) it = chests_.emplace(furnaceKey(x, y, z), ChestEntry{glm::ivec3(x, y, z), Chest()}).first;
+    if (it == chests_.end()) {
+        Chest fresh;
+        // Truhen in Doerfern enthalten beim ersten Oeffnen Beute
+        const VillageGenerator& vg = terrain_.villages();
+        if (vg.isVillageChest(x, y, z))
+            for (const Village* v : vg.villagesIn(x, z, x, z))
+                for (const VillageGenerator::Loot& l : vg.lootFor(*v, glm::ivec3(x, y, z))) fresh.add(l.item, l.count);
+        it = chests_.emplace(furnaceKey(x, y, z), ChestEntry{glm::ivec3(x, y, z), fresh}).first;
+    }
     return it->second.c;
 }
 
@@ -728,7 +736,8 @@ void World::exportChests(std::vector<ChestSave>& out) const {
         cs.y = kv.second.pos.y;
         cs.z = kv.second.pos.z;
         cs.chest = kv.second.c;
-        if (!cs.chest.isEmpty()) out.push_back(cs);
+        // Leere Dorftruhen bleiben gespeichert, sonst fuellten sie sich beim naechsten Oeffnen neu
+        if (!cs.chest.isEmpty() || terrain_.villages().isVillageChest(cs.x, cs.y, cs.z)) out.push_back(cs);
     }
 }
 

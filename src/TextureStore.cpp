@@ -253,7 +253,7 @@ bool TextureStore::conformSkin(SkinId id, Image& img, std::string* error) {
     const SkinInfo& si = skinInfo(id);
     if (img.w == si.width && img.h == si.height) return true;
     // Minecraft-Skins im neuen Format (64x64) enthalten oben das alte 64x32-Layout
-    if ((id == SKIN_PLAYER || id == SKIN_ZOMBIE) && img.w == 64 && img.h == 64) {
+    if ((id == SKIN_PLAYER || id == SKIN_ZOMBIE || id == SKIN_VILLAGER) && img.w == 64 && img.h == 64) {
         Image cut(64, 32);
         std::memcpy(cut.rgba.data(), img.rgba.data(), cut.rgba.size());
         img = cut;

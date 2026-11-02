@@ -17,6 +17,7 @@
 
 #include "Crafting.h"
 #include "Models.h"
+#include "Trades.h"
 #include "Noise.h"
 
 namespace oc {
@@ -185,6 +186,14 @@ bool Game::init() {
     if (opt_.forceMode >= 0) creative_ = opt_.forceMode == 1;
     if (creative_ && inventory_.isEmpty())
         for (int i = 0; i < Inventory::HOTBAR; ++i) inventory_.slots[i] = {DEFAULT_HOTBAR[i], 64};
+    if (opt_.gotoVillage) {
+        if (const Village* v = world_->terrain().villages().nearest(static_cast<int>(player_.pos.x), static_cast<int>(player_.pos.z), 4)) {
+            player_.pos = glm::vec3(v->center.x + 0.5f, static_cast<float>(v->groundY + 8), v->center.y + 0.5f);
+            player_.flying = true;
+            creative_ = creative_ || opt_.forceMode == 1;
+            std::printf("Dorf bei %d %d (%zu Gebaeude)\n", v->center.x, v->center.y, v->buildings.size() - 1);
+        }
+    }
     if (opt_.hasPos) player_.pos = opt_.pos;
     if (opt_.hasLook) {
         player_.yaw = opt_.yaw;
@@ -203,6 +212,13 @@ bool Game::init() {
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     if (opt_.demo == "inv") openInventory();
+    if (opt_.demo == "trade") {
+        inventory_.clear();
+        inventory_.add(ITEM_GOLD_INGOT, 5);
+        inventory_.add(ITEM_COAL, 20);
+        inventory_.add(ITEM_IRON_INGOT, 3);
+        openTrade(PROF_SMITH);
+    }
     if (opt_.demo == "chest") {
         inventory_.clear();
         inventory_.add(PLANKS, 20);
@@ -440,6 +456,7 @@ void Game::openInventory(bool table) {
     inventoryOpen_ = true;
     furnaceWindow_ = false;
     chestWindow_ = false;
+    tradeWindow_ = false;
     bookScroll_ = 0;
     craftSize_ = table ? 3 : (creative_ ? 0 : 2);
     paletteWindow_ = creative_ && !table;
@@ -456,6 +473,48 @@ void Game::openFurnace(const glm::ivec3& pos) {
     furnaceWindow_ = true;
     furnacePos_ = pos;
     world_->furnaceAt(pos.x, pos.y, pos.z);
+}
+
+InvLayout Game::invLayout() const {
+    return InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_,
+                           tradeWindow_ ? static_cast<int>(tradesFor(tradeProfession_).size()) : 0);
+}
+
+void Game::openTrade(int profession) {
+    openInventory(false);
+    craftSize_ = 0;
+    paletteWindow_ = false;
+    tradeWindow_ = true;
+    tradeProfession_ = profession;
+}
+
+// Kauft das Angebot: Kosten aus dem Rucksack nehmen, Ergebnis hineinlegen (im Kreativmodus kostenlos)
+bool Game::buyTrade(int index) {
+    const std::vector<Trade>& list = tradesFor(tradeProfession_);
+    if (index < 0 || index >= static_cast<int>(list.size())) return false;
+    const Trade& t = list[static_cast<size_t>(index)];
+    Inventory trial = inventory_;
+    if (!creative_) {
+        if (trial.count(t.cost.id) < t.cost.count) {
+            showMessage(std::string("Es fehlen: ") + std::to_string(t.cost.count) + "x " + itemInfo(t.cost.id).name);
+            return false;
+        }
+        int need = t.cost.count;
+        for (int i = Inventory::SIZE - 1; i >= 0 && need > 0; --i) {  // erst aus dem Rucksack, dann aus der Hotbar
+            ItemStack& st = trial.slots[static_cast<size_t>(i)];
+            if (st.empty() || st.id != t.cost.id) continue;
+            const int n = std::min(need, st.count);
+            trial.take(i, n);
+            need -= n;
+        }
+    }
+    if (trial.add(t.result.id, t.result.count, t.result.damage) > 0) {
+        showMessage("Rucksack voll");
+        return false;
+    }
+    inventory_ = trial;
+    uiSound(SoundId::VillagerTrade);
+    return true;
 }
 
 void Game::openChest(const glm::ivec3& pos) {
@@ -510,6 +569,7 @@ void Game::closeInventory() {
     paletteWindow_ = false;
     furnaceWindow_ = false;
     chestWindow_ = false;
+    tradeWindow_ = false;
     firstMouse_ = true;
     breakTimer_ = placeTimer_ = attackTimer_ = 0.3f;
     if (!paused_) glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -583,7 +643,7 @@ std::vector<Game::BookItem> Game::buildBook() const {
 }
 
 void Game::clampBookScroll(int total) {
-    const InvLayout L = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_);
+    const InvLayout L = invLayout();
     const BookLayout B = BookLayout::make(L, fbW_, fbH_);
     bookScroll_ = std::max(0, std::min(bookScroll_, B.maxScroll(total)));
 }
@@ -627,7 +687,7 @@ void Game::autofillRecipe(const Recipe& r) {
 
 void Game::inventoryClick(int button, int mods) {
     const bool right = button == GLFW_MOUSE_BUTTON_RIGHT;
-    const InvLayout layout = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_);
+    const InvLayout layout = invLayout();
     const glm::vec2 m = mousePx();
     uiSound(SoundId::Click, 0.4f);
 
@@ -644,6 +704,15 @@ void Game::inventoryClick(int button, int mods) {
             clampBookScroll(static_cast<int>(list.size()));
             const int idx = B.hitEntry(m, static_cast<int>(list.size()), bookScroll_);
             if (idx >= 0 && !right) autofillRecipe(*list[static_cast<size_t>(idx)].recipe);
+            return;
+        }
+    }
+
+    // Handel
+    if (tradeWindow_) {
+        const int ti = layout.hitTrade(m);
+        if (ti >= 0) {
+            if (!right) buyTrade(ti);
             return;
         }
     }
@@ -845,7 +914,7 @@ void Game::handleScroll(double dy) {
         return;
     }
     if (inventoryOpen_ && bookVisible() && !paused_) {
-        const InvLayout L = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_);
+        const InvLayout L = invLayout();
         const BookLayout B = BookLayout::make(L, fbW_, fbH_);
         if (B.inside(mousePx())) {
             bookScroll_ += dy > 0 ? -1 : (dy < 0 ? 1 : 0);
@@ -1109,7 +1178,7 @@ void Game::update(float dt) {
         env.daylight = Renderer::daylight(timeOfDay_);
         env.creative = creative_;
         env.playerDead = dead_;
-        env.allowSpawns = opt_.mobs && !shotMode;
+        env.allowSpawns = opt_.mobs && (!shotMode || opt_.demo == "village");
         entities_.update(dt, *world_, player_, inventory_, env);
 
         // Schritte, Wasser, Lava
@@ -1349,8 +1418,15 @@ void Game::updateInteraction(float dt) {
         breakTimer_ = std::min(breakTimer_, 0.0f);
     }
 
-    // Rechte Maustaste: setzen / essen
-    if (right && placeTimer_ <= 0.0f) placeBlockOrUse();
+    // Rechte Maustaste: handeln, setzen / essen
+    if (right && placeTimer_ <= 0.0f) {
+        if (mobFirst && mob->type == MobType::Villager && !mob->dead()) {
+            placeTimer_ = 0.4f;
+            openTrade(mob->profession);
+        } else {
+            placeBlockOrUse();
+        }
+    }
 
     // Mittlere Maustaste: Block uebernehmen
     if (middle && !prevMiddle_ && target_.hit) {
@@ -2438,6 +2514,41 @@ int Game::selfTest() {
         inventory_.clear();
     }
 
+    // 21. Handel mit Dorfbewohnern
+    {
+        paused_ = false;
+        creative_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        entities_.clear();
+        inventory_.add(ITEM_GOLD_INGOT, 4);
+        inventory_.add(ITEM_COAL, 40);
+        openTrade(PROF_SMITH);
+        SCHECK(inventoryOpen_ && tradeWindow_ && !bookVisible());
+        const std::vector<Trade>& tr = tradesFor(PROF_SMITH);
+        SCHECK(tr.size() >= 4 && tr[0].cost.id == ITEM_COAL && tr[2].result.id == ITEM_IRON_PICKAXE);
+        SCHECK(invLayout().tradeRows == static_cast<int>(tr.size()));
+        // 15 Kohle -> 1 Goldbarren
+        SCHECK(buyTrade(0) && inventory_.count(ITEM_COAL) == 25 && inventory_.count(ITEM_GOLD_INGOT) == 5);
+        SCHECK(buyTrade(2) && inventory_.count(ITEM_GOLD_INGOT) == 2 && inventory_.count(ITEM_IRON_PICKAXE) == 1);
+        SCHECK(!buyTrade(2) && inventory_.count(ITEM_GOLD_INGOT) == 2 && inventory_.count(ITEM_IRON_PICKAXE) == 1);  // zu wenig Gold
+        SCHECK(!buyTrade(99) && !buyTrade(-1));
+        // Voller Rucksack: Handel schlaegt fehl, nichts geht verloren
+        inventory_.add(ITEM_GOLD_INGOT, 3);
+        for (int i = 0; i < Inventory::SIZE; ++i)
+            if (inventory_.slots[static_cast<size_t>(i)].empty()) inventory_.slots[static_cast<size_t>(i)] = {LOG, 64};
+        const int goldBefore = inventory_.count(ITEM_GOLD_INGOT);
+        SCHECK(!buyTrade(3) && inventory_.count(ITEM_GOLD_INGOT) == goldBefore);
+        inventory_.clear();
+        // Kreativ: kostenlos
+        creative_ = true;
+        SCHECK(buyTrade(2) && inventory_.count(ITEM_IRON_PICKAXE) == 1 && inventory_.count(ITEM_GOLD_INGOT) == 0);
+        creative_ = false;
+        closeInventory();
+        SCHECK(!tradeWindow_ && !inventoryOpen_);
+        inventory_.clear();
+    }
+
     // 11. Speichern: Inventar, Gesundheit, Modus
     const std::string path = "olicraft_selftest/world.dat";
     std::filesystem::remove_all("olicraft_selftest");
@@ -2519,6 +2630,17 @@ void Game::render() {
     h.paletteOpen = paletteWindow_;
     h.furnaceOpen = furnaceWindow_;
     h.chestOpen = chestWindow_;
+    h.tradeOpen = tradeWindow_;
+    if (tradeWindow_) {
+        h.windowTitle = std::string("Dorfbewohner: ") + professionName(tradeProfession_);
+        for (const Trade& t : tradesFor(tradeProfession_)) {
+            HudState::TradeRowHud r;
+            r.cost = t.cost;
+            r.result = t.result;
+            r.affordable = creative_ || inventory_.count(t.cost.id) >= t.cost.count;
+            h.trades.push_back(r);
+        }
+    }
     h.chest = chestWindow_ ? world_->findChest(chestPos_.x, chestPos_.y, chestPos_.z) : nullptr;
     if (bookVisible()) {
         const std::vector<BookItem> list = buildBook();

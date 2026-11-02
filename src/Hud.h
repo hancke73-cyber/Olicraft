@@ -51,6 +51,7 @@ struct InvLayout {
     bool furnace = false;   // Ofenfenster (nutzt den Platz des 3x3-Rasters)
     bool chest = false;     // Truhenfenster (3 Reihen zu 9 Plaetzen anstelle des Handwerksrasters)
     glm::vec2 chestTop{0.0f};
+    int tradeRows = 0;      // Handelsfenster: Anzahl Angebote (Reihen)
     glm::vec2 panelPos{0.0f}, panelSize{0.0f};
     glm::vec2 craftTop{0.0f};    // linke obere Ecke des Handwerksrasters
     glm::vec2 resultPos{0.0f};   // Ergebnisfeld
@@ -59,7 +60,7 @@ struct InvLayout {
     glm::vec2 hotbarTop{0.0f};   // linke obere Ecke der Hotbar im Fenster
     static constexpr int PALETTE_COLS = 9;
 
-    static InvLayout make(int w, int h, bool creative, int craftSize = 0, bool furnace = false, bool chest = false);
+    static InvLayout make(int w, int h, bool creative, int craftSize = 0, bool furnace = false, bool chest = false, int tradeRows = 0);
     float pitch() const { return 18.0f * s; }
     glm::vec2 slotPos(int index) const;     // Inventar-Slot 0..35
     glm::vec2 palettePos(int index) const;  // Auswahlfeld (Kreativ)
@@ -72,6 +73,8 @@ struct InvLayout {
     glm::vec2 craftPos(int index) const;
     glm::vec2 chestPos(int index) const;  // Truhenplatz 0..26
     int hitChest(glm::vec2 m) const;      // -1: keiner
+    glm::vec2 tradePos(int row) const { return chestTop + glm::vec2(0.0f, row * pitch()); }
+    int hitTrade(glm::vec2 m) const;      // Angebot unter der Maus oder -1
     bool inside(glm::vec2 m) const;
 };
 
@@ -120,6 +123,12 @@ struct HudState {
     bool chestOpen = false;
     const Chest* chest = nullptr;
     BookHud book;
+    bool tradeOpen = false;
+    struct TradeRowHud {
+        ItemStack cost, result;
+        bool affordable = false;
+    };
+    std::vector<TradeRowHud> trades;
     ItemStack furnaceIn, furnaceFuel, furnaceOut;
     float furnaceBurn = 0.0f;      // Flamme: Rest der Brenndauer 0..1
     float furnaceCook = 0.0f;      // Pfeil: Fortschritt 0..1

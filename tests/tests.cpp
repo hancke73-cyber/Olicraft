@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <thread>
 #include <string>
 #include <vector>
@@ -20,6 +21,8 @@
 #include "Models.h"
 #include "Skins.h"
 #include "Sky.h"
+#include "Trades.h"
+#include "Village.h"
 #include "Crafting.h"
 #include "Entities.h"
 #include "Hud.h"
@@ -2532,6 +2535,141 @@ static void testChestsAndSaveV5() {
     std::filesystem::remove_all("olicraft_test_save5");
 }
 
+static void testVillages() {
+    TerrainGenerator tg(2), tg2(2);
+    const Village* v = tg.villages().nearest(0, 0, 4);
+    CHECK(v != nullptr);
+    if (!v) return;
+    const Village* v2 = tg2.villages().nearest(0, 0, 4);
+    CHECK(v2 && v2->center == v->center && v2->buildings.size() == v->buildings.size() && v2->pathCells.size() == v->pathCells.size());
+    CHECK(v->buildings.size() >= 4 && v->buildings[0].kind == VillageBuilding::Well && v->houseCount() >= 3);
+    CHECK(!v->chests.empty() && !v->villagerSpawns.empty() && v->villagerSpawns.size() <= 6);
+    // Gebaeude ueberlappen nicht und liegen im Umkreis
+    for (size_t i = 0; i < v->buildings.size(); ++i) {
+        const VillageBuilding& a = v->buildings[i];
+        CHECK(std::abs(a.x0 - v->center.x) <= VillageGenerator::RADIUS && std::abs(a.z1 - v->center.y) <= VillageGenerator::RADIUS);
+        for (size_t j = i + 1; j < v->buildings.size(); ++j) {
+            const VillageBuilding& b = v->buildings[j];
+            CHECK(a.x1 < b.x0 || b.x1 < a.x0 || a.z1 < b.z0 || b.z1 < a.z0);
+        }
+    }
+    // Chunks erzeugen: Dorf muss ueber Chunkgrenzen zusammenpassen
+    std::map<std::pair<int, int>, std::unique_ptr<Chunk>> chunks;
+    const int cx0 = (v->center.x - 48) >> 4, cx1 = (v->center.x + 48) >> 4, cz0 = (v->center.y - 48) >> 4, cz1 = (v->center.y + 48) >> 4;
+    for (int cz = cz0; cz <= cz1; ++cz)
+        for (int cx = cx0; cx <= cx1; ++cx) {
+            auto it = chunks.emplace(std::make_pair(cx, cz), std::make_unique<Chunk>(cx, cz)).first;
+            tg.generate(*it->second);
+        }
+    auto at = [&](int x, int y, int z) -> BlockId {
+        auto it = chunks.find({x >> 4, z >> 4});
+        if (it == chunks.end() || y < 0 || y >= CHUNK_H) return AIR;
+        return it->second->get(x & 15, y, z & 15);
+    };
+    CHECK(at(v->center.x, v->groundY, v->center.y) == WATER);                              // Brunnen
+    CHECK(at(v->center.x + 2, v->groundY + 2, v->center.y + 2) == LOG && at(v->center.x, v->groundY + 4, v->center.y) == PLANKS);
+    for (size_t i = 1; i < v->buildings.size(); ++i) {
+        const VillageBuilding& b = v->buildings[i];
+        const int g = b.groundY, xc = (b.x0 + b.x1) / 2, zc = (b.z0 + b.z1) / 2;
+        // Tuer frei, Wand daneben fest, Dach da, Boden fest
+        int dx = 0, dz = 0;
+        switch (b.facing) {
+            case 0: dx = 1; break;
+            case 1: dx = -1; break;
+            case 2: dz = 1; break;
+            default: dz = -1; break;
+        }
+        const int doorX = dx > 0 ? b.x1 : (dx < 0 ? b.x0 : xc), doorZ = dz > 0 ? b.z1 : (dz < 0 ? b.z0 : zc);
+        CHECK(at(doorX, g + 1, doorZ) == AIR && at(doorX, g + 2, doorZ) == AIR);
+        CHECK(isSolid(at(xc, g, zc)) && isOpaque(at(xc, g + 4, zc)) && at(b.x0, g + 1, b.z0) != AIR);
+    }
+    for (const glm::ivec3& c : v->chests) CHECK(at(c.x, c.y, c.z) == CHEST);
+    int gravel = 0;
+    for (const glm::ivec3& p : v->pathCells) gravel += at(p.x, p.y, p.z) == GRAVEL;
+    CHECK(gravel > static_cast<int>(v->pathCells.size()) / 2);
+    // Baumfreies Dorfgebiet
+    int trees = 0;
+    for (int x = v->center.x - 20; x <= v->center.x + 20; ++x)
+        for (int z = v->center.y - 20; z <= v->center.y + 20; ++z)
+            for (int y = v->groundY + 1; y < v->groundY + 12; ++y) trees += isLeaves(at(x, y, z)) ? 1 : 0;
+    CHECK(trees == 0);
+    CHECK(tg.villages().isVillageChest(v->chests[0].x, v->chests[0].y, v->chests[0].z) && !tg.villages().isVillageChest(0, 0, 0));
+    // Ohne Dorf in anderer Zelle: Terrain unveraendert gegenueber einem Generator, der das Dorf nicht kennt ist nicht pruefbar; Verteilung pruefen
+    int villages = 0;
+    for (int cz = -6; cz <= 6; ++cz)
+        for (int cx = -6; cx <= 6; ++cx) villages += tg.villages().villageInCell(cx, cz) != nullptr;
+    CHECK(villages >= 8 && villages <= 80);
+
+    // Welt: Truhenbeute, Dorfbewohner erscheinen einmal je Dorf
+    World w(2);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(static_cast<float>(v->center.x), 80.0f, static_cast<float>(v->center.y)), 5);
+    Chest& vc = w.chestAt(v->chests[0].x, v->chests[0].y, v->chests[0].z);
+    CHECK(!vc.isEmpty());
+    World w2(2);
+    Chest& vc2 = w2.chestAt(v->chests[0].x, v->chests[0].y, v->chests[0].z);
+    CHECK(vc2.slots[0] == vc.slots[0]);  // deterministisch
+    CHECK(w.chestAt(1, 70, 1).isEmpty());
+    std::vector<ChestSave> exported;
+    w.exportChests(exported);
+    CHECK(exported.size() == 1);
+    vc.slots.fill(ItemStack());
+    exported.clear();
+    w.exportChests(exported);
+    CHECK(exported.size() == 1);  // leere Dorftruhe bleibt gespeichert
+
+    Player pl;
+    pl.pos = glm::vec3(static_cast<float>(v->center.x) + 0.5f, static_cast<float>(v->groundY + 1), static_cast<float>(v->center.y) + 0.5f);
+    Inventory inv;
+    EntityEnv env;
+    env.allowSpawns = true;
+    env.daylight = 1.0f;
+    EntityManager em(4);
+    for (int i = 0; i < 60; ++i) em.update(0.05f, w, pl, inv, env);
+    int villagers = 0;
+    bool homes = true, profs = true;
+    for (const Mob& m : em.mobs())
+        if (m.type == MobType::Villager) {
+            ++villagers;
+            homes = homes && m.hasHome && m.homeX == v->center.x && m.homeZ == v->center.y;
+            profs = profs && m.profession >= 0 && m.profession < PROF_COUNT;
+        }
+    CHECK(villagers == static_cast<int>(v->villagerSpawns.size()) && homes && profs);
+    CHECK(em.countMobs(false) <= 12);  // Dorfbewohner zaehlen nicht mit
+    for (int i = 0; i < 60; ++i) em.update(0.05f, w, pl, inv, env);
+    int villagers2 = 0;
+    for (const Mob& m : em.mobs()) villagers2 += m.type == MobType::Villager;
+    CHECK(villagers2 == villagers);
+    // Sie bleiben im Dorf (2 Minuten)
+    for (int i = 0; i < 2400; ++i) em.update(0.05f, w, pl, inv, env);
+    bool near = true;
+    for (const Mob& m : em.mobs())
+        if (m.type == MobType::Villager) near = near && std::hypot(m.pos.x - v->center.x, m.pos.z - v->center.y) < 45.0f && !m.dead();
+    CHECK(near);
+    // Villager rufen und verursachen keinen Schaden
+    CHECK(em.playerHits().empty());
+
+    // Handel
+    for (int p = 0; p < PROF_COUNT; ++p) {
+        CHECK(std::string(professionName(p)).size() > 3 && tradesFor(p).size() >= 4);
+        for (const Trade& t : tradesFor(p)) {
+            CHECK(itemValid(t.cost.id) && itemValid(t.result.id) && t.cost.count >= 1 && t.result.count >= 1 && t.cost.id != t.result.id);
+            CHECK(t.cost.id == ITEM_GOLD_INGOT || t.result.id == ITEM_GOLD_INGOT);
+            CHECK(t.cost.count <= itemInfo(t.cost.id).maxStack && t.result.count <= itemInfo(t.result.id).maxStack);
+        }
+    }
+    int seen[PROF_COUNT] = {};
+    for (int i = 0; i < 200; ++i) ++seen[professionFor(i, i % 6)];
+    for (int p = 0; p < PROF_COUNT; ++p) CHECK(seen[p] > 10);
+    CHECK(professionFor(5, 2) == professionFor(5, 2));
+    // Skin und Modell
+    CHECK(skinInfo(SKIN_VILLAGER).width == 64 && skinInfo(SKIN_VILLAGER).height == 32 && modelParts(SKIN_VILLAGER).size() == 7);
+    CHECK(generateSkinPixels(SKIN_VILLAGER).size() == 64u * 32u * 4u && generateSkinPixels(SKIN_VILLAGER) != generateSkinPixels(SKIN_ZOMBIE));
+    std::vector<Vertex> verts;
+    appendModel(SKIN_VILLAGER, Pose(), verts);
+    CHECK(verts.size() == 7 * 6 * 4);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -2566,6 +2704,7 @@ int main() {
     testSky();
     testNewBlocksAndRecipes();
     testChestsAndSaveV5();
+    testVillages();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

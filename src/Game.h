@@ -51,6 +51,8 @@ struct Options {
     bool hasLook = false;
     float yaw = -90.0f, pitch = 0.0f;
     bool hasTime = false;
+    bool gotoVillage = false;  // --village: zum naechsten Dorf springen (Test)
+    int villageSide = 0;       // --village-side N: Blickrichtung 0..3
     int moonPhase = -1;  // --moon N: feste Mondphase 0..7 (Test)
     float timeOfDay = 0.3f;
     bool fly = false;
@@ -95,6 +97,9 @@ private:
     void openInventory(bool table = false);
     void openFurnace(const glm::ivec3& pos);
     void openChest(const glm::ivec3& pos);
+    void openTrade(int profession);
+    bool buyTrade(int index);
+    InvLayout invLayout() const;
     void useBed(const glm::ivec3& pos);
     // Rezeptbuch
     struct BookItem {
@@ -102,7 +107,7 @@ private:
         BookEntryHud hud;
     };
     std::vector<BookItem> buildBook() const;
-    bool bookVisible() const { return inventoryOpen_ && craftSize_ > 0 && !furnaceWindow_ && !chestWindow_; }
+    bool bookVisible() const { return inventoryOpen_ && craftSize_ > 0 && !furnaceWindow_ && !chestWindow_ && !tradeWindow_; }
     void autofillRecipe(const Recipe& r);
     void clampBookScroll(int total);
     void useHeldTool(int amount);
@@ -158,6 +163,8 @@ private:
     bool furnaceWindow_ = false;  // Ofenfenster (craftSize_ == 3 belegt den Platz)
     glm::ivec3 furnacePos_{0};
     bool chestWindow_ = false;    // Truhenfenster
+    bool tradeWindow_ = false;    // Handelsfenster
+    int tradeProfession_ = 0;
     glm::ivec3 chestPos_{0};
     int bookScroll_ = 0;          // erste sichtbare Zeile des Rezeptbuchs
     bool bookOnlyCraftable_ = false;

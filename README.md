@@ -16,11 +16,13 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Bausteine: Ziegel, Steinziegel, Sandstein, Kies, Ton, Wolle in 6 Farben, Bücherregal, Eisen-, Gold-, Diamant- und Kohleblöcke, Lampe (Licht 15), Kürbis, Kaktus (verletzt bei Berührung), Birken- und Fichtenholz mit eigenem Laub. Die Blöcke sind im Kreativ-Inventar nach Gruppen sortiert und im Textur-Editor änderbar
 - Pflanzen (kreuzförmig, begehbar, brechen sofort): hohes Gras, Farn, vier Blumen (Mohn, Löwenzahn, Kornblume, Gänseblümchen), rote und braune Pilze, Toter Busch, Zuckerrohr (am Wasser), Beerensträucher (Beeren heilen 2). Sie fallen ab, wenn der Boden fehlt. Gras, Farn und Toter Busch werden beim Setzen von Blöcken einfach ersetzt. Das Gelände hat mehr Vielfalt: Birkenwälder, Fichtenwälder in der Höhe und Kälte, Blumenwiesen, Pilze und Farn im Wald, Kakteen und Tote Büsche in der Wüste, vereinzelt Kürbisse
 - Stationen: Truhe (27 Plätze, Rechtsklick, Umschalt-Klick verschiebt, Inhalt bleibt im Spielstand und fällt beim Abbauen heraus) und Bett (Rechtsklick setzt den Wiedereinstiegspunkt, nachts überspringt es die Nacht, wenn keine Monster in 10 Blöcken sind)
+- Dörfer: je etwa 160-Block-Zelle gibt es mit gewisser Wahrscheinlichkeit ein Dorf auf ebenem, trockenem Gelände (nicht im Schnee). Brunnen in der Mitte, 3 bis 8 Gebäude im Kreis (Wohnhäuser mit Bett und Werkbank, Bibliothek mit Bücherregalen, Schmiede mit Ofen), Fußböden auf Fundamenten, Fenster, Türöffnung, Stufendach, Fackeln, Kieswege zu jeder Tür. Truhen im Haus enthalten beim ersten Öffnen Beute (Kohle, Eisen, Gold, Essen, Bücher, selten Diamant). Um das Dorf wachsen keine Bäume. Mit `--village` springt man beim Start zum nächsten Dorf
+- Dorfbewohner: pro Haus einer, bleiben im Dorf, haben einen Beruf (Bauer, Bibliothekar, Schmied, Steinmetz, Schäfer). Rechtsklick öffnet das Handelsfenster mit 5 Angeboten, Währung sind Goldbarren: sie kaufen Rohstoffe (z. B. 15 Kohle → 1 Gold) und verkaufen Waren (z. B. 3 Gold → Eisenspitzhacke, 9 Gold → Diamant). Im Kreativmodus ist Handeln kostenlos. Sie zählen nicht zum Tierlimit
 - Rezeptbuch neben dem Inventar und der Werkbank: alle Rezepte, herstellbare zuerst und grün umrandet, Hinweis mit den Zutaten, Klick füllt das Raster aus dem Rucksack, Filter "Nur machbare", Mausrad scrollt. Rezepte für 3x3 sind im Inventar abgeblendet
 - Crafting: 2x2-Raster im Inventar, 3x3 an der Werkbank (Rechtsklick auf den Block, mit Umschalt wird er stattdessen gesetzt). Rezepte: Holz → 4 Bretter, 2 Bretter → 4 Stöcke, 4 Bretter → Werkbank, 8 Bruchstein → Ofen, 8 Bretter → Truhe, Wolle und Bretter → Bett, Bücherregal, Lampe, Ziegel, Steinziegel, Sandstein, Materialblöcke (und zurück zu 9 Barren), Papier und Bücher, Farben aus Blumen und Kohle, gefärbte Wolle (formlos: Wolle plus Farbe), Spitzhacke/Axt/Schaufel/Schwert aus Brettern, Bruchstein, Eisenbarren, Goldbarren oder Diamanten mit Stöcken, 1 Kohle über 1 Stock → 4 Fackeln
 - Werkzeuge aus Holz, Stein, Eisen, Gold und Diamant mit Haltbarkeit (60, 132, 250, 33, 1560 Nutzungen): passende Werkzeuge bauen schneller ab, Gold am schnellsten, bricht aber schnell. Mindeststufe zum Ernten: Stein und Kohle Holz, Eisenerz Stein, Gold- und Diamanterz Eisen, Obsidian Diamant (Goldwerkzeuge zählen als Holzstufe). Ohne passendes Werkzeug dauert der Abbau länger und es fällt nichts. Schwerter und Äxte machen mehr Schaden gegen Mobs
 - Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Schafe lassen auch Wolle fallen. Zombies erscheinen nur nachts (draußen und in dunklen Höhlen), verfolgen und greifen an und verschwinden am Tag (im Freien verbrennen sie, in Höhlen lösen sie sich nach 10 s auf)
-- Textur-Editor (Esc, Einstellungen, Textur-Editor): zeigt die aufgeklappte Textur (bei Blöcken das Kreuznetz aus Oberseite, vier Seiten und Unterseite, bei Figuren das komplette Skin-Netzblatt mit beschrifteten Flächen: V vorn, H hinten, R rechts, L links, O oben, U unten) und daneben eine drehbare 3D-Vorschau mit der echten Textur. Bemalen mit Stift (Pinselgröße 1 bis 3), Radierer, Füllen (ähnliche Farben), Pipette (auch Rechtsklick), 32 Farbfelder plus RGBA-Schieber, Rückgängig/Wiederholen, Raster und Netz einblendbar. Texturen von Blöcken, Gegenständen (Werkzeuge, Erze usw.) und Figuren (Spieler, Schwein, Kuh, Schaf, Zombie) lassen sich ändern
+- Textur-Editor (Esc, Einstellungen, Textur-Editor): zeigt die aufgeklappte Textur (bei Blöcken das Kreuznetz aus Oberseite, vier Seiten und Unterseite, bei Figuren das komplette Skin-Netzblatt mit beschrifteten Flächen: V vorn, H hinten, R rechts, L links, O oben, U unten) und daneben eine drehbare 3D-Vorschau mit der echten Textur. Bemalen mit Stift (Pinselgröße 1 bis 3), Radierer, Füllen (ähnliche Farben), Pipette (auch Rechtsklick), 32 Farbfelder plus RGBA-Schieber, Rückgängig/Wiederholen, Raster und Netz einblendbar. Texturen von Blöcken, Gegenständen (Werkzeuge, Erze usw.) und Figuren (Spieler, Schwein, Kuh, Schaf, Zombie, Dorfbewohner) lassen sich ändern
 - Eigene Texturen als PNG: "Speichern" schreibt nach `textures/`, beim nächsten Start lädt das Spiel diese Dateien statt der prozeduralen Texturen. "Exportieren" schreibt das aufgeklappte Netz nach `textures/export/`, das lässt sich in einem Malprogramm bearbeiten und mit "Importieren" wieder einlesen (danach noch speichern). "Zurücksetzen" stellt die Standardtextur wieder her und löscht die gespeicherte Datei
 - Ansichten (V): Ego, von hinten, von vorn. In den Außenansichten sieht man das eigene Spielermodell (Quader mit Laufanimation und Kopfneigung). Die Kamera rückt heran, wenn Blöcke im Weg sind, und steckt nie im Gelände
 - Spieler-Skins: 8 Plätze mit eigenen Standardfarben (Standard, Rot, Gruen, Violett, Orange, Hell, Dunkel, Rosa). Im Einstellungsmenü wechselt der Knopf "Spieler-Skin" den Platz, daneben dreht sich das Modell. Der Textur-Editor bearbeitet den gewählten Platz (Titel zeigt den Platz). Dateien: `textures/skin_player.png` (Platz 1), `skin_player_2.png` bis `skin_player_8.png`. Eigene Skins lassen sich auch einfach dort hineinkopieren (64x32 oder 64x64)
@@ -137,7 +139,7 @@ cmake --build build -j
 --list-sounds      Benötigte Klangdateien als Tabelle ausgeben
 ```
 
-Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--moon N` (feste Mondphase 0 bis 7), `--demo mobs|water|torch|inv|craft|chest|furnace|menu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
+Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--moon N` (feste Mondphase 0 bis 7), `--village` (zum nächsten Dorf springen), `--demo mobs|water|torch|inv|craft|chest|trade|village|furnace|menu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
 
 ## Tests
 
@@ -169,6 +171,7 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/TextureStore.*`, `src/TextureEditor.*`, `src/EditorUi.*`, `src/Image.*` | Texturspeicher mit PNG-Dateien, Editor-Logik (Werkzeuge, Rückgängig, Netze, Vorschau), Editor-Oberfläche |
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
 | `src/Save.*` | Speicherformat Version 5 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Öfen, Truhen, Wiedereinstiegspunkt, Gesundheit, Modus; Versionen 1 bis 4 bleiben lesbar) |
+| `src/Village.*`, `src/Trades.*` | Dörfer (Lage, Gebäude, Wege, Beute) und Handelsangebote der Dorfbewohner |
 | `src/Sky.*` | Pixelgrafiken für Sonne, Mondphasen, Lichtkranz und die Sterne |
 | `src/Chest.h` | Truheninhalt |
 | `tests/` | Tests |
@@ -177,11 +180,11 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 
 Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 
-1. **Dörfer und Dorfbewohner:** Häuser, Wege, Bewohner mit Handel.
-2. **Steampunk:** Dampfmaschinen, Rohre, Zahnräder, Maschinen und Fahrzeuge mit Dampfantrieb.
-3. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
-4. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
-5. **Weitere Bausteine:** Treppen, Halbblöcke, Zäune, Türen, Leitern, Eimer.
+1. **Steampunk:** Dampfmaschinen, Rohre, Zahnräder, Maschinen und Fahrzeuge mit Dampfantrieb.
+2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
+3. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+4. **Weitere Bausteine:** Treppen, Halbblöcke, Zäune, Türen, Leitern, Eimer.
+5. **Dörfer ausbauen:** Felder, Türen, mehr Gebäudearten, Zombie-Überfälle.
 
 ## Drittanbieter
 

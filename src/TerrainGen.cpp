@@ -14,6 +14,7 @@ float smoothstep(float a, float b, float x) {
 
 TerrainGenerator::TerrainGenerator(int32_t seed)
     : seed_(seed),
+      villages_(*this, seed),
       continental_(static_cast<uint32_t>(seed) + 1),
       detail_(static_cast<uint32_t>(seed) + 2),
       ridge_(static_cast<uint32_t>(seed) + 3),
@@ -114,6 +115,7 @@ void TerrainGenerator::generate(Chunk& chunk) const {
     placeOres(chunk);
     placeTrees(chunk);
     placePlants(chunk, cols);
+    villages_.placeInChunk(chunk);
 }
 
 // Erzadern: kleine Zufallsklumpen im Stein, je Chunk aus dem Seed abgeleitet (ueber Chunkgrenzen abgeschnitten)
@@ -172,6 +174,7 @@ void TerrainGenerator::placeTrees(Chunk& chunk) const {
             uint32_t hsh = hash3(wx, 7, wz, static_cast<uint32_t>(seed_) ^ 0x7EE5u);
             // grobe Vorpruefung, bevor das teure Column() aufgerufen wird
             if ((hsh & 0xFFu) >= 64) continue;
+            if (villages_.inArea(wx, wz)) continue;  // Dorfgebiet bleibt baumfrei
             Column col = column(wx, wz);
             if (col.desert || col.snow || col.height <= SEA_LEVEL + 1 || col.height > 92) continue;
             const uint32_t chance = col.forest ? 40 : 6;  // von 256

@@ -45,6 +45,11 @@ static const SoundDef DEFS[SOUND_COUNT] = {
     {"zombie_hurt", "Zombie verletzt", "a zombie grunting in pain, short raspy hiss and groan, game sound effect", 0.7f, 0.9f},
     {"zombie_death", "Zombie stirbt", "a zombie dying, long raspy groan fading out, horror game sound effect", 1.4f, 0.9f},
     {"zombie_attack", "Zombie greift an", "a zombie snarling and lunging, short aggressive growl, horror game sound effect", 0.8f, 0.9f},
+
+    {"villager_idle", "Dorfbewohner brummt", "a villager mumbling hmm, nasal grumpy hum, short, cartoon character, game sound effect", 0.8f, 0.8f},
+    {"villager_hurt", "Dorfbewohner verletzt", "a villager yelping hurt, short nasal ouch, cartoon character, game sound effect", 0.6f, 0.9f},
+    {"villager_death", "Dorfbewohner stirbt", "a villager groaning and dying, short nasal moan, cartoon character, game sound effect", 1.0f, 0.9f},
+    {"villager_trade", "Handel abgeschlossen", "a villager happy agreeing hmm, short pleasant nasal hum with a small coin clink, game sound effect", 0.7f, 0.9f},
 };
 
 const SoundDef& soundDef(SoundId id) { return DEFS[static_cast<int>(id)]; }

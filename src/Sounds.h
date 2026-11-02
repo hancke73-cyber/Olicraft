@@ -21,6 +21,7 @@ enum class SoundId : uint8_t {
     CowIdle, CowHurt, CowDeath,
     SheepIdle, SheepHurt, SheepDeath,
     ZombieIdle, ZombieHurt, ZombieDeath, ZombieAttack,
+    VillagerIdle, VillagerHurt, VillagerDeath, VillagerTrade,
     Count
 };
 

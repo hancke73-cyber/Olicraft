@@ -80,11 +80,12 @@ float guiScale(int windowHeight) { return std::max(1.0f, std::floor(static_cast<
 // Layout des Inventarfensters
 // ---------------------------------------------------------------------------------------------------------------
 
-InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furnace, bool chest) {
+InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furnace, bool chest, int tradeRows) {
     InvLayout l;
     l.furnace = furnace;
     l.chest = chest;
-    if (chest) craftSize = 0;
+    l.tradeRows = tradeRows;
+    if (chest || tradeRows > 0) craftSize = 0;
     l.s = guiScale(h);
     l.creative = creative;
     l.craftSize = craftSize;
@@ -102,6 +103,9 @@ InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furna
     if (chest) {
         chestOffset = height;
         height += 3.0f * 18.0f * s + 8.0f * s;
+    } else if (tradeRows > 0) {
+        chestOffset = height;
+        height += static_cast<float>(tradeRows) * 18.0f * s + 8.0f * s;
     }
     const float storageOffset = height;
     height += 3.0f * 18.0f * s + 4.0f * s + 18.0f * s + pad;
@@ -179,6 +183,12 @@ int InvLayout::hitChest(glm::vec2 m) const {
     return -1;
 }
 
+int InvLayout::hitTrade(glm::vec2 m) const {
+    for (int i = 0; i < tradeRows; ++i)
+        if (inRect(m, tradePos(i), 9.0f * pitch(), pitch())) return i;
+    return -1;
+}
+
 bool InvLayout::inside(glm::vec2 m) const { return inRect(m, panelPos, panelSize.x, panelSize.y); }
 
 // Rezeptbuch: rechts neben dem Fenster, sonst links; schmale Fenster: ueberlappend am rechten Rand
@@ -243,7 +253,7 @@ static void drawSlotCount(HudBatch& b, const ItemStack& st, float x, float y, fl
 }
 
 static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
-    const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize, st.furnaceOpen, st.chestOpen);
+    const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize, st.furnaceOpen, st.chestOpen, st.tradeOpen ? static_cast<int>(st.trades.size()) : 0);
     const float s = L.s, pt = L.pitch();
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.55f));
 
@@ -286,6 +296,28 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
             slotRect(p, i == hoverChest);
             if (!st.chest->slots[static_cast<size_t>(i)].empty())
                 b.itemIcon(st.chest->slots[static_cast<size_t>(i)].id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+        }
+        const float sepY = L.storageTop.y - 5.0f * s;
+        b.rect(L.panelPos.x + 7 * s, sepY, L.panelPos.x + L.panelSize.x - 7 * s, sepY + s, glm::vec4(0, 0, 0, 0.5f));
+    }
+
+    // Handel: je Angebot eine Reihe
+    const int hoverTrade = L.hitTrade(st.mouse);
+    if (st.tradeOpen) {
+        for (size_t i = 0; i < st.trades.size(); ++i) {
+            const glm::vec2 p = L.tradePos(static_cast<int>(i));
+            const HudState::TradeRowHud& tr = st.trades[i];
+            const glm::vec4 rowBg = tr.affordable ? glm::vec4(0.16f, 0.30f, 0.16f, 1.0f) : slotBg;
+            b.rect(p.x + s, p.y + s, p.x + 9.0f * pt - s, p.y + pt - s, rowBg);
+            if (static_cast<int>(i) == hoverTrade) b.rect(p.x + s, p.y + s, p.x + 9.0f * pt - s, p.y + pt - s, hoverFx);
+            b.itemIcon(tr.cost.id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+            drawSlotCount(b, tr.cost, p.x, p.y, pt, s);
+            b.text(p.x + pt * 1.3f, p.y + pt * 0.5f - 4.0f * s, s * 1.5f, "=>", glm::vec4(0.9f));
+            b.itemIcon(tr.result.id, p.x + pt * 3.5f, p.y + pt * 0.5f, 6.3f * s);
+            drawSlotCount(b, tr.result, p.x + pt * 3.0f, p.y, pt, s);
+            b.text(p.x + pt * 4.3f, p.y + pt * 0.5f - 4.0f * s, s, itemInfo(tr.result.id).name,
+                   tr.affordable ? glm::vec4(1.0f) : glm::vec4(0.7f, 0.7f, 0.75f, 1.0f));
+            if (!tr.affordable) b.rect(p.x + s, p.y + s, p.x + 9.0f * pt - s, p.y + pt - s, glm::vec4(0.0f, 0.0f, 0.0f, 0.35f));
         }
         const float sepY = L.storageTop.y - 5.0f * s;
         b.rect(L.panelPos.x + 7 * s, sepY, L.panelPos.x + L.panelSize.x - 7 * s, sepY + s, glm::vec4(0, 0, 0, 0.5f));

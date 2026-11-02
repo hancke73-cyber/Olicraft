@@ -16,6 +16,7 @@ const SkinInfo SKINS[SKIN_COUNT] = {
     {"Kuh", "skin_cow.png", 64, 64},
     {"Schaf", "skin_sheep.png", 64, 64},
     {"Zombie", "skin_zombie.png", 64, 32},
+    {"Dorfbewohner", "skin_villager.png", 64, 32},
 };
 
 struct Rgb {
@@ -117,6 +118,31 @@ void paintHumanoid(Img& img, SkinId id, bool zombie, const HumanPalette& pal = P
     fill(img, skinNetRect(leg, 3), {72, 72, 78}, 6, 180);
 }
 
+void paintVillager(Img& img) {
+    const Rgb skin = {190, 140, 108}, robe = {112, 80, 52}, robeDark = {88, 62, 40};
+    const ModelPart& head = part(SKIN_VILLAGER, 0);
+    const ModelPart& body = part(SKIN_VILLAGER, 1);
+    const ModelPart& arm = part(SKIN_VILLAGER, 2);
+    const ModelPart& leg = part(SKIN_VILLAGER, 4);
+    const ModelPart& nose = part(SKIN_VILLAGER, 6);
+    fillPart(img, head, skin, 8, 600);
+    fillPart(img, nose, {166, 116, 88}, 6, 610);
+    fillPart(img, body, robe, 10, 620);
+    fillPart(img, arm, robe, 10, 630);
+    fillPart(img, leg, robeDark, 8, 640);
+    // Guertel und Saum
+    fill(img, skinNetRect(body, 0), {70, 50, 34}, 6, 650, 8, 10);
+    fill(img, skinNetRect(body, 1), {70, 50, 34}, 6, 651, 8, 10);
+    fill(img, skinNetRect(body, 4), {70, 50, 34}, 6, 652, 8, 10);
+    fill(img, skinNetRect(body, 5), {70, 50, 34}, 6, 653, 8, 10);
+    const NetRect fr = skinNetRect(head, 0);
+    const Rgb white = {240, 240, 240}, green = {40, 120, 70}, brow = {70, 50, 40};
+    for (int x = 0; x < 8; ++x) px(img, fr, x, 2, brow);            // durchgehende Augenbraue
+    for (int x : {1, 2, 5, 6}) px(img, fr, x, 3, x == 2 || x == 5 ? green : white);
+    for (int x : {1, 2, 5, 6}) px(img, fr, x, 4, x == 2 || x == 5 ? green : white);
+    for (int x = 2; x <= 5; ++x) px(img, fr, x, 7, {140, 96, 76});  // Mund
+}
+
 void paintPig(Img& img) {
     const Rgb pink = {236, 152, 162};
     fillPart(img, part(SKIN_PIG, 0), pink, 9, 200);                 // Koerper
@@ -192,6 +218,7 @@ std::vector<uint8_t> generateSkinPixels(SkinId id) {
     switch (id) {
         case SKIN_PLAYER: paintHumanoid(img, id, false); break;
         case SKIN_ZOMBIE: paintHumanoid(img, id, true); break;
+        case SKIN_VILLAGER: paintVillager(img); break;
         case SKIN_PIG: paintPig(img); break;
         case SKIN_COW: paintCow(img); break;
         case SKIN_SHEEP: paintSheep(img); break;

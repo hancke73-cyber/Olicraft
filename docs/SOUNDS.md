@@ -52,6 +52,10 @@ Die Tabelle stammt aus dem Spiel selbst und lässt sich neu erzeugen mit `OliCra
 | `zombie_hurt` | Zombie verletzt | 0.7 s | a zombie grunting in pain, short raspy hiss and groan, game sound effect |
 | `zombie_death` | Zombie stirbt | 1.4 s | a zombie dying, long raspy groan fading out, horror game sound effect |
 | `zombie_attack` | Zombie greift an | 0.8 s | a zombie snarling and lunging, short aggressive growl, horror game sound effect |
+| `villager_idle` | Dorfbewohner brummt | 0.8 s | a villager mumbling hmm, nasal grumpy hum, short, cartoon character, game sound effect |
+| `villager_hurt` | Dorfbewohner verletzt | 0.6 s | a villager yelping hurt, short nasal ouch, cartoon character, game sound effect |
+| `villager_death` | Dorfbewohner stirbt | 1.0 s | a villager groaning and dying, short nasal moan, cartoon character, game sound effect |
+| `villager_trade` | Handel abgeschlossen | 0.7 s | a villager happy agreeing hmm, short pleasant nasal hum with a small coin clink, game sound effect |
 
 ## Musik
 

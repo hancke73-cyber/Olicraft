@@ -26,6 +26,7 @@ static void printHelp() {
         "  --textures PFAD   Ordner mit eigenen Texturen (Standard: textures)\n"
         "  --sounds PFAD     Ordner mit Klangdateien (Standard: sounds, Musik in sounds/music)\n"
         "  --no-sound        Ton aus\n"
+        "  --village         Beim Start zum naechsten Dorf springen\n"
         "  --list-sounds     Alle benoetigten Klangdateien mit Beschreibung und Vorschlag fuer die Erzeugung ausgeben\n"
         "  --help            Diese Hilfe\n"
         "\n"
@@ -115,6 +116,8 @@ int main(int argc, char** argv) {
             need(1);
             opt.hasTime = true;
             opt.timeOfDay = static_cast<float>(std::atof(argv[++i]));
+        } else if (a == "--village") {
+            opt.gotoVillage = true;
         } else if (a == "--moon") {
             need(1);
             opt.moonPhase = std::atoi(argv[++i]);

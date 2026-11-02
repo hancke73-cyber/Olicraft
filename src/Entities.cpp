@@ -8,6 +8,8 @@
 #include "Models.h"
 #include "Physics.h"
 #include "Player.h"
+#include "Trades.h"
+#include "Village.h"
 #include "World.h"
 
 namespace oc {
@@ -17,11 +19,12 @@ namespace {
 constexpr float PI = 3.14159265358979f;
 constexpr float GRAVITY = 28.0f;
 
-const MobSpec SPECS[4] = {
+const MobSpec SPECS[5] = {
     {"Schwein", 0.8f, 0.85f, 10, 1.4f, false},
     {"Kuh", 0.85f, 1.45f, 10, 1.2f, false},
     {"Schaf", 0.8f, 1.25f, 8, 1.3f, false},
     {"Zombie", 0.6f, 1.9f, 20, 2.5f, true},
+    {"Dorfbewohner", 0.6f, 1.9f, 20, 1.3f, false},
 };
 
 bool skyExposed(const World& w, int x, int y, int z) {
@@ -79,6 +82,7 @@ SkinId skinOf(MobType t) {
         case MobType::Pig: return SKIN_PIG;
         case MobType::Cow: return SKIN_COW;
         case MobType::Sheep: return SKIN_SHEEP;
+        case MobType::Villager: return SKIN_VILLAGER;
         default: return SKIN_ZOMBIE;
     }
 }
@@ -120,17 +124,18 @@ Mob& EntityManager::spawnMob(MobType type, const glm::vec3& pos) {
 int EntityManager::countMobs(bool hostile) const {
     int n = 0;
     for (const Mob& m : mobs_)
-        if (!m.dead() && mobSpec(m.type).hostile == hostile) ++n;
+        if (!m.dead() && m.type != MobType::Villager && mobSpec(m.type).hostile == hostile) ++n;
     return n;
 }
 
 void EntityManager::emitMobSound(const Mob& m, int kind) {
     if (soundEvents_.size() > 64) return;
-    static const SoundId ids[4][4] = {
+    static const SoundId ids[5][4] = {
         {SoundId::PigIdle, SoundId::PigHurt, SoundId::PigDeath, SoundId::PigIdle},
         {SoundId::CowIdle, SoundId::CowHurt, SoundId::CowDeath, SoundId::CowIdle},
         {SoundId::SheepIdle, SoundId::SheepHurt, SoundId::SheepDeath, SoundId::SheepIdle},
-        {SoundId::ZombieIdle, SoundId::ZombieHurt, SoundId::ZombieDeath, SoundId::ZombieAttack}};
+        {SoundId::ZombieIdle, SoundId::ZombieHurt, SoundId::ZombieDeath, SoundId::ZombieAttack},
+        {SoundId::VillagerIdle, SoundId::VillagerHurt, SoundId::VillagerDeath, SoundId::VillagerIdle}};
     const float pitch = rng_.range(0.92f, 1.08f);
     soundEvents_.push_back({ids[static_cast<int>(m.type)][kind], m.pos.x, m.pos.y + mobSpec(m.type).height * 0.8f, m.pos.z,
                             1.0f, pitch});
@@ -309,6 +314,10 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
                     m.stateTimer = rng_.range(2.0f, 6.0f);
                 }
             } else {
+                if (m.hasHome) {  // Dorfbewohner bleiben im Dorf
+                    const float hx = static_cast<float>(m.homeX) + 0.5f - m.pos.x, hz = static_cast<float>(m.homeZ) + 0.5f - m.pos.z;
+                    if (hx * hx + hz * hz > 22.0f * 22.0f) m.wanderYaw = std::atan2(hz, hx);
+                }
                 want = glm::vec2(std::cos(m.wanderYaw), std::sin(m.wanderYaw));
                 speed = sp.speed * 0.8f;
                 lookAtTarget = true;
@@ -434,6 +443,31 @@ static bool findGround(const World& w, int x, int z, int yTop, int yBottom, int&
     return false;
 }
 
+void EntityManager::spawnVillagers(World& world, const Player& player) {
+    const int px = static_cast<int>(std::floor(player.pos.x)), pz = static_cast<int>(std::floor(player.pos.z));
+    for (const Village* v : world.terrain().villages().villagesIn(px - 56, pz - 56, px + 56, pz + 56)) {
+        const uint32_t id = static_cast<uint32_t>(v->id);
+        if (std::find(villageDone_.begin(), villageDone_.end(), id) != villageDone_.end()) continue;
+        // Alle Spawnpunkte muessen geladen sein, damit die Bewohner nicht in der Luft erscheinen
+        bool ready = true;
+        for (const glm::ivec3& sp : v->villagerSpawns)
+            ready = ready && world.isChunkLoaded(floorDiv(sp.x, CHUNK_W), floorDiv(sp.z, CHUNK_W));
+        if (!ready) continue;
+        villageDone_.push_back(id);
+        int index = 0;
+        for (const glm::ivec3& sp : v->villagerSpawns) {
+            int y = sp.y;
+            while (y > 1 && !isSolid(world.getBlock(sp.x, y - 1, sp.z))) --y;  // auf den Boden setzen
+            Mob& m = spawnMob(MobType::Villager, glm::vec3(sp.x + 0.5f, static_cast<float>(y), sp.z + 0.5f));
+            m.hasHome = true;
+            m.homeX = v->center.x;
+            m.homeZ = v->center.y;
+            m.villageId = v->id;
+            m.profession = professionFor(v->id, index++);
+        }
+    }
+}
+
 void EntityManager::trySpawn(World& world, const Player& player, const EntityEnv& env) {
     const bool night = env.daylight < 0.3f;
     for (int attempt = 0; attempt < 6; ++attempt) {
@@ -517,13 +551,22 @@ void EntityManager::update(float dt, World& world, const Player& player, Invento
         const int cx = floorDiv(static_cast<int>(std::floor(m.pos.x)), CHUNK_W);
         const int cz = floorDiv(static_cast<int>(std::floor(m.pos.z)), CHUNK_W);
         const float dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
-        bool remove = m.pos.y < -20.0f || (dx * dx + dz * dz) > 100.0f * 100.0f || (m.dead() && m.deathTimer > 1.0f);
+        bool remove = m.pos.y < -20.0f || ((dx * dx + dz * dz) > 100.0f * 100.0f && m.type != MobType::Villager) || (m.dead() && m.deathTimer > 1.0f);
         if (!remove && world.isChunkLoaded(cx, cz)) updateMob(m, dt, world, player, env);
         if (remove) {
             mobs_[i] = mobs_.back();
             mobs_.pop_back();
         } else {
             ++i;
+        }
+    }
+
+    // Dorfbewohner
+    if (env.allowSpawns) {
+        villageTimer_ -= dt;
+        if (villageTimer_ <= 0.0f) {
+            villageTimer_ = 2.0f;
+            spawnVillagers(world, player);
         }
     }
 
