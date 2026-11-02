@@ -226,8 +226,10 @@ void emitTorch(int x, int y, int z, BlockId b, std::vector<Vertex>& out) {
 void emitPlant(const Ctx& c, int x, int y, int z, BlockId b, std::vector<Vertex>& out) {
     const UVRect uv = tileUV(blockInfo(b).side);
     const uint32_t h = hash3(x, y, z, 0x91A47u);
-    const float ox = (static_cast<float>(h & 15u) / 15.0f - 0.5f) * 0.22f;
-    const float oz = (static_cast<float>((h >> 4) & 15u) / 15.0f - 0.5f) * 0.22f;
+    // Zuckerrohr waechst gerade nach oben: ohne Versatz, sonst sitzen die Stuecke nicht uebereinander
+    const float jitter = (b == SUGAR_CANE) ? 0.0f : 0.22f;
+    const float ox = (static_cast<float>(h & 15u) / 15.0f - 0.5f) * jitter;
+    const float oz = (static_cast<float>((h >> 4) & 15u) / 15.0f - 0.5f) * jitter;
     const float height = (b == SUGAR_CANE) ? 1.0f : (b == TALL_GRASS ? 0.9f : 0.85f);
     const float sky = c.skyAt(x, y, z);
     const float light = c.lightAt(x, y, z) / static_cast<float>(MAX_LIGHT);

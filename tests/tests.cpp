@@ -274,6 +274,28 @@ static void testPlayer() {
     CHECK(!p.intersectsBlock(0, 59, 0));
 }
 
+static void testSugarCaneAligned() {
+    // Zuckerrohr: uebereinanderstehende Stuecke liegen exakt auf derselben Achse (kein zufaelliger Versatz)
+    std::vector<BlockId> pad(PAD_VOLUME, AIR);
+    auto set = [&](int x, int y, int z, BlockId b) { pad[padIndex(x + 1, y, z + 1)] = b; };
+    MeshOutput out;
+    for (int cell = 0; cell < 6; ++cell) {
+        const int x = 2 + cell * 2, z = 3 + cell;
+        set(x, 49, z, SAND);
+        for (int y = 50; y < 53; ++y) set(x, y, z, SUGAR_CANE);
+    }
+    buildChunkMesh(pad.data(), nullptr, out);
+    CHECK(!out.opaque.empty());
+    bool aligned = true;
+    for (const Vertex& v : out.opaque) {
+        const float fx = v.x - std::floor(v.x), fz = v.z - std::floor(v.z);
+        // Sandwuerfel haben ganzzahlige Ecken, das Zuckerrohr genau 0,12 und 0,88
+        if (fx > 1e-4f && std::fabs(fx - 0.12f) > 1e-4f && std::fabs(fx - 0.88f) > 1e-4f) aligned = false;
+        if (fz > 1e-4f && std::fabs(fz - 0.12f) > 1e-4f && std::fabs(fz - 0.88f) > 1e-4f) aligned = false;
+    }
+    CHECK(aligned);
+}
+
 static void testMesher() {
     std::vector<BlockId> pad(PAD_VOLUME, AIR);
     auto set = [&](int x, int y, int z, BlockId b) { pad[padIndex(x + 1, y, z + 1)] = b; };
@@ -3286,6 +3308,7 @@ int main() {
     testBlocksAndRaycast();
     testPlayer();
     testMesher();
+    testSugarCaneAligned();
     testSave();
     testFluids();
     testWaterExitAndZombieDay();
