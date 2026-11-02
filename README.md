@@ -5,12 +5,12 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 ## Funktionen
 
 - Unendliche, chunkbasierte Welt (16 x 128 x 16), Gelände aus Perlin-Rauschen: Ozeane, Strände, Hügel, Berge mit Schneekappen, Wüsten, Wälder, Höhlen
-- Bäume (über Chunkgrenzen hinweg konsistent), Meer mit halbtransparentem Wasser, Schwimmen
+- Bäume (über Chunkgrenzen hinweg konsistent), Meer mit halbtransparentem Wasser, Schwimmen, an Uferkanten mit der Sprungtaste aus dem Wasser klettern
 - Fließendes Wasser: Quellen breiten sich bis 7 Blöcke aus, fließen bergab, bilden Wasserfälle, zwei Quellen ergeben eine neue (unendliche Quelle), Wasser zieht sich zurück, wenn die Quelle fehlt
 - Abbauen und Setzen von Blöcken per Raycast
 - Survival- und Kreativmodus (Umschalten mit G): Abbauzeit je Block, Drops als Gegenstände am Boden, Gesundheit mit Herzen, Fallschaden, Ertrinken (Luftblasen), Regeneration, Tod und Wiedergeburt
 - Inventar (E): 27 Rucksack-Slots plus 9 Hotbar-Slots, Stapel bis 64, Mausbedienung wie in Minecraft (links ganzen Stapel, rechts Hälfte oder eines, Umschalt-Klick verschiebt). Im Kreativmodus zusätzlich eine Auswahl aller Blöcke
-- Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies spawnen nachts und in dunklen Höhlen, verfolgen und greifen an und verbrennen im Tageslicht
+- Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies spawnen nachts und in dunklen Höhlen, verfolgen und greifen an und erscheinen nur nachts und verschwinden am Tag (im Freien verbrennen sie, in Höhlen lösen sie sich nach 10 s auf)
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten) mit Sonne, Mond und Sternen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
@@ -137,13 +137,6 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
 | `src/Save.*` | Speicherformat Version 2 (RLE je veränderter Chunk, Inventar, Gesundheit, Modus; Version 1 bleibt lesbar) |
 | `tests/` | Tests |
-
-## Bekannte Probleme
-
-Gemeldet, noch nicht behoben:
-
-1. **Aus dem Wasser an Land kommen:** Man kommt vom Wasser nicht auf das Ufer, der Sprung im Wasser reicht nicht über die Uferkante.
-2. **Zombies tagsüber:** Ein Zombie hat tagsüber angegriffen. Zombies sollen nur nachts auftreten.
 
 ## Geplant
 

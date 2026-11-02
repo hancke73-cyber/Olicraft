@@ -56,6 +56,7 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
     if (!world.isChunkLoaded(cx, cz)) return;
 
     inWater = bodyInWater(world);
+    boost_ = std::max(0.0f, boost_ - dt);
 
     // Wunsch-Geschwindigkeit in der Horizontalen
     const float yawRad = glm::radians(yaw);
@@ -79,10 +80,25 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
         if (in.sprint) ty *= 1.5f;
         vel.y += (ty - vel.y) * (1.0f - std::exp(-8.0f * dt));
     } else if (inWater) {
-        vel.y -= 6.0f * dt;
-        vel.y *= std::exp(-2.5f * dt);
-        if (in.jump) vel.y += 22.0f * dt;
-        vel.y = std::max(-4.0f, std::min(3.5f, vel.y));
+        // Uferkante voraus (hoechstens ein Block ueber den Fuessen, darueber frei): mit Sprungtaste aus dem Wasser druecken
+        if (in.jump && glm::dot(wish, wish) > 0.01f) {
+            const glm::vec3 dir = glm::normalize(wish);
+            const int fx = static_cast<int>(std::floor(pos.x + dir.x * (WIDTH * 0.5f + 0.25f)));
+            const int fz = static_cast<int>(std::floor(pos.z + dir.z * (WIDTH * 0.5f + 0.25f)));
+            const int fy = static_cast<int>(std::floor(pos.y + 0.1f));
+            if (world.isSolidAt(fx, fy, fz) && !world.isSolidAt(fx, fy + 1, fz) && !world.isSolidAt(fx, fy + 2, fz)) {
+                vel.y = std::max(vel.y, 8.0f);
+                boost_ = 0.3f;
+            }
+        }
+        if (boost_ > 0.0f) {
+            vel.y -= GRAVITY * 0.6f * dt;  // Schub ueber die Kante, danach normale Wasserphysik
+        } else {
+            vel.y -= 6.0f * dt;
+            vel.y *= std::exp(-2.5f * dt);
+            if (in.jump) vel.y += 22.0f * dt;
+            vel.y = std::max(-4.0f, std::min(3.5f, vel.y));
+        }
     } else {
         vel.y -= GRAVITY * dt;
         vel.y = std::max(-TERMINAL, vel.y);

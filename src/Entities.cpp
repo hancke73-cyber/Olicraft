@@ -322,16 +322,22 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
             }
         }
 
-        // Zombies verbrennen im Sonnenlicht
-        if (sp.hostile && env.daylight > 0.7f && !m.inWater &&
-            skyExposed(world, static_cast<int>(std::floor(m.pos.x)), static_cast<int>(std::floor(m.pos.y + sp.height)),
-                       static_cast<int>(std::floor(m.pos.z)))) {
-            m.burnTimer += dt;
-            if (m.burnTimer >= 1.0f) {
-                m.burnTimer -= 1.0f;
-                m.health -= 2;
-                m.hurtTimer = 0.3f;
-                if (m.health <= 0) m.deathTimer = 0.0f;  // ohne Beute
+        // Am Tag verschwinden Zombies: im Freien verbrennen sie, sonst (Hoehle, Wasser) lösen sie sich nach 10 s auf
+        if (sp.hostile && env.daylight > 0.7f) {
+            const bool exposed = skyExposed(world, static_cast<int>(std::floor(m.pos.x)),
+                                            static_cast<int>(std::floor(m.pos.y + sp.height)),
+                                            static_cast<int>(std::floor(m.pos.z)));
+            if (exposed && !m.inWater) {
+                m.burnTimer += dt;
+                if (m.burnTimer >= 1.0f) {
+                    m.burnTimer -= 1.0f;
+                    m.health -= 2;
+                    m.hurtTimer = 0.3f;
+                    if (m.health <= 0) m.deathTimer = 0.0f;  // ohne Beute
+                }
+            } else {
+                m.dayTimer += dt;
+                if (m.dayTimer > 10.0f) m.deathTimer = 2.0f;  // wird beim naechsten Durchlauf entfernt
             }
         }
     }
@@ -424,7 +430,8 @@ static bool findGround(const World& w, int x, int z, int yTop, int yBottom, int&
 void EntityManager::trySpawn(World& world, const Player& player, const EntityEnv& env) {
     const bool night = env.daylight < 0.3f;
     for (int attempt = 0; attempt < 6; ++attempt) {
-        const bool hostile = !env.creative && night ? (rng_.uniform() < 0.6f) : (!env.creative && rng_.uniform() < 0.2f);
+        // Zombies erscheinen nur nachts (draussen und in Hoehlen)
+        const bool hostile = !env.creative && night && rng_.uniform() < 0.6f;
         if (hostile ? countMobs(true) >= 8 : countMobs(false) >= 12) continue;
         if (!hostile && env.daylight < 0.4f) continue;
 
@@ -436,7 +443,7 @@ void EntityManager::trySpawn(World& world, const Player& player, const EntityEnv
         const int py = static_cast<int>(player.pos.y);
 
         if (hostile) {
-            const bool cave = !night || rng_.uniform() < 0.4f;
+            const bool cave = rng_.uniform() < 0.4f;
             if (cave) {
                 if (!findGround(world, x, z, py + 12, py - 30, gy)) continue;
                 if (skyExposed(world, x, gy, z)) continue;  // Hoehle: kein freier Himmel

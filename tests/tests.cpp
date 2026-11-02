@@ -810,9 +810,7 @@ static void testEntities() {
     spawnEnv.daylight = 1.0f;
     player.pos = spawn;
     for (int i = 0; i < 400; ++i) em.update(0.05f, w, player, inv, spawnEnv);
-    CHECK(em.countMobs(true) <= 8);  // tagsueber nur in Hoehlen
-    for (const Mob& m : em.mobs())
-        if (mobSpec(m.type).hostile) CHECK(!w.inWaterAt(m.pos));
+    CHECK(em.countMobs(true) == 0);  // tagsueber nie Zombies
     CHECK(em.countMobs(false) >= 1 && em.countMobs(false) <= 12);
     int passives = em.countMobs(false);
     EntityEnv night = spawnEnv;
@@ -847,6 +845,68 @@ static void testEntities() {
     CHECK(finite);
 }
 
+static void testWaterExitAndZombieDay() {
+    World w(21);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    const int gy = 100;
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z) {
+            for (int y = gy - 6; y < gy + 20; ++y) w.setBlock(x, y, z, AIR);
+            for (int y = gy - 6; y < gy - 2; ++y) w.setBlock(x, y, z, STONE);
+        }
+    // Becken x = 0..9, Wasser y = gy-2 .. gy (Oberflaeche bei gy + 0.889), Ufer ab x = 10
+    for (int x = 10; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z)
+            for (int y = gy - 2; y <= gy + 1; ++y) w.setBlock(x, y, z, STONE);  // Ufer: Oberkante gy + 2
+    for (int x = -14; x <= 9; ++x)
+        for (int z = -14; z <= 14; ++z)
+            for (int y = gy - 2; y <= gy; ++y) w.setBlock(x, y, z, WATER);
+    // Eine Stufe: Ufer nur bis gy + 1 (1 Block ueber der Wasseroberflaeche) bei z = 0
+    for (int z = -2; z <= 2; ++z) w.setBlock(10, gy + 1, z, AIR);
+
+    Player p;
+    p.pos = glm::vec3(8.5f, gy - 1.0f, 0.5f);
+    p.yaw = 0.0f;  // +x
+    MoveInput in;
+    in.forward = 1.0f;
+    in.jump = true;
+    for (int i = 0; i < 40; ++i) p.update(0.05f, in, w);  // 2 s
+    CHECK(p.pos.x > 10.3f);                       // ist an Land
+    CHECK(p.pos.y > gy + 0.95f);                   // steht ueber der Wasseroberflaeche auf dem Ufer
+    CHECK(!p.inWater);
+
+    // Zwei Bloecke hoch (Ufer bei z = 8) ist zu hoch
+    Player q;
+    q.pos = glm::vec3(8.5f, gy - 1.0f, 8.5f);
+    q.yaw = 0.0f;
+    for (int i = 0; i < 200; ++i) q.update(0.05f, in, w);
+    CHECK(q.pos.x < 10.0f);
+
+    // Ohne Sprungtaste kein Schub
+    Player r;
+    r.pos = glm::vec3(8.5f, gy - 1.0f, 0.5f);
+    r.yaw = 0.0f;
+    MoveInput noJump = in;
+    noJump.jump = false;
+    for (int i = 0; i < 200; ++i) r.update(0.05f, noJump, w);
+    CHECK(r.pos.x < 10.0f);
+
+    // Zombies am Tag: in einer Hoehle (Dach) loesen sie sich nach 10 s auf, draussen verbrennen sie
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= -3; ++z) w.setBlock(x, gy + 6, z, STONE);  // Dach ueber dem Wasserbecken-Teil z < -3
+    Player pl;
+    pl.pos = glm::vec3(0.5f, static_cast<float>(gy + 1), 12.5f);
+    Inventory inv;
+    EntityEnv env;
+    env.allowSpawns = false;
+    env.daylight = 1.0f;
+    EntityManager em(3);
+    em.spawnMob(MobType::Zombie, glm::vec3(5.5f, gy + 1.0f, -8.5f)).pos.y = gy + 1.0f;  // unter dem Dach, auf Wasser: schwimmt
+    for (int i = 0; i < 20 * 14; ++i) em.update(0.05f, w, pl, inv, env);
+    CHECK(em.mobs().empty());
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -869,6 +929,7 @@ int main() {
     testMesher();
     testSave();
     testFluids();
+    testWaterExitAndZombieDay();
     testFluidMesh();
     testSpawn();
     testItemsAndInventory();

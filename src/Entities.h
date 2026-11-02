@@ -65,6 +65,7 @@ struct Mob {
     float hurtTimer = 0.0f;
     float attackCooldown = 0.0f;
     float burnTimer = 0.0f;
+    float dayTimer = 0.0f;  // Sekunden bei Tageslicht ohne freien Himmel
     float walkPhase = 0.0f;
     float walkAmount = 0.0f;
     float deathTimer = -1.0f;  // >= 0: tot, liegt am Boden und verschwindet

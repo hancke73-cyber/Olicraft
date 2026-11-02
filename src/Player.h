@@ -39,6 +39,7 @@ public:
 
 private:
     float peakY_ = 0.0f;
+    float boost_ = 0.0f;  // Restzeit des Schubs beim Verlassen des Wassers
     bool airborne_ = false;
     void moveAxis(int axis, float delta, const World& world);
     bool bodyInWater(const World& world) const;
