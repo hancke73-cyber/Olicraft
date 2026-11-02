@@ -119,7 +119,7 @@ std::vector<glm::ivec3> findPathCells(const World& w, const glm::ivec3& start, c
     };
     std::vector<Node> nodes;
     std::vector<std::pair<int, int>> open;  // (f, index)
-    auto key = [](const glm::ivec3& p) { return (static_cast<int64_t>(p.x) << 40) ^ (static_cast<int64_t>(p.z) << 12) ^ p.y; };
+    auto key = [](const glm::ivec3& p) { return static_cast<int64_t>((static_cast<uint64_t>(static_cast<int64_t>(p.x)) << 40) ^ (static_cast<uint64_t>(static_cast<int64_t>(p.z)) << 12) ^ static_cast<uint64_t>(static_cast<int64_t>(p.y))); };
     std::vector<int64_t> closedKeys;
     auto isClosed = [&](const glm::ivec3& p) {
         const int64_t k = key(p);
@@ -187,6 +187,7 @@ void EntityManager::clear() {
     mobs_.clear();
     playerHits_.clear();
     soundEvents_.clear();
+    effects_.clear();
 }
 
 void EntityManager::spawnItem(const ItemStack& stack, const glm::vec3& pos, const glm::vec3& vel, float pickupDelay) {
@@ -220,6 +221,8 @@ int EntityManager::countMobs(bool hostile) const {
 }
 
 void EntityManager::emitMobSound(const Mob& m, int kind) {
+    if (kind == 1 && effects_.size() < 64) effects_.push_back({0, m.pos + glm::vec3(0.0f, mobSpec(m.type).height * 0.6f, 0.0f)});
+    if (kind == 2 && effects_.size() < 64) effects_.push_back({1, m.pos + glm::vec3(0.0f, 0.1f, 0.0f)});
     if (soundEvents_.size() > 64) return;
     static const SoundId ids[5][4] = {
         {SoundId::PigIdle, SoundId::PigHurt, SoundId::PigDeath, SoundId::PigIdle},

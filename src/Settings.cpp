@@ -16,6 +16,12 @@ void Settings::clamp() {
     effectVolume = std::max(0.0f, std::min(1.0f, effectVolume));
     musicVolume = std::max(0.0f, std::min(1.0f, musicVolume));
     playerSkin = std::max(0, std::min(7, playerSkin));
+    shadows = std::max(0, std::min(2, shadows));
+    texFilter = std::max(0, std::min(1, texFilter));
+    // Anisotropie auf eine erlaubte Stufe runden
+    int a = 1;
+    while (a * 2 <= anisotropy && a < 16) a *= 2;
+    anisotropy = a;
 }
 
 bool loadSettings(const std::string& path, Settings& s) {
@@ -46,6 +52,11 @@ bool loadSettings(const std::string& path, Settings& s) {
         } else if (key == "player_skin") {
             long v = std::strtol(val.c_str(), &end, 10);
             if (end != val.c_str()) s.playerSkin = static_cast<int>(v) - 1;  // in der Datei 1..8
+        } else if (key == "shadows" || key == "tex_filter" || key == "anisotropy") {
+            long v = std::strtol(val.c_str(), &end, 10);
+            if (end != val.c_str()) (key == "shadows" ? s.shadows : key == "tex_filter" ? s.texFilter : s.anisotropy) = static_cast<int>(v);
+        } else if (key == "clouds" || key == "particles") {
+            (key == "clouds" ? s.clouds : s.particles) = val == "1" || val == "true" || val == "an";
         } else if (key == "vsync") {
             s.vsync = val == "1" || val == "true" || val == "an";
         }
@@ -65,6 +76,11 @@ bool saveSettings(const std::string& path, const Settings& s) {
     std::snprintf(buf, sizeof(buf), "%.1f", s.fov);
     f << "fov=" << buf << "\n";
     f << "vsync=" << (s.vsync ? 1 : 0) << "\n";
+    f << "shadows=" << s.shadows << "\n";
+    f << "clouds=" << (s.clouds ? 1 : 0) << "\n";
+    f << "particles=" << (s.particles ? 1 : 0) << "\n";
+    f << "tex_filter=" << s.texFilter << "\n";
+    f << "anisotropy=" << s.anisotropy << "\n";
     f << "player_skin=" << s.playerSkin + 1 << "\n";
     std::snprintf(buf, sizeof(buf), "%.2f", s.masterVolume);
     f << "master_volume=" << buf << "\n";

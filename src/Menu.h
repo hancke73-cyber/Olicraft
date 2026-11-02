@@ -6,7 +6,7 @@
 
 namespace oc {
 
-enum class MenuScreen { None, Pause, Settings, Editor, Main, NewWorld };
+enum class MenuScreen { None, Pause, Settings, Editor, Main, NewWorld, Graphics };
 
 enum WidgetId {
     W_NONE = 0,
@@ -28,6 +28,12 @@ enum WidgetId {
     W_NEW_SEED,
     W_NEW_CREATE,
     W_NEW_BACK,
+    W_GRAPHICS,
+    W_GFX_SHADOWS,
+    W_GFX_CLOUDS,
+    W_GFX_PARTICLES,
+    W_GFX_FILTER,
+    W_GFX_ANISO,
     W_TO_MAIN,
     W_VSYNC,
     W_FULLSCREEN,
@@ -96,6 +102,9 @@ struct MenuState {
     bool hasSave = false;       // Hauptmenue: gibt es einen Spielstand
     std::string seedText;       // Neue Welt: eingetippte Ziffern
     bool newCreative = false;   // Neue Welt: Spielmodus
+    int shadows = 1;
+    bool clouds = true, particles = true;
+    int texFilter = 0, anisotropy = 8;
     bool fullscreen = false;
     bool creative = false;
 };

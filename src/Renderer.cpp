@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <fstream>
 
+#include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -26,14 +27,26 @@ layout(location = 3) in float aSky;
 layout(location = 4) in float aLight;
 uniform mat4 uProjView;
 uniform vec3 uOffset;
+uniform vec3 uCam;        // Kameraposition in der Welt (fuer ortsfeste Wellen)
+uniform float uTime;
+uniform int uWave;        // 1: Wasseroberflaeche bewegen
+uniform mat4 uLightVP;
 out vec2 vUV;
 out float vShade;
 out float vSky;
 out float vLight;
 out float vDist;
+out vec4 vShadow;
+out vec3 vPos;
 void main() {
     vec3 p = aPos + uOffset;
+    if (uWave == 1) {
+        vec3 wp = p + uCam;
+        p.y += (sin(wp.x * 1.6 + uTime * 1.5) + sin(wp.z * 1.2 + uTime * 1.1) + 0.5 * sin((wp.x + wp.z) * 3.1 + uTime * 2.3)) * 0.018 - 0.02;
+    }
     gl_Position = uProjView * vec4(p, 1.0);
+    vShadow = uLightVP * vec4(p, 1.0);
+    vPos = p;
     vUV = aUV;
     vShade = aShade;
     vSky = aSky;
@@ -48,25 +61,126 @@ in float vShade;
 in float vSky;
 in float vLight;
 in float vDist;
+in vec4 vShadow;
+in vec3 vPos;
 uniform sampler2D uAtlas;
+uniform sampler2DShadow uShadowMap;
 uniform float uSun;
 uniform vec3 uFogColor;
 uniform float uFogStart;
 uniform float uFogEnd;
 uniform int uCutout;
 uniform vec3 uTint;
+uniform float uTime;
+uniform int uAnim;          // 1: Wasser- und Lavakacheln animieren (nur beim Zeichnen der Welt)
+uniform int uShadowOn;
+uniform float uShadowStrength;
+uniform vec3 uLightDir;     // Richtung zur Sonne (kamerarelativ)
+uniform float uShadowTexel;
 out vec4 FragColor;
+
+float shadowFactor(float ndl) {
+    vec3 sc = vShadow.xyz / vShadow.w * 0.5 + 0.5;
+    if (sc.x < 0.0 || sc.x > 1.0 || sc.y < 0.0 || sc.y > 1.0 || sc.z > 1.0) return 1.0;
+    float bias = max(0.0008, 0.0035 * (1.0 - ndl));
+    float s = 0.0;
+    for (int x = -1; x <= 1; ++x)
+        for (int y = -1; y <= 1; ++y)
+            s += texture(uShadowMap, vec3(sc.xy + vec2(x, y) * uShadowTexel, sc.z - bias));
+    return s / 9.0;
+}
+
 void main() {
-    vec4 t = texture(uAtlas, vUV);
+    vec2 uv = vUV;
+    bool water = false, lava = false;
+    if (uAnim == 1) {
+        ivec2 tile = ivec2(floor(uv * 16.0));
+        if (tile.y == 0 && (tile.x == 5 || tile.x == 15)) {
+            vec2 local = uv * 16.0 - vec2(tile);
+            water = tile.x == 5;
+            lava = !water;
+            if (water) local = fract(local + vec2(sin(uTime * 0.7 + local.y * 6.2832) * 0.05 + uTime * 0.03, uTime * 0.05));
+            else local = fract(local + vec2(sin(uTime * 0.3 + local.y * 6.2832) * 0.03, uTime * 0.02));
+            local = clamp(local, 0.03, 0.97);
+            uv = (vec2(tile) + local) / 16.0;
+        }
+    }
+    vec4 t = texture(uAtlas, uv);
     if (uCutout == 1 && t.a < 0.5) discard;
     float cave = min(0.40, uSun);
-    float sunPart = vSky > 1.5 ? 1.0 : mix(cave, uSun, vSky);
+    float skyL = vSky > 1.5 ? 1.0 : vSky;
+    float sunTop = uSun;
+    if (uShadowOn == 1 && vSky < 1.5 && vSky > 0.01) {
+        vec3 n = normalize(cross(dFdx(vPos), dFdy(vPos)));
+        float ndl = dot(n, uLightDir);
+        if (ndl > 0.02) {  // nur sonnenzugewandte Flaechen bekommen Schatten (die anderen sind ueber ihre Flaechenhelligkeit dunkler)
+            float lit = shadowFactor(ndl);
+            sunTop = uSun * mix(1.0, mix(0.58, 1.0, lit), uShadowStrength);
+        }
+    }
+    float sunPart = vSky > 1.5 ? 1.0 : mix(cave, sunTop, skyL);
     float blk = pow(clamp(vLight, 0.0, 1.0), 1.25);
     vec3 light = max(vec3(sunPart), blk * vec3(1.0, 0.83, 0.60));  // Fackellicht ist warm
     vec3 c = t.rgb * vShade * light * uTint;
+    if (water) c += vec3(0.05, 0.07, 0.09) * (0.5 + 0.5 * sin(uTime * 1.7 + vPos.x * 3.0 + vPos.z * 2.0)) * sunPart;
     float f = clamp((vDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
     c = mix(c, uFogColor, f);
     FragColor = vec4(c, uCutout == 1 ? 1.0 : t.a);
+}
+)";
+
+const char* SHADOW_VS = R"(#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUV;
+uniform mat4 uLightVP;
+uniform vec3 uOffset;
+out vec2 vUV;
+void main() {
+    gl_Position = uLightVP * vec4(aPos + uOffset, 1.0);
+    vUV = aUV;
+}
+)";
+
+const char* SHADOW_FS = R"(#version 330 core
+in vec2 vUV;
+uniform sampler2D uAtlas;
+void main() {
+    if (texture(uAtlas, vUV).a < 0.5) discard;
+}
+)";
+
+const char* CLOUD_VS = R"(#version 330 core
+layout(location = 0) in vec3 aPos;
+uniform mat4 uProjView;
+uniform vec3 uCam;
+out vec3 vWorld;
+out float vDist;
+void main() {
+    gl_Position = uProjView * vec4(aPos, 1.0);
+    vWorld = aPos + uCam;
+    vDist = 0.0;
+}
+)";
+
+const char* CLOUD_FS = R"(#version 330 core
+in vec3 vWorld;
+in float vDist;
+uniform sampler2D uMask;
+uniform vec3 uColor;
+uniform float uAlpha;
+uniform vec3 uFogColor;
+uniform float uFogEnd;
+uniform float uTime;
+uniform vec3 uCam;
+out vec4 FragColor;
+void main() {
+    float vDist = length(vWorld.xz - uCam.xz);
+    vec2 uv = (vWorld.xz + vec2(uTime * 1.6, uTime * 0.4)) / (12.0 * 256.0);
+    float m = texture(uMask, uv).a;
+    if (m < 0.5) discard;
+    float fade = 1.0 - smoothstep(uFogEnd * 0.6, uFogEnd * 1.6, vDist);
+    vec3 c = mix(uColor, uFogColor, 1.0 - fade);
+    FragColor = vec4(c, uAlpha * fade);
 }
 )";
 
@@ -249,6 +363,52 @@ bool Renderer::init(const TextureStore& textures) {
     if (!domeShader_.build(DOME_VS, DOME_FS, "dome")) return false;
     if (!spriteShader_.build(SPRITE_VS, SPRITE_FS, "sprite")) return false;
     if (!starShader_.build(STAR_VS, STAR_FS, "star")) return false;
+    if (!shadowShader_.build(SHADOW_VS, SHADOW_FS, "shadow")) return false;
+    if (!cloudShader_.build(CLOUD_VS, CLOUD_FS, "cloud")) return false;
+    // Wolkenmaske: 256 x 256 Felder zu je 12 Bloecken, blockige Wolken aus Rauschen
+    {
+        std::vector<uint8_t> mask(256 * 256 * 4, 255);
+        // nahtlose Wertrauschen-Oktaven (Periode teilt 256), Wolken wo die Summe einen Schwellwert ueberschreitet
+        auto lattice = [](int ix, int iy, int period, int oct) {
+            ix = ((ix % period) + period) % period;
+            iy = ((iy % period) + period) % period;
+            return static_cast<float>(hash3(ix, iy, oct, 0xC10D5u) & 0xFFFFu) / 65535.0f;
+        };
+        for (int y = 0; y < 256; ++y)
+            for (int x = 0; x < 256; ++x) {
+                float sum = 0.0f, norm = 0.0f, amp = 1.0f;
+                for (int oct = 0; oct < 4; ++oct) {
+                    const int period = 8 << oct;             // 8, 16, 32, 64 Zellen je Bildbreite
+                    const float fx = static_cast<float>(x) * static_cast<float>(period) / 256.0f;
+                    const float fy = static_cast<float>(y) * static_cast<float>(period) / 256.0f;
+                    const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
+                    float tx = fx - static_cast<float>(ix), ty = fy - static_cast<float>(iy);
+                    tx = tx * tx * (3.0f - 2.0f * tx);
+                    ty = ty * ty * (3.0f - 2.0f * ty);
+                    const float v00 = lattice(ix, iy, period, oct), v10 = lattice(ix + 1, iy, period, oct);
+                    const float v01 = lattice(ix, iy + 1, period, oct), v11 = lattice(ix + 1, iy + 1, period, oct);
+                    sum += amp * (v00 + (v10 - v00) * tx + (v01 - v00) * ty + (v00 - v10 - v01 + v11) * tx * ty);
+                    norm += amp;
+                    amp *= 0.55f;
+                }
+                mask[static_cast<size_t>(y * 256 + x) * 4 + 3] = (sum / norm) > 0.645f ? 255 : 0;
+            }
+        glGenTextures(1, &cloudTex_);
+        glBindTexture(GL_TEXTURE_2D, cloudTex_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, mask.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glGenVertexArrays(1, &cloudVao_);
+        glGenBuffers(1, &cloudVbo_);
+        glBindVertexArray(cloudVao_);
+        glBindBuffer(GL_ARRAY_BUFFER, cloudVbo_);
+        glBufferData(GL_ARRAY_BUFFER, 4 * 3 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    }
+    if (glfwExtensionSupported("GL_EXT_texture_filter_anisotropic")) glGetFloatv(0x84FF, &maxAniso_);  // GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
 
     // Texturatlas
     const std::vector<uint8_t>& px = textures.atlasPixels();
@@ -400,6 +560,7 @@ void Renderer::shutdown() {
     if (guiTex_) glDeleteTextures(1, &guiTex_);
     if (viewTex_) glDeleteTextures(1, &viewTex_);
     itemMesh_.release();
+    particleMesh_.release();
     for (int i = 0; i < SKIN_COUNT; ++i) {
         skinMesh_[i].release();
         skinHurtMesh_[i].release();
@@ -414,6 +575,13 @@ void Renderer::shutdown() {
     domeShader_.release();
     spriteShader_.release();
     starShader_.release();
+    shadowShader_.release();
+    cloudShader_.release();
+    if (shadowTex_) glDeleteTextures(1, &shadowTex_);
+    if (shadowFbo_) glDeleteFramebuffers(1, &shadowFbo_);
+    if (cloudTex_) glDeleteTextures(1, &cloudTex_);
+    if (cloudVao_) glDeleteVertexArrays(1, &cloudVao_);
+    if (cloudVbo_) glDeleteBuffers(1, &cloudVbo_);
     chunkShader_.release();
     colorShader_.release();
     hudShader_.release();
@@ -457,6 +625,7 @@ void Renderer::render(const World& world, const FrameInfo& f) {
 
     if (!f.underwater && !f.underLava) drawSky(f, sc);
     drawWorld(world, f, fogColor, sunLevel);
+    if (f.clouds && !f.underwater && !f.underLava) drawClouds(f, sc, day, fogColor);
     if (f.hud.show) {
         drawSelection(f);
     }
@@ -586,6 +755,7 @@ void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3
     chunkShader_.setInt("uAtlas", 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, atlas_);
+    applyTextureFilter(f.texFilter, f.anisotropy);
 
     struct Item {
         float dist2;
@@ -613,10 +783,41 @@ void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3
     drawnChunks_ = static_cast<int>(visible.size());
     drawnQuads_ = 0;
 
+    // Schatten der Sonne (Schattenkarte), nur am Tag und nicht unter Wasser
+    uploadEntities(f);
+    const float sunH = sunHeight(f.timeOfDay);
+    const float shadowStrength = smooth01(0.03f, 0.26f, sunH);
+    const bool shadowsOn = f.shadows > 0 && shadowStrength > 0.01f && !f.underwater && !f.underLava;
+    const float sunAngle = f.timeOfDay * 2.0f * PI;
+    const glm::vec3 sunDir = glm::normalize(glm::vec3(std::cos(sunAngle), std::sin(sunAngle), 0.30f));
+    if (shadowsOn) renderShadowPass(world, f, sunDir);
+
+    chunkShader_.use();
+    chunkShader_.setMat4("uProjView", projView);
+    chunkShader_.setVec3("uFogColor", fogColor);
+    chunkShader_.setFloat("uFogStart", fogStart);
+    chunkShader_.setFloat("uFogEnd", fogEnd);
+    chunkShader_.setFloat("uSun", sunLevel);
+    chunkShader_.setInt("uAtlas", 0);
+    chunkShader_.setFloat("uTime", f.time);
+    chunkShader_.setVec3("uCam", f.camPos);
+    chunkShader_.setInt("uShadowOn", shadowsOn && shadowTex_ ? 1 : 0);
+    chunkShader_.setFloat("uShadowStrength", shadowStrength);
+    chunkShader_.setVec3("uLightDir", glm::vec3(sunDir));
+    chunkShader_.setFloat("uShadowTexel", shadowTexel_);
+    chunkShader_.setMat4("uLightVP", lightVP_);
+    chunkShader_.setInt("uShadowMap", 4);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, shadowTex_);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, atlas_);
+
     // Undurchsichtig (nah nach fern)
     glDisable(GL_BLEND);
     glDepthMask(GL_TRUE);
     chunkShader_.setInt("uCutout", 1);
+    chunkShader_.setInt("uAnim", 1);
+    chunkShader_.setInt("uWave", 0);
     chunkShader_.setVec3("uTint", glm::vec3(1.0f));
     for (const Item& it : visible) {
         if (it.c->opaque.empty()) continue;
@@ -627,7 +828,19 @@ void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3
 
     drawEntities(f, projView);
 
-    // Wasser (fern nach nah)
+    // Partikel (Billboards, gleiche Beleuchtung wie die Welt)
+    if (f.particles && !f.particles->empty()) {
+        glDisable(GL_CULL_FACE);
+        chunkShader_.setInt("uCutout", 1);
+        chunkShader_.setVec3("uOffset", glm::vec3(0.0f));
+        particleMesh_.upload(*f.particles);
+        particleMesh_.draw();
+        glEnable(GL_CULL_FACE);
+    }
+
+    // Wasser (fern nach nah), mit Wellen
+    chunkShader_.setInt("uAnim", 1);
+    chunkShader_.setInt("uWave", 1);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
@@ -665,16 +878,26 @@ void Renderer::drawSelection(const FrameInfo& f) {
     glDisable(GL_BLEND);
 }
 
+// Netze der Gegenstaende und Figuren auf die Grafikkarte laden (vor dem Schattenpass und dem Zeichnen)
+void Renderer::uploadEntities(const FrameInfo& f) {
+    if (!f.entities) return;
+    itemMesh_.upload(f.entities->items);
+    for (int i = 0; i < SKIN_COUNT; ++i) {
+        skinMesh_[i].upload(f.entities->skin[i]);
+        skinHurtMesh_[i].upload(f.entities->skinHurt[i]);
+    }
+}
+
 void Renderer::drawEntities(const FrameInfo& f, const glm::mat4& projView) {
     (void)projView;
     if (!f.entities) return;
     chunkShader_.setVec3("uOffset", glm::vec3(0.0f));
     chunkShader_.setInt("uCutout", 1);
+    chunkShader_.setInt("uAnim", 0);
     glActiveTexture(GL_TEXTURE0);
 
     // Gegenstaende am Boden: Blockatlas
-    if (!f.entities->items.empty()) {
-        itemMesh_.upload(f.entities->items);
+    if (!itemMesh_.empty()) {
         chunkShader_.setVec3("uTint", glm::vec3(1.0f));
         glBindTexture(GL_TEXTURE_2D, atlas_);
         itemMesh_.draw();
@@ -683,14 +906,12 @@ void Renderer::drawEntities(const FrameInfo& f, const glm::mat4& projView) {
     // Figuren: je Skin eine Textur, getroffene rot getoent
     for (int i = 0; i < SKIN_COUNT; ++i) {
         glBindTexture(GL_TEXTURE_2D, skinTex_[i]);
-        if (!f.entities->skin[i].empty()) {
-            skinMesh_[i].upload(f.entities->skin[i]);
+        if (!skinMesh_[i].empty()) {
             chunkShader_.setVec3("uTint", glm::vec3(1.0f));
             skinMesh_[i].draw();
             drawnQuads_ += skinMesh_[i].quadCount();
         }
-        if (!f.entities->skinHurt[i].empty()) {
-            skinHurtMesh_[i].upload(f.entities->skinHurt[i]);
+        if (!skinHurtMesh_[i].empty()) {
             chunkShader_.setVec3("uTint", glm::vec3(1.0f, 0.38f, 0.38f));
             skinHurtMesh_[i].draw();
             drawnQuads_ += skinHurtMesh_[i].quadCount();
@@ -698,6 +919,138 @@ void Renderer::drawEntities(const FrameInfo& f, const glm::mat4& projView) {
     }
     chunkShader_.setVec3("uTint", glm::vec3(1.0f));
     glBindTexture(GL_TEXTURE_2D, atlas_);
+    glBindVertexArray(0);
+}
+
+void Renderer::applyTextureFilter(int filter, int aniso) {
+    if (filter == curFilter_ && aniso == curAniso_) return;
+    curFilter_ = filter;
+    curAniso_ = aniso;
+    glBindTexture(GL_TEXTURE_2D, atlas_);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter == 0 ? GL_NEAREST : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter == 0 ? GL_NEAREST_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_LINEAR);
+    if (maxAniso_ > 1.0f) glTexParameterf(GL_TEXTURE_2D, 0x84FE, std::min(static_cast<float>(aniso), maxAniso_));  // GL_TEXTURE_MAX_ANISOTROPY_EXT
+}
+
+bool Renderer::ensureShadowMap(int size) {
+    if (shadowTex_ && shadowSize_ == size) return true;
+    if (shadowTex_) glDeleteTextures(1, &shadowTex_);
+    if (!shadowFbo_) glGenFramebuffers(1, &shadowFbo_);
+    glGenTextures(1, &shadowTex_);
+    glBindTexture(GL_TEXTURE_2D, shadowTex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    const float border[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowTex_, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    const bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    shadowSize_ = size;
+    return ok;
+}
+
+// Schattenkarte: Tiefenbild der Welt aus Sicht der Sonne (Parallelprojektion um den Spieler, auf Texel gerastet)
+void Renderer::renderShadowPass(const World& world, const FrameInfo& f, const glm::vec3& sunDir) {
+    const int size = f.shadows >= 2 ? 2048 : 1024;
+    if (!ensureShadowMap(size)) return;
+    const float E = f.shadows >= 2 ? 64.0f : 48.0f;
+    const glm::vec3 L = glm::normalize(sunDir);
+    const glm::vec3 up = std::fabs(L.y) > 0.95f ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+    const glm::vec3 fwd = -L;
+    const glm::vec3 right = glm::normalize(glm::cross(fwd, up)), camUp = glm::cross(right, fwd);
+    const float texel = 2.0f * E / static_cast<float>(size);
+    const double cr = static_cast<double>(f.camPos.x) * right.x + static_cast<double>(f.camPos.y) * right.y + static_cast<double>(f.camPos.z) * right.z;
+    const double cu = static_cast<double>(f.camPos.x) * camUp.x + static_cast<double>(f.camPos.y) * camUp.y + static_cast<double>(f.camPos.z) * camUp.z;
+    const float offR = static_cast<float>(std::floor(cr / texel) * texel - cr), offU = static_cast<float>(std::floor(cu / texel) * texel - cu);
+    const glm::vec3 center = right * offR + camUp * offU;
+    const glm::mat4 view = glm::lookAt(center + L * 140.0f, center, up);
+    lightVP_ = glm::ortho(-E, E, -E, E, 1.0f, 300.0f) * view;
+    shadowTexel_ = 1.0f / static_cast<float>(size);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowFbo_);
+    glViewport(0, 0, size, size);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(2.0f, 4.0f);
+    shadowShader_.use();
+    shadowShader_.setMat4("uLightVP", lightVP_);
+    shadowShader_.setInt("uAtlas", 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, atlas_);
+    for (const auto& kv : world.chunks()) {
+        const Chunk& c = *kv.second;
+        if (!c.meshed || c.opaque.empty()) continue;
+        glm::vec3 org;
+        org.x = static_cast<float>(static_cast<double>(c.cx) * CHUNK_W - static_cast<double>(f.camPos.x));
+        org.y = -f.camPos.y;
+        org.z = static_cast<float>(static_cast<double>(c.cz) * CHUNK_W - static_cast<double>(f.camPos.z));
+        const float r = E * 1.45f + 20.0f;
+        if (std::fabs(org.x + CHUNK_W * 0.5f) > r || std::fabs(org.z + CHUNK_W * 0.5f) > r) continue;
+        shadowShader_.setVec3("uOffset", org);
+        c.opaque.draw();
+    }
+    shadowShader_.setVec3("uOffset", glm::vec3(0.0f));
+    if (f.entities) {
+        if (!itemMesh_.empty()) itemMesh_.draw();
+        for (int i = 0; i < SKIN_COUNT; ++i) {
+            glBindTexture(GL_TEXTURE_2D, skinTex_[i]);
+            if (!skinMesh_[i].empty()) skinMesh_[i].draw();
+            if (!skinHurtMesh_[i].empty()) skinHurtMesh_[i].draw();
+        }
+        glBindTexture(GL_TEXTURE_2D, atlas_);
+    }
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glEnable(GL_CULL_FACE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, f.width, f.height);
+    glBindVertexArray(0);
+}
+
+// Blockige Wolken in 112 Bloecken Hoehe, zwei Lagen uebereinander (unten dunkler), ziehen langsam mit dem Wind
+void Renderer::drawClouds(const FrameInfo& f, const SkyColors& sc, float day, const glm::vec3& fogColor) {
+    const glm::mat4 viewRot = glm::mat4(glm::mat3(f.view));
+    const glm::mat4 projView = f.proj * viewRot;
+    const float big = 2400.0f;
+    cloudShader_.use();
+    cloudShader_.setMat4("uProjView", projView);
+    cloudShader_.setVec3("uCam", f.camPos);
+    cloudShader_.setFloat("uTime", f.time);
+    cloudShader_.setFloat("uFogEnd", static_cast<float>(f.renderDistance * CHUNK_W) * 2.2f);
+    cloudShader_.setVec3("uFogColor", fogColor);
+    cloudShader_.setInt("uMask", 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, cloudTex_);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glBindVertexArray(cloudVao_);
+    glBindBuffer(GL_ARRAY_BUFFER, cloudVbo_);
+    const glm::vec3 base = glm::mix(glm::vec3(0.12f, 0.14f, 0.22f), glm::vec3(0.98f), day);
+    const glm::vec3 tint = glm::mix(base, sc.dusk * 1.05f, sc.duskAmt * 0.55f * (0.4f + 0.6f * day));
+    for (int layer = 1; layer >= 0; --layer) {  // zuerst die obere Lage
+        const float y = 112.0f + static_cast<float>(layer) * 3.5f - f.camPos.y;
+        const float q[12] = {-big, y, -big, big, y, -big, -big, y, big, big, y, big};
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(q), q);
+        cloudShader_.setVec3("uColor", tint * (layer == 1 ? 1.0f : 0.9f));
+        cloudShader_.setFloat("uAlpha", layer == 1 ? 0.92f : 0.9f);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
+    glDepthMask(GL_TRUE);
+    glEnable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
     glBindVertexArray(0);
 }
 

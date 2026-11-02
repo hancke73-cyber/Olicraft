@@ -116,6 +116,7 @@ public:
     RayHit raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist) const;
 
     const std::unordered_map<ChunkKey, std::unique_ptr<Chunk>, ChunkKeyHash>& chunks() const { return chunks_; }
+    const Chunk* findChunk(int cx, int cz) const { return find(cx, cz); }
 
     // Speichern / Laden (nur vom Spieler veraenderte Chunks)
     void exportModified(std::vector<SavedChunk>& out) const;

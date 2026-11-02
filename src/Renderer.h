@@ -32,6 +32,11 @@ struct FrameInfo {
     HudState hud;
     // Entity-Geometrie (kamerarelative Weltkoordinaten), vom Spiel mit EntityManager::buildMesh erzeugt
     const EntityBatches* entities = nullptr;
+    int shadows = 0;          // 0 aus, 1 mittel, 2 hoch
+    bool clouds = true;
+    int texFilter = 0;        // 0 Pixel, 1 Weich
+    int anisotropy = 8;
+    const std::vector<Vertex>* particles = nullptr;  // Billboards in kamerarelativen Koordinaten
 };
 
 class Renderer {
@@ -62,12 +67,24 @@ private:
     void drawSky(const FrameInfo& f, const SkyColors& sc);
     void drawWorld(const World& world, const FrameInfo& f, const glm::vec3& fogColor, float sunLevel);
     void drawSelection(const FrameInfo& f);
+    void drawClouds(const FrameInfo& f, const SkyColors& sc, float day, const glm::vec3& fogColor);
+    void uploadEntities(const FrameInfo& f);
+    void applyTextureFilter(int filter, int aniso);
+    bool ensureShadowMap(int size);
+    void renderShadowPass(const World& world, const FrameInfo& f, const glm::vec3& sunDir);
     void drawHud(const FrameInfo& f);
     void drawEntities(const FrameInfo& f, const glm::mat4& projView);
 
     void flushHud(const FrameInfo& f);
 
-    Shader chunkShader_, colorShader_, hudShader_, domeShader_, spriteShader_, starShader_;
+    Shader chunkShader_, colorShader_, hudShader_, domeShader_, spriteShader_, starShader_, shadowShader_, cloudShader_;
+    GLuint shadowFbo_ = 0, shadowTex_ = 0;
+    int shadowSize_ = 0;
+    glm::mat4 lightVP_{1.0f};
+    float shadowTexel_ = 0.0f;
+    GLuint cloudTex_ = 0, cloudVao_ = 0, cloudVbo_ = 0;
+    int curFilter_ = -1, curAniso_ = -1;
+    float maxAniso_ = 1.0f;
     GLuint sunTex_ = 0, moonTex_ = 0, glowTex_ = 0;
     GLuint spriteVao_ = 0, spriteVbo_ = 0;
     GLuint atlas_ = 0;
@@ -75,6 +92,7 @@ private:
     GLuint viewTex_ = 0;     // Bild der Editor-Leinwand
     int previewSkin_ = -1;   // Skin fuer die Editor-Vorschau
     GpuMesh itemMesh_;
+    GpuMesh particleMesh_;
     GpuMesh skinMesh_[SKIN_COUNT], skinHurtMesh_[SKIN_COUNT];
     GLuint skinTex_[SKIN_COUNT] = {};
     HudBatch hudBatch_;

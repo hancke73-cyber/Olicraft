@@ -142,6 +142,12 @@ public:
 
     // Klangereignisse seit dem letzten Abholen (das Spiel spielt sie ab und leert die Liste)
     std::vector<SoundEvent>& soundEvents() { return soundEvents_; }
+    // Optische Ereignisse (Blut, Rauch bei Tod); das Spiel macht Partikel daraus
+    struct Effect {
+        int type;  // 0 Blut, 1 Staubwolke
+        glm::vec3 pos;
+    };
+    std::vector<Effect>& effects() { return effects_; }
 
     void buildMesh(const World& world, const glm::vec3& camPos, float time, EntityBatches& out) const;
 
@@ -171,6 +177,7 @@ private:
     std::vector<Mob> mobs_;
     std::vector<PlayerHit> playerHits_;
     std::vector<SoundEvent> soundEvents_;
+    std::vector<Effect> effects_;
     void emitMobSound(const Mob& m, int kind);  // 0 Ruf, 1 Treffer, 2 Tod, 3 Angriff
     Rng rng_;
     float spawnTimer_ = 2.0f;

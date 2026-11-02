@@ -324,6 +324,69 @@ void Game::playSound(SoundId id, const glm::vec3& pos, float volume, float pitch
 
 void Game::uiSound(SoundId id, float volume) { audio_.playUi(id, volume); }
 
+// Partikel: Ereignisse der Mobs, Fackeln, Lava und Oefen (einmal je Frame; ein Chunk pro Frame wird nach Quellen abgesucht)
+void Game::updateParticles(float dt) {
+    if (!settings_.particles) {
+        particles_.clear();
+        particleVerts_.clear();
+        entities_.effects().clear();
+        return;
+    }
+    for (const EntityManager::Effect& e : entities_.effects()) {
+        if (e.type == 0) particles_.emitBlood(e.pos, 6);
+        else particles_.emitPuff(e.pos, 10);
+    }
+    entities_.effects().clear();
+
+    // Quellen in der Naehe: je Frame einen Chunk in 3 Chunks Umgebung nach Fackeln, Lava, Oefen absuchen
+    const int pcx = floorDiv(static_cast<int>(std::floor(player_.pos.x)), CHUNK_W), pcz = floorDiv(static_cast<int>(std::floor(player_.pos.z)), CHUNK_W);
+    std::vector<std::pair<int, int>> near;
+    for (int dz = -3; dz <= 3; ++dz)
+        for (int dx = -3; dx <= 3; ++dx) near.emplace_back(pcx + dx, pcz + dz);
+    if (!near.empty()) {
+        const auto cc = near[emitterScanIdx_++ % near.size()];
+        if (const Chunk* ch = world_->findChunk(cc.first, cc.second)) {
+            std::vector<Emitter> list;
+            for (int i = 0; i < Chunk::VOLUME; ++i) {
+                const BlockId b = ch->blocks[static_cast<size_t>(i)];
+                if (b == AIR || b == STONE || b == DIRT || b == GRASS) continue;
+                const int lx = i % CHUNK_W, lz = (i / CHUNK_W) % CHUNK_W, y = i / (CHUNK_W * CHUNK_W);
+                const glm::ivec3 p(cc.first * CHUNK_W + lx, y, cc.second * CHUNK_W + lz);
+                if (isTorch(b)) list.push_back({p, 0});
+                else if (b == FURNACE_LIT) list.push_back({p, 2});
+                else if (b == LAVA && y + 1 < CHUNK_H && ch->blocks[static_cast<size_t>(i + CHUNK_W * CHUNK_W)] == AIR && (hash3(p.x, p.y, p.z, 7u) & 3u) == 0u) list.push_back({p, 1});
+            }
+            emitters_[(static_cast<int64_t>(cc.first) << 32) ^ static_cast<uint32_t>(cc.second)] = std::move(list);
+        }
+    }
+    for (auto it = emitters_.begin(); it != emitters_.end();) {
+        const int cx = static_cast<int>(it->first >> 32), cz = static_cast<int>(static_cast<int32_t>(it->first & 0xFFFFFFFF));
+        if (std::abs(cx - pcx) > 3 || std::abs(cz - pcz) > 3) {
+            it = emitters_.erase(it);
+            continue;
+        }
+        for (const Emitter& e : it->second) {
+            const float dx = e.pos.x + 0.5f - player_.pos.x, dz = e.pos.z + 0.5f - player_.pos.z, dy = e.pos.y - player_.pos.y;
+            if (dx * dx + dz * dz + dy * dy > 22.0f * 22.0f) continue;
+            const float r = static_cast<float>(hash3(e.pos.x, e.pos.y, e.pos.z, static_cast<uint32_t>(frameCounter_)) & 0xFFFFu) / 65535.0f;
+            if (e.kind == 0) {
+                const BlockId b = world_->getBlock(e.pos.x, e.pos.y, e.pos.z);
+                int sx, sy, sz;
+                torchSupportOffset(b, sx, sy, sz);
+                const glm::vec3 top(e.pos.x + 0.5f + sx * 0.15f, e.pos.y + (b == TORCH ? 0.8f : 0.95f), e.pos.z + 0.5f + sz * 0.15f);
+                if (r < dt * 7.0f) particles_.emitFlame(top);
+                if (r > 1.0f - dt * 1.2f) particles_.emitSmoke(top + glm::vec3(0.0f, 0.05f, 0.0f));
+            } else if (e.kind == 2) {
+                if (r < dt * 2.5f) particles_.emitSmoke(glm::vec3(e.pos.x + 0.5f, e.pos.y + 1.05f, e.pos.z + 0.5f));
+            } else if (e.kind == 1) {
+                if (r < dt * 0.6f) particles_.emitEmber(glm::vec3(e.pos.x + 0.5f, e.pos.y + 0.9f, e.pos.z + 0.5f));
+            }
+        }
+        ++it;
+    }
+    particles_.update(dt, *world_);
+}
+
 void Game::updateAudio(float dt) {
     if (!audio_.active()) return;
     applyVolumes();
@@ -424,6 +487,11 @@ MenuState Game::menuState() const {
     s.fov = settings_.fov;
     s.vsync = settings_.vsync;
     s.skinSlot = settings_.playerSkin;
+    s.shadows = settings_.shadows;
+    s.clouds = settings_.clouds;
+    s.particles = settings_.particles;
+    s.texFilter = settings_.texFilter;
+    s.anisotropy = settings_.anisotropy;
     s.hasSave = hasSave_;
     s.seedText = newSeedText_;
     s.newCreative = newCreative_;
@@ -480,6 +548,12 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
             settingsFrom_ = screen_ == MenuScreen::Main ? MenuScreen::Main : MenuScreen::Pause;
             screen_ = MenuScreen::Settings;
             break;
+        case W_GRAPHICS: screen_ = MenuScreen::Graphics; break;
+        case W_GFX_SHADOWS: settings_.shadows = (settings_.shadows + 1) % 3; persistSettings(); break;
+        case W_GFX_CLOUDS: settings_.clouds = !settings_.clouds; persistSettings(); break;
+        case W_GFX_PARTICLES: settings_.particles = !settings_.particles; persistSettings(); break;
+        case W_GFX_FILTER: settings_.texFilter = 1 - settings_.texFilter; persistSettings(); break;
+        case W_GFX_ANISO: settings_.anisotropy = settings_.anisotropy >= 16 ? 1 : settings_.anisotropy * 2; persistSettings(); break;
         case W_MAIN_PLAY:
             setPaused(false);  // die geladene oder frisch erzeugte Welt
             player_.flying = false;
@@ -506,7 +580,7 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
         case W_SAVE: wantSave_ = true; break;
         case W_QUIT: glfwSetWindowShouldClose(window_, GLFW_TRUE); break;
         case W_BACK:
-            screen_ = settingsFrom_;
+            screen_ = screen_ == MenuScreen::Graphics ? MenuScreen::Settings : settingsFrom_;
             persistSettings();
             break;
         case W_DISTANCE:
@@ -984,6 +1058,9 @@ void Game::handleKey(int key, int action, int mods) {
                 screen_ = MenuScreen::Settings;
                 dragWidget_ = W_NONE;
                 painting_ = false;
+            } else if (paused_ && screen_ == MenuScreen::Graphics) {
+                screen_ = MenuScreen::Settings;
+                persistSettings();
             } else if (paused_ && screen_ == MenuScreen::Settings) {
                 screen_ = settingsFrom_;
                 persistSettings();
@@ -1354,7 +1431,10 @@ void Game::update(float dt) {
             } else if (!player_.inWater) {
                 stepDist_ = std::min(stepDist_, 1.0f);
             }
-            if (player_.inWater && !wasInWater_ && !player_.inLava) playSound(SoundId::WaterSplash, player_.pos);
+            if (player_.inWater && !wasInWater_ && !player_.inLava) {
+                playSound(SoundId::WaterSplash, player_.pos);
+                if (settings_.particles) particles_.emitSplash(player_.pos + glm::vec3(0.0f, 0.5f, 0.0f), 18, std::min(4.0f, std::fabs(player_.vel.y) * 0.3f));
+            }
             if (player_.inLava && !wasInLava_) playSound(SoundId::LavaPop, player_.pos);
             wasInWater_ = player_.inWater;
             wasInLava_ = player_.inLava;
@@ -1404,6 +1484,7 @@ void Game::update(float dt) {
         }
     }
 
+    updateParticles(dt);
     updateAudio(dt);
     world_->update(player_.pos, opt_.renderDistance, 5.0);
 
@@ -1443,6 +1524,7 @@ void Game::breakBlock(const glm::ivec3& pIn) {
                                         glm::vec3(static_cast<float>(hash3(p.x, p.y, p.z, st.id) & 7u) / 4.0f - 1.0f, 2.5f, 0.5f), 0.4f);
     }
     world_->setBlock(p.x, p.y, p.z, AIR);
+    if (settings_.particles) particles_.emitBlockBreak(*world_, p, b);
     playSound(blockSound(blockMaterial(b)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f));
     if (!creative_) {
         ItemId drop = harvest ? blockDropItem(b) : ITEM_NONE;
@@ -3165,6 +3247,16 @@ void Game::render() {
     const float farPlane = static_cast<float>(opt_.renderDistance + 3) * CHUNK_W * 1.5f;
     f.proj = glm::perspective(glm::radians(settings_.fov), static_cast<float>(fbW_) / static_cast<float>(fbH_), 0.05f, farPlane);
     f.timeOfDay = timeOfDay_;
+    if (settings_.particles) {
+        const glm::mat4 vm = f.view;
+        const glm::vec3 right(vm[0][0], vm[1][0], vm[2][0]), up(vm[0][1], vm[1][1], vm[2][1]);
+        particles_.build(f.camPos, right, up, particleVerts_);
+        f.particles = &particleVerts_;
+    }
+    f.shadows = settings_.shadows;
+    f.clouds = settings_.clouds;
+    f.texFilter = settings_.texFilter;
+    f.anisotropy = settings_.anisotropy;
     f.moonPhase = opt_.moonPhase >= 0 ? opt_.moonPhase : dayCount_ % MOON_PHASES;
     f.time = static_cast<float>(glfwGetTime());
     f.renderDistance = opt_.renderDistance;

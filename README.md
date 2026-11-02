@@ -20,7 +20,7 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Große Tore: Tore sind einzelne Blöcke, nebeneinander und übereinander gesetzte Tore öffnen und schließen gemeinsam. So lassen sich beliebig große Tore bauen (z. B. 3 x 3). Auch nebeneinander stehende Türen (Doppeltür) öffnen gemeinsam
 - Landwirtschaft: Hacken (Holz bis Diamant) machen aus Gras oder Erde Acker, Samen (aus hohem Gras) und Karotten werden darauf gepflanzt, Weizen und Karotten wachsen in 3 Stufen (mit Wasser im Umkreis von 4 Blöcken doppelt so schnell), reif geerntet geben sie Weizen und mehr Samen bzw. Karotten. Brot (3 Weizen) heilt 5, Karotten 3. Ohne Acker brechen die Pflanzen ab
 - Dörfer: je etwa 160-Block-Zelle gibt es mit gewisser Wahrscheinlichkeit ein Dorf auf ebenem, trockenem Gelände (nicht im Schnee). Brunnen in der Mitte, bis zu 10 Gebäude im Kreis: Wohnhäuser (Bett, Werkbank), Bibliothek, Schmiede, Felder mit Zaun, Tor und Wasserrinne (Weizen und Karotten), Scheune mit großem Tor und Tieren, Marktstand mit Markise, Wachturm mit Eisentür und Gittern, am Rand ein Dorftor mit großem Tor und Laternen. Häuser haben Fundamente, Holztüren, Glasscheiben, Dächer aus Treppen und hängende Laternen, Kieswege führen zu jeder Tür, Laternenpfähle säumen die Wege. Truhen im Haus enthalten beim ersten Öffnen Beute (Kohle, Eisen, Gold, Essen, Bücher, selten Diamant). Um das Dorf wachsen keine Bäume. Mit `--village` springt man beim Start zum nächsten Dorf
-- Dorfbewohner: pro Haus einer, bleiben im Dorf, haben einen Beruf (Bauer, Bibliothekar, Schmied, Steinmetz, Schäfer). Rechtsklick öffnet das Handelsfenster mit 5 Angeboten, Währung sind Goldbarren: sie kaufen Rohstoffe (z. B. 15 Kohle → 1 Gold) und verkaufen Waren (z. B. 3 Gold → Eisenspitzhacke, 9 Gold → Diamant). Im Kreativmodus ist Handeln kostenlos. Sie zählen nicht zum Tierlimit
+- Dorfbewohner: pro Haus einer, bleiben im Dorf, haben einen Beruf (Bauer, Bibliothekar, Schmied, Steinmetz, Schäfer) mit eigenem Aussehen und Arbeitsplatz (Feld, Bibliothek, Schmiede, Marktstand, Scheune). Tagesablauf: tagsüber am Arbeitsplatz, abends nach Hause, nachts im Bett (liegend), morgens wieder auf. Sie finden ihren Weg per Pfadsuche, öffnen Türen und Tore und schwimmen aus dem Wasser ans Ufer. Rechtsklick öffnet das Handelsfenster mit 5 Angeboten, Währung sind Goldbarren: sie kaufen Rohstoffe (z. B. 15 Kohle → 1 Gold) und verkaufen Waren (z. B. 3 Gold → Eisenspitzhacke, 9 Gold → Diamant). Im Kreativmodus ist Handeln kostenlos. Sie zählen nicht zum Tierlimit
 - Rezeptbuch neben dem Inventar und der Werkbank: alle Rezepte, herstellbare zuerst und grün umrandet, Hinweis mit den Zutaten, Klick füllt das Raster aus dem Rucksack, Filter "Nur machbare", Mausrad scrollt. Rezepte für 3x3 sind im Inventar abgeblendet
 - Crafting: 2x2-Raster im Inventar, 3x3 an der Werkbank (Rechtsklick auf den Block, mit Umschalt wird er stattdessen gesetzt). Rezepte: Holz → 4 Bretter, 2 Bretter → 4 Stöcke, 4 Bretter → Werkbank, 8 Bruchstein → Ofen, 8 Bretter → Truhe, Wolle und Bretter → Bett, Bücherregal, Lampe, Ziegel, Steinziegel, Sandstein, Materialblöcke (und zurück zu 9 Barren), Papier und Bücher, Farben aus Blumen und Kohle, gefärbte Wolle (formlos: Wolle plus Farbe), Spitzhacke/Axt/Schaufel/Schwert aus Brettern, Bruchstein, Eisenbarren, Goldbarren oder Diamanten mit Stöcken, 1 Kohle über 1 Stock → 4 Fackeln
 - Werkzeuge aus Holz, Stein, Eisen, Gold und Diamant mit Haltbarkeit (60, 132, 250, 33, 1560 Nutzungen): passende Werkzeuge bauen schneller ab, Gold am schnellsten, bricht aber schnell. Mindeststufe zum Ernten: Stein und Kohle Holz, Eisenerz Stein, Gold- und Diamanterz Eisen, Obsidian Diamant (Goldwerkzeuge zählen als Holzstufe). Ohne passendes Werkzeug dauert der Abbau länger und es fällt nichts. Schwerter und Äxte machen mehr Schaden gegen Mobs
@@ -31,10 +31,15 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Spieler-Skins: 8 Plätze mit eigenen Standardfarben (Standard, Rot, Gruen, Violett, Orange, Hell, Dunkel, Rosa). Im Einstellungsmenü wechselt der Knopf "Spieler-Skin" den Platz, daneben dreht sich das Modell. Der Textur-Editor bearbeitet den gewählten Platz (Titel zeigt den Platz). Dateien: `textures/skin_player.png` (Platz 1), `skin_player_2.png` bis `skin_player_8.png`. Eigene Skins lassen sich auch einfach dort hineinkopieren (64x32 oder 64x64)
 - Feindliche Mobs (Zombies) treiben nicht im Wasser: sie sinken zum Grund und gehen dort, Tiere schwimmen oben
 - Figuren-Texturen als aufgeklappte Netze (Skins, 64x32 bzw. 64x64): Spieler im Minecraft-Layout, dazu Schwein, Kuh, Schaf und Zombie
+- Leitern (4 Ausrichtungen, hängen an einer festen Wand, fallen ab ohne Träger): Hochklettern mit Leertaste oder Vorwärts, Umschalt hält an, sonst langsames Abrutschen, kein Fallschaden an der Leiter
+- Betten sind zweiteilig (Fuß und Kopf), Rechtsklick wie bisher. Dorfhäuser haben je zwei Betten
+- Rüstung in vier Materialien (Leder von Kühen, Eisen, Gold, Diamant) und vier Teilen (Helm, Brustpanzer, Hose, Stiefel). Eigene Rüstungsplätze im Inventar neben einer Spielerfigur, Rechtsklick mit dem Teil in der Hand oder Umschalt-Klick im Inventar legt es an, Schaden wird reduziert (volle Diamantrüstung 80 %), Teile nutzen sich ab, getragene Rüstung ist am Spielermodell sichtbar. Der Schmied im Dorf verkauft Eisenrüstung
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten): Himmelsverlauf mit Abendrot und Glanz um die Sonne, Sonne mit Strahlen (tief am Horizont größer und orange), Mond mit 8 Phasen und Kratern (wechselt jede Nacht), funkelnde Sterne in drei Größen und leichten Farbtönen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
 - Blocklicht (0 bis 15, Ausbreitung wie in Minecraft, warmes Licht): Fackeln (Stufe 14), Lava (15) und brennende Öfen (13) beleuchten ihre Umgebung, Licht läuft über Chunkgrenzen und wird beim Entfernen korrekt nachgefüllt. Fackeln stehen auf dem Boden oder hängen an Wänden (nie an der Decke), fallen ab, wenn der Träger fehlt, brechen sofort und halten Zombies fern (sie erscheinen nur bei Licht 6 oder weniger)
+- Hauptmenü beim Start: "Spielen" bzw. "Spiel fortsetzen" (falls ein Spielstand da ist), "Neue Welt" (Spielmodus, Seed per Ziffern, leer ist zufällig) und Einstellungen. Das Pause-Menü hat "Hauptmenü". Mit `--no-menu` startet das Spiel direkt
+- Grafik (Einstellungen, Grafik): Schatten als Shadow-Map (aus, mittel, hoch), Wolken (zwei Schichten, ziehen mit dem Wind), animiertes Wasser (leichte Wellen und fließende Textur), Partikel (Block-Bruchstücke beim Abbauen, Spritzer, Rauch und Flammen an Fackeln und Öfen, Funken über Lava, Blut und Staub bei Mobs), Texturfilter (Pixel scharf oder weich) und anisotrope Filterung (1x bis 16x, nur wenn die Grafikkarte sie bietet)
 - Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, drei Lautstärkeregler, VSync, Vollbild, Spielmodus, Textur-Editor. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
 - Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
@@ -43,7 +48,7 @@ Texturformate: Kacheln sind 16x16 (`textures/block_<name>.png`), die Skins `skin
 
 - Ton (miniaudio): Schritte je Untergrund, Abbau- und Setzgeräusche je Material, Wasser, Lava, Essen, Aufheben, Herstellen, Schaden und Tod, Rufe von Schwein, Kuh, Schaf und Zombie (Richtung und Entfernung), Musik. Lautstärkeregler im Einstellungsmenü. Klangdateien liegen nicht bei: Dateinamen und Prompts stehen in [docs/SOUNDS.md](docs/SOUNDS.md), die Dateien kommen nach `sounds/`
 
-Bewusst nicht enthalten: Hunger, Rüstung, Mehrspieler.
+Bewusst nicht enthalten: Hunger, Mehrspieler.
 
 ## Steuerung
 
@@ -134,6 +139,7 @@ cmake --build build -j
 --fullscreen       Vollbild
 --no-vsync         VSync aus
 --no-save          Nichts laden oder speichern
+--no-menu          Ohne Hauptmenü direkt ins Spiel
 --save-path PFAD   Speicherdatei (Standard: saves/world.dat)
 --settings PFAD    Einstellungsdatei (Standard: settings.cfg)
 --textures PFAD    Ordner mit eigenen Texturen (Standard: textures)
@@ -142,7 +148,7 @@ cmake --build build -j
 --list-sounds      Benötigte Klangdateien als Tabelle ausgeben
 ```
 
-Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--moon N` (feste Mondphase 0 bis 7), `--village` (zum nächsten Dorf springen), `--demo mobs|water|torch|inv|craft|chest|trade|village|parts|furnace|menu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
+Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--moon N` (feste Mondphase 0 bis 7), `--village` (zum nächsten Dorf springen), `--demo mobs|water|torch|inv|craft|chest|trade|village|parts|armor|armorinv|furnace|menu|mainmenu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
 
 ## Tests
 
@@ -173,10 +179,11 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Menu.*`, `src/Settings.*` | Pause- und Einstellungsmenü, `settings.cfg` |
 | `src/TextureStore.*`, `src/TextureEditor.*`, `src/EditorUi.*`, `src/Image.*` | Texturspeicher mit PNG-Dateien, Editor-Logik (Werkzeuge, Rückgängig, Netze, Vorschau), Editor-Oberfläche |
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
-| `src/Save.*` | Speicherformat Version 5 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Öfen, Truhen, Wiedereinstiegspunkt, Gesundheit, Modus; Versionen 1 bis 4 bleiben lesbar) |
+| `src/Save.*` | Speicherformat Version 6 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Rüstung, Öfen, Truhen, Wiedereinstiegspunkt, Gesundheit, Modus; ältere Versionen bleiben lesbar) |
 | `src/BlockShape.h` | Boxen der Teilformen (Kollision, Strahl, Darstellung) |
 | `src/Village.*`, `src/Trades.*` | Dörfer (Lage, Gebäude, Wege, Beute) und Handelsangebote der Dorfbewohner |
 | `src/Sky.*` | Pixelgrafiken für Sonne, Mondphasen, Lichtkranz und die Sterne |
+| `src/Particles.*` | Partikelsystem (Billboards) |
 | `src/Chest.h` | Truheninhalt |
 | `tests/` | Tests |
 
@@ -187,8 +194,8 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 1. **Steampunk:** Dampfmaschinen, Rohre, Zahnräder, Maschinen und Fahrzeuge mit Dampfantrieb.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
 3. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
-4. **Weitere Bausteine:** Leitern, Eimer, Schilder, Treppen mit Ecken und umgedreht.
-5. **Dörfer ausbauen:** Zombie-Überfälle, Tagesablauf der Bewohner, Kirche.
+4. **Weitere Bausteine:** Eimer, Schilder, Treppen mit Ecken und umgedreht.
+5. **Dörfer ausbauen:** Zombie-Überfälle, Kirche.
 
 ## Drittanbieter
 

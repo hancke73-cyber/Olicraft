@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,7 @@
 #include "Entities.h"
 #include "Inventory.h"
 #include "Menu.h"
+#include "Particles.h"
 #include "Player.h"
 #include "Renderer.h"
 #include "Settings.h"
@@ -231,6 +233,16 @@ private:
     float statusTimer_ = 0.0f;
 
     EntityBatches entityBatches_;
+
+    ParticleSystem particles_;
+    std::vector<Vertex> particleVerts_;
+    struct Emitter {
+        glm::ivec3 pos;
+        uint8_t kind;  // 0 Fackel, 1 Lava, 2 brennender Ofen
+    };
+    std::unordered_map<int64_t, std::vector<Emitter>> emitters_;
+    size_t emitterScanIdx_ = 0;
+    void updateParticles(float dt);
 
     AudioEngine audio_;
     float stepDist_ = 0.0f;       // seit dem letzten Schritt gelaufene Strecke

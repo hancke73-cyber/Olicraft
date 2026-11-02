@@ -98,8 +98,30 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
         return m;
     }
 
+    if (screen == MenuScreen::Graphics) {
+        m.title = "Grafik";
+        const int rowsG = 6;
+        const float total = rowsG * bh + (rowsG - 1) * gap + 24.0f * s;
+        float y = std::floor((h - total) * 0.5f) + 24.0f * s;
+        m.titlePos = {0.0f, y - 22.0f * s};
+        static const char* SH[3] = {"Aus", "Mittel", "Hoch"};
+        m.widgets.push_back(button(W_GFX_SHADOWS, std::string("Schatten: ") + SH[st.shadows < 0 || st.shadows > 2 ? 0 : st.shadows], x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_GFX_CLOUDS, std::string("Wolken: ") + (st.clouds ? "An" : "Aus"), x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_GFX_PARTICLES, std::string("Partikel: ") + (st.particles ? "An" : "Aus"), x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_GFX_FILTER, std::string("Texturfilter: ") + (st.texFilter == 0 ? "Pixel (scharf)" : "Weich"), x, y, bw, bh));
+        y += bh + gap;
+        std::snprintf(buf, sizeof(buf), "Anisotrope Filterung: %dx", st.anisotropy);
+        m.widgets.push_back(button(W_GFX_ANISO, buf, x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_BACK, "Zurueck", x, y, bw, bh));
+        return m;
+    }
+
     m.title = "Einstellungen";
-    const int rows = 12;
+    const int rows = 13;
     const float total = rows * bh + (rows - 1) * gap + 24.0f * s;
     float y = std::floor((h - total) * 0.5f) + 24.0f * s;
     m.titlePos = {0.0f, y - 22.0f * s};
@@ -141,6 +163,8 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     m.widgets.push_back(button(W_FULLSCREEN, std::string("Vollbild: ") + (st.fullscreen ? "An" : "Aus"), x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_MODE, std::string("Spielmodus: ") + (st.creative ? "Kreativ" : "Survival"), x, y, bw, bh));
+    y += bh + gap;
+    m.widgets.push_back(button(W_GRAPHICS, "Grafik ...", x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_EDITOR, "Textur-Editor", x, y, bw, bh));
     y += bh + gap;

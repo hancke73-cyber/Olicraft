@@ -20,6 +20,7 @@
 #include "Camera.h"
 #include "Models.h"
 #include "Skins.h"
+#include "Particles.h"
 #include "Sky.h"
 #include <array>
 
@@ -1087,7 +1088,7 @@ static void testSettingsAndMenu() {
     std::filesystem::remove_all("olicraft_test_settings");
 
     // Menue-Layouts: Widgets liegen im Fenster, ueberlappen nicht und sind per Mausposition treffbar
-    for (MenuScreen scr : {MenuScreen::Pause, MenuScreen::Settings, MenuScreen::Main, MenuScreen::NewWorld}) {
+    for (MenuScreen scr : {MenuScreen::Pause, MenuScreen::Settings, MenuScreen::Main, MenuScreen::NewWorld, MenuScreen::Graphics}) {
         for (auto dim : {std::make_pair(1280, 720), std::make_pair(800, 600), std::make_pair(1920, 1080)}) {
             MenuState st;
             MenuLayout m = buildMenu(scr, st, dim.first, dim.second);
@@ -3139,6 +3140,58 @@ static void testLaddersBedsWater() {
     }
 }
 
+static void testParticlesAndGraphics() {
+    // Grafik-Einstellungen: Rundreise und Begrenzung
+    std::filesystem::create_directories("olicraft_test_gfx");
+    const std::string path = "olicraft_test_gfx/g.cfg";
+    Settings s;
+    s.shadows = 2; s.clouds = false; s.particles = false; s.texFilter = 1; s.anisotropy = 4;
+    CHECK(saveSettings(path, s));
+    Settings r;
+    CHECK(loadSettings(path, r));
+    CHECK(r.shadows == 2 && !r.clouds && !r.particles && r.texFilter == 1 && r.anisotropy == 4);
+    {
+        std::ofstream f(path);
+        f << "shadows=9\ntex_filter=-3\nanisotropy=64\n";
+    }
+    Settings c;
+    CHECK(loadSettings(path, c));
+    CHECK(c.shadows == 2 && c.texFilter == 0 && (c.anisotropy == 16 || c.anisotropy == 8 || c.anisotropy == 4 || c.anisotropy == 2 || c.anisotropy == 1));
+    std::filesystem::remove_all("olicraft_test_gfx");
+
+    // Partikel: Ausloeser, Lebensdauer, Obergrenze, Billboards
+    World w(8);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    for (int x = -4; x <= 4; ++x)
+        for (int z = -4; z <= 4; ++z) {
+            for (int y = 96; y < 120; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, 99, z, STONE);
+        }
+    ParticleSystem ps;
+    CHECK(ps.size() == 0);
+    ps.emitBlockBreak(w, glm::ivec3(0, 99, 0), STONE);
+    const size_t n = ps.size();
+    CHECK(n > 0);
+    ps.emitSmoke(glm::vec3(0.5f, 101.0f, 0.5f), 3);
+    ps.emitSplash(glm::vec3(0.5f, 101.0f, 0.5f), 5, 1.0f);
+    ps.emitBlood(glm::vec3(0.5f, 101.0f, 0.5f), 4);
+    CHECK(ps.size() > n);
+    std::vector<Vertex> verts;
+    ps.build(glm::vec3(0.0f, 100.0f, -5.0f), glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), verts);
+    CHECK(verts.size() == ps.size() * 4);
+    // Partikel fallen nicht durch den Boden und verschwinden nach einigen Sekunden
+    for (int i = 0; i < 400; ++i) {
+        ps.update(0.05f, w);
+        for (const Particle& p : ps.particles()) CHECK(p.pos.y > 98.5f);
+    }
+    CHECK(ps.size() == 0);
+    for (int i = 0; i < 5000; ++i) ps.emitFlame(glm::vec3(0.5f, 101.0f, 0.5f));
+    CHECK(ps.size() <= ParticleSystem::MAX_PARTICLES);
+    ps.clear();
+    CHECK(ps.size() == 0);
+}
+
 static void testArmor() {
     // Gegenstaende: 16 Teile, Plaetze und Punkte stimmen, Gesamtpunkte je Material
     int total[4] = {};
@@ -3251,6 +3304,7 @@ int main() {
     testPartsAndFarming();
     testLaddersBedsWater();
     testArmor();
+    testParticlesAndGraphics();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

@@ -12,6 +12,12 @@ struct Settings {
     float effectVolume = 1.0f;
     float musicVolume = 0.5f;
     int playerSkin = 0;         // Skin-Platz 0..7
+    // Grafik
+    int shadows = 1;            // 0 aus, 1 mittel (1024), 2 hoch (2048)
+    bool clouds = true;
+    bool particles = true;
+    int texFilter = 0;          // 0 Pixel (scharf), 1 Weich (linear)
+    int anisotropy = 8;         // 1, 2, 4, 8, 16
 
     static constexpr int MIN_DISTANCE = 4, MAX_DISTANCE = 24;
     static constexpr float MIN_SENS = 0.02f, MAX_SENS = 0.25f, DEFAULT_SENS = 0.09f;
