@@ -18,6 +18,9 @@ enum WidgetId {
     W_DISTANCE,
     W_SENSITIVITY,
     W_FOV,
+    W_VOL_MASTER,
+    W_VOL_EFFECTS,
+    W_VOL_MUSIC,
     W_VSYNC,
     W_FULLSCREEN,
     W_MODE,
@@ -76,6 +79,7 @@ struct MenuState {
     float mouseSensitivity = 0.09f;
     float fov = 70.0f;
     bool vsync = true;
+    float masterVolume = 0.8f, effectVolume = 1.0f, musicVolume = 0.5f;
     bool fullscreen = false;
     bool creative = false;
 };
@@ -87,6 +91,7 @@ int hitWidget(const MenuLayout& m, glm::vec2 p);  // Index in widgets oder -1
 int distanceFromFraction(float f);
 float sensitivityFromFraction(float f);
 float fovFromFraction(float f);
+float volumeFromFraction(float f);  // in 5%-Schritten
 float sliderFraction(const Widget& w, float mouseX);  // 0..1
 
 }  // namespace oc

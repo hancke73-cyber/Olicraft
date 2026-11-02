@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <random>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -118,6 +119,21 @@ bool Game::init() {
         for (const std::string& m : msgs) std::fprintf(stderr, "Textur ignoriert: %s\n", m.c_str());
     }
     if (!renderer_.init(textures_)) return false;
+
+    // Ton: Tests und Screenshots laufen ohne echtes Geraet; OLICRAFT_AUDIO=null erzwingt das ebenfalls
+    if (opt_.sound) {
+        const char* envAudio = std::getenv("OLICRAFT_AUDIO");
+        const bool nullDevice = opt_.selfTest || !opt_.screenshotPath.empty() || opt_.benchFrames > 0 ||
+                                (envAudio && std::string(envAudio) == "null");
+        if (audio_.init(nullDevice)) {
+            const int n = audio_.loadSounds(opt_.soundsDir);
+            std::printf("Ton: %d Klangereignisse, %d Musikstuecke aus %s\n", n, audio_.musicTrackCount(),
+                        opt_.soundsDir.c_str());
+            applyVolumes();
+        } else {
+            std::fprintf(stderr, "Ton: kein Audiogeraet, das Spiel bleibt still.\n");
+        }
+    }
 
     // Welt laden oder neu erzeugen
     SaveFile sf;
@@ -243,11 +259,30 @@ void Game::shutdown() {
         glfwTerminate();
         return;
     }
+    audio_.shutdown();
     world_.reset();  // GL-Objekte der Chunks freigeben, solange der Kontext existiert
     renderer_.shutdown();
     glfwDestroyWindow(window_);
     window_ = nullptr;
     glfwTerminate();
+}
+
+void Game::applyVolumes() { audio_.setVolumes(settings_.masterVolume, settings_.effectVolume, settings_.musicVolume); }
+
+void Game::playSound(SoundId id, const glm::vec3& pos, float volume, float pitch) {
+    audio_.play(id, pos, volume, pitch, true);
+}
+
+void Game::uiSound(SoundId id, float volume) { audio_.playUi(id, volume); }
+
+void Game::updateAudio(float dt) {
+    if (!audio_.active()) return;
+    applyVolumes();
+    audio_.setListener(player_.eyePos(), player_.front(), glm::vec3(0.0f, 1.0f, 0.0f));
+    for (const SoundEvent& e : entities_.soundEvents())
+        playSound(e.id, glm::vec3(e.x, e.y, e.z), e.volume, e.pitch);
+    entities_.soundEvents().clear();
+    audio_.update(dt);
 }
 
 void Game::showMessage(const std::string& m) {
@@ -284,6 +319,9 @@ MenuState Game::menuState() const {
     s.mouseSensitivity = settings_.mouseSensitivity;
     s.fov = settings_.fov;
     s.vsync = settings_.vsync;
+    s.masterVolume = settings_.masterVolume;
+    s.effectVolume = settings_.effectVolume;
+    s.musicVolume = settings_.musicVolume;
     s.fullscreen = window_ && glfwGetWindowMonitor(window_) != nullptr;
     s.creative = creative_;
     return s;
@@ -314,6 +352,12 @@ void Game::updateSlider(int widgetId, float mouseX) {
             settings_.mouseSensitivity = sensitivityFromFraction(f);
         } else if (widgetId == W_FOV) {
             settings_.fov = fovFromFraction(f);
+        } else if (widgetId == W_VOL_MASTER) {
+            settings_.masterVolume = volumeFromFraction(f);
+        } else if (widgetId == W_VOL_EFFECTS) {
+            settings_.effectVolume = volumeFromFraction(f);
+        } else if (widgetId == W_VOL_MUSIC) {
+            settings_.musicVolume = volumeFromFraction(f);
         }
         settings_.clamp();
     }
@@ -334,6 +378,9 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
         case W_DISTANCE:
         case W_SENSITIVITY:
         case W_FOV:
+        case W_VOL_MASTER:
+        case W_VOL_EFFECTS:
+        case W_VOL_MUSIC:
             dragWidget_ = id;
             updateSlider(id, mouse.x);
             break;
@@ -440,6 +487,7 @@ void Game::inventoryClick(int button, int mods) {
     const bool right = button == GLFW_MOUSE_BUTTON_RIGHT;
     const InvLayout layout = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_);
     const glm::vec2 m = mousePx();
+    uiSound(SoundId::Click, 0.4f);
 
     if (furnaceWindow_) {
         Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z);
@@ -482,6 +530,7 @@ void Game::inventoryClick(int button, int mods) {
     if (layout.hitResult(m)) {
         ItemStack res = matchRecipe(craft_, craftSize_);
         if (res.empty()) return;
+        uiSound(SoundId::Craft, 0.8f);
         if ((mods & GLFW_MOD_SHIFT) && !right) {
             // so oft herstellen, wie Zutaten und Platz reichen
             for (int i = 0; i < 64; ++i) {
@@ -626,7 +675,9 @@ void Game::handleMouseButton(int button, int action, int mods) {
         }
         if (action == GLFW_PRESS) {
             const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
-            activateWidget(hitWidget(menu, mousePx()), menu, mousePx());
+            const int hit = hitWidget(menu, mousePx());
+            if (hit >= 0) uiSound(SoundId::Click, 0.7f);
+            activateWidget(hit, menu, mousePx());
         }
         return;
     }
@@ -682,11 +733,13 @@ void Game::damagePlayer(int amount, const glm::vec3& knockback) {
         player_.onGround = false;
     }
     if (health_ <= 0) die();
+    else uiSound(SoundId::PlayerHurt);
 }
 
 void Game::die() {
     health_ = 0;
     dead_ = true;
+    uiSound(SoundId::PlayerDeath);
     burnTimer_ = 0.0f;
     cursor_.clear();
     closeInventory();
@@ -838,6 +891,41 @@ void Game::update(float dt) {
         env.allowSpawns = opt_.mobs && !shotMode;
         entities_.update(dt, *world_, player_, inventory_, env);
 
+        // Schritte, Wasser, Lava
+        {
+            const float hs = std::sqrt(player_.vel.x * player_.vel.x + player_.vel.z * player_.vel.z);
+            if (player_.onGround && !player_.flying && !player_.inWater && !dead_) {
+                stepDist_ += hs * dt;
+                if (stepDist_ >= 1.9f) {
+                    stepDist_ = 0.0f;
+                    const int bx = static_cast<int>(std::floor(player_.pos.x)), bz = static_cast<int>(std::floor(player_.pos.z));
+                    const int by = static_cast<int>(std::floor(player_.pos.y - 0.2f));
+                    playSound(stepSound(blockMaterial(world_->getBlock(bx, by, bz))), player_.pos, 0.55f);
+                }
+            } else if (player_.inWater && !dead_ && hs > 0.5f) {
+                stepDist_ += hs * dt;
+                if (stepDist_ >= 2.2f) {
+                    stepDist_ = 0.0f;
+                    playSound(SoundId::WaterSwim, player_.pos, 0.6f);
+                }
+            } else if (!player_.inWater) {
+                stepDist_ = std::min(stepDist_, 1.0f);
+            }
+            if (player_.inWater && !wasInWater_ && !player_.inLava) playSound(SoundId::WaterSplash, player_.pos);
+            if (player_.inLava && !wasInLava_) playSound(SoundId::LavaPop, player_.pos);
+            wasInWater_ = player_.inWater;
+            wasInLava_ = player_.inLava;
+            // Ofen angezuendet
+            if (furnaceWindow_) {
+                const Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z);
+                const bool lit = fu && fu->lit();
+                if (lit && !furnaceWasLit_) uiSound(SoundId::Fuse);
+                furnaceWasLit_ = lit;
+            } else {
+                furnaceWasLit_ = false;
+            }
+        }
+
         autosaveTimer_ += dt;
         if (autosaveTimer_ > 90.0f) {
             autosaveTimer_ = 0.0f;
@@ -862,6 +950,7 @@ void Game::update(float dt) {
         }
     }
 
+    updateAudio(dt);
     world_->update(player_.pos, opt_.renderDistance, 5.0);
 
     if (wantSave_) {
@@ -883,6 +972,7 @@ void Game::breakBlock(const glm::ivec3& p) {
         }
     }
     world_->setBlock(p.x, p.y, p.z, AIR);
+    playSound(blockSound(blockMaterial(b)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f));
     if (!creative_) {
         ItemId drop = harvest ? blockDropItem(b) : ITEM_NONE;
         // Laub gibt nur manchmal etwas her
@@ -918,6 +1008,7 @@ void Game::placeBlockOrUse() {
             health_ = std::min(20, health_ + (sel.id == ITEM_COOKED_MEAT ? 8 : 4));
             inventory_.take(slot_, 1);
             eatTimer_ = 0.8f;
+            uiSound(SoundId::Eat);
         }
         return;
     }
@@ -943,6 +1034,7 @@ void Game::placeBlockOrUse() {
     if (blockInfo(id).solid && player_.intersectsBlock(p.x, p.y, p.z)) return;
     if (world_->setBlock(p.x, p.y, p.z, id)) {
         placeTimer_ = 0.2f;
+        playSound(blockSound(blockMaterial(id)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f), 0.8f, 0.85f);
         if (!creative_) inventory_.take(slot_, 1);
     }
 }
@@ -1890,6 +1982,84 @@ int Game::selfTest() {
         SCHECK(clickWidget(W_RESUME) && !paused_);
         settings_.renderDistance = oldDist;
         opt_.renderDistance = oldDist;
+    }
+
+    // 19. Ton: Klangdateien laden (Nullgeraet), Spielereignisse loesen Klaenge aus, Lautstaerke-Regler
+    {
+        const std::string sdir = "olicraft_selftest_sounds";
+        std::filesystem::remove_all(sdir);
+        std::filesystem::create_directories(sdir);
+        auto wav = [&](const char* name) {
+            std::vector<int16_t> pcm(2205, 0);
+            for (size_t i = 0; i < pcm.size(); ++i) pcm[i] = static_cast<int16_t>(8000.0 * std::sin(i * 0.05));
+            std::ofstream f(sdir + "/" + name + ".wav", std::ios::binary);
+            const uint32_t rate = 22050, dataLen = static_cast<uint32_t>(pcm.size() * 2), riff = 36 + dataLen, fmt = 16,
+                           byteRate = rate * 2;
+            const uint16_t pcmFmt = 1, ch = 1, align = 2, bits = 16;
+            f.write("RIFF", 4);
+            f.write(reinterpret_cast<const char*>(&riff), 4);
+            f.write("WAVEfmt ", 8);
+            f.write(reinterpret_cast<const char*>(&fmt), 4);
+            f.write(reinterpret_cast<const char*>(&pcmFmt), 2);
+            f.write(reinterpret_cast<const char*>(&ch), 2);
+            f.write(reinterpret_cast<const char*>(&rate), 4);
+            f.write(reinterpret_cast<const char*>(&byteRate), 4);
+            f.write(reinterpret_cast<const char*>(&align), 2);
+            f.write(reinterpret_cast<const char*>(&bits), 2);
+            f.write("data", 4);
+            f.write(reinterpret_cast<const char*>(&dataLen), 4);
+            f.write(reinterpret_cast<const char*>(pcm.data()), static_cast<std::streamsize>(dataLen));
+        };
+        for (const char* n : {"block_stone", "block_wood", "player_hurt", "pig_idle", "eat", "click"}) wav(n);
+        SCHECK(audio_.active());
+        SCHECK(audio_.loadSounds(sdir) == 6);
+        SCHECK(audio_.variantCount(SoundId::BlockStone) == 1 && audio_.variantCount(SoundId::StepGrass) == 0);
+        applyVolumes();
+
+        dead_ = false;
+        creative_ = false;
+        paused_ = false;
+        inventoryOpen_ = false;
+        health_ = 20;
+        invulnerable_ = 0.0f;
+        uint64_t played = audio_.playedCount();
+        world_->setBlock(10, gy - 1, -4, STONE);
+        breakBlock(glm::ivec3(10, gy - 1, -4));  // Stein abbauen
+        SCHECK(audio_.playedCount() == played + 1);
+        played = audio_.playedCount();
+        playSound(SoundId::StepGrass, player_.pos);  // fehlende Datei: still
+        SCHECK(audio_.playedCount() == played);
+        damagePlayer(2, glm::vec3(0.0f));
+        SCHECK(health_ == 18 && audio_.playedCount() == played + 1);
+        played = audio_.playedCount();
+        // Mob-Ereignis wird abgeholt und abgespielt
+        entities_.soundEvents().push_back({SoundId::PigIdle, player_.pos.x + 3.0f, player_.pos.y, player_.pos.z, 1.0f, 1.0f});
+        updateAudio(0.016f);
+        SCHECK(audio_.playedCount() == played + 1 && entities_.soundEvents().empty());
+        SCHECK(audio_.voiceCount() >= 1);
+        // Lautstaerke-Regler in den Einstellungen
+        paused_ = true;
+        screen_ = MenuScreen::Settings;
+        {
+            const MenuLayout m = buildMenu(screen_, menuState(), fbW_, fbH_);
+            const Widget* vm = nullptr;
+            for (const Widget& w : m.widgets)
+                if (w.id == W_VOL_MASTER) vm = &w;
+            SCHECK(vm != nullptr);
+            if (vm) {
+                const float old = settings_.masterVolume;
+                updateSlider(W_VOL_MASTER, vm->pos.x);
+                SCHECK(settings_.masterVolume == 0.0f);
+                updateSlider(W_VOL_MASTER, vm->pos.x + vm->size.x);
+                SCHECK(settings_.masterVolume == 1.0f);
+                settings_.masterVolume = old;
+            }
+        }
+        paused_ = false;
+        screen_ = MenuScreen::None;
+        audio_.stopAll();
+        health_ = 20;
+        std::filesystem::remove_all(sdir);
     }
 
     // 11. Speichern: Inventar, Gesundheit, Modus

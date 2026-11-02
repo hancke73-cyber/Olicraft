@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Game.h"
+#include "Sounds.h"
 
 static void printHelp() {
     std::puts(
@@ -23,6 +24,9 @@ static void printHelp() {
         "  --save-path PFAD  Speicherdatei (Standard: saves/world.dat)\n"
         "  --settings PFAD   Einstellungsdatei (Standard: settings.cfg)\n"
         "  --textures PFAD   Ordner mit eigenen Texturen (Standard: textures)\n"
+        "  --sounds PFAD     Ordner mit Klangdateien (Standard: sounds, Musik in sounds/music)\n"
+        "  --no-sound        Ton aus\n"
+        "  --list-sounds     Alle benoetigten Klangdateien mit Beschreibung und Vorschlag fuer die Erzeugung ausgeben\n"
         "  --help            Diese Hilfe\n"
         "\n"
         "Steuerung: WASD, Maus, Leertaste springen, Strg sprinten, F fliegen (Kreativ),\n"
@@ -63,6 +67,18 @@ int main(int argc, char** argv) {
         } else if (a == "--textures") {
             need(1);
             opt.texturesDir = argv[++i];
+        } else if (a == "--sounds") {
+            need(1);
+            opt.soundsDir = argv[++i];
+        } else if (a == "--list-sounds") {
+            std::puts("| Datei (ohne Endung) | Beschreibung | Dauer | Prompt (englisch) |\n|---|---|---|---|");
+            for (int i = 0; i < oc::SOUND_COUNT; ++i) {
+                const oc::SoundDef& d = oc::soundDef(static_cast<oc::SoundId>(i));
+                std::printf("| `%s` | %s | %.1f s | %s |\n", d.file, d.desc, d.seconds, d.prompt);
+            }
+            return 0;
+        } else if (a == "--no-sound") {
+            opt.sound = false;
         } else if (a == "--distance") {
             need(1);
             opt.renderDistance = std::atoi(argv[++i]);

@@ -52,7 +52,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     }
 
     m.title = "Einstellungen";
-    const int rows = 8;
+    const int rows = 11;
     const float total = rows * bh + (rows - 1) * gap + 24.0f * s;
     float y = std::floor((h - total) * 0.5f) + 24.0f * s;
     m.titlePos = {0.0f, y - 22.0f * s};
@@ -72,6 +72,16 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     m.widgets.push_back(
         slider(W_FOV, buf, (st.fov - Settings::MIN_FOV) / (Settings::MAX_FOV - Settings::MIN_FOV), x, y, bw, bh));
     y += bh + gap;
+    {
+        const struct { int id; const char* name; float v; } vols[3] = {{W_VOL_MASTER, "Gesamtlautstaerke", st.masterVolume},
+                                                                    {W_VOL_EFFECTS, "Effekte", st.effectVolume},
+                                                                    {W_VOL_MUSIC, "Musik", st.musicVolume}};
+        for (const auto& v : vols) {
+            std::snprintf(buf, sizeof(buf), "%s: %d%%", v.name, static_cast<int>(std::lround(v.v * 100.0f)));
+            m.widgets.push_back(slider(v.id, buf, v.v, x, y, bw, bh));
+            y += bh + gap;
+        }
+    }
     m.widgets.push_back(button(W_VSYNC, std::string("VSync: ") + (st.vsync ? "An" : "Aus"), x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_FULLSCREEN, std::string("Vollbild: ") + (st.fullscreen ? "An" : "Aus"), x, y, bw, bh));
@@ -106,6 +116,8 @@ float sensitivityFromFraction(float f) {
     float v = Settings::MIN_SENS + f * (Settings::MAX_SENS - Settings::MIN_SENS);
     return std::round(v * 100.0f) / 100.0f < Settings::MIN_SENS ? Settings::MIN_SENS : std::round(v * 100.0f) / 100.0f;
 }
+
+float volumeFromFraction(float f) { return std::round(std::max(0.0f, std::min(1.0f, f)) * 20.0f) / 20.0f; }
 
 float fovFromFraction(float f) {
     return std::round(Settings::MIN_FOV + f * (Settings::MAX_FOV - Settings::MIN_FOV));

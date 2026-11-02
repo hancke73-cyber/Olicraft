@@ -5,6 +5,7 @@
 
 #include <glm/glm.hpp>
 
+#include "Audio.h"
 #include "Block.h"
 #include "Camera.h"
 #include "EditorUi.h"
@@ -38,6 +39,8 @@ struct Options {
     bool vsync = true;
     int forceMode = -1;  // -1: Spielstand/Standard, 0: Survival, 1: Kreativ
     bool mobs = true;
+    bool sound = true;                // --no-sound
+    std::string soundsDir = "sounds";  // --sounds PFAD
 
     // Test-/Entwicklungsoptionen
     std::string screenshotPath;  // wenn gesetzt: nach einigen Frames Screenshot speichern und beenden
@@ -107,6 +110,11 @@ private:
     void applyDemo();
     int selfTest();
     void showMessage(const std::string& m);
+    // Ton
+    void playSound(SoundId id, const glm::vec3& pos, float volume = 1.0f, float pitch = 1.0f);
+    void uiSound(SoundId id, float volume = 1.0f);
+    void updateAudio(float dt);
+    void applyVolumes();
 
     void render();
     bool saveWorld();
@@ -186,6 +194,14 @@ private:
     float statusTimer_ = 0.0f;
 
     EntityBatches entityBatches_;
+
+    AudioEngine audio_;
+    float stepDist_ = 0.0f;       // seit dem letzten Schritt gelaufene Strecke
+    bool wasInWater_ = false, wasInLava_ = false;
+    bool furnaceWasLit_ = false;
+public:
+    const AudioEngine& audio() const { return audio_; }
+private:
 
     double fpsTimer_ = 0.0;
     int fpsFrames_ = 0;

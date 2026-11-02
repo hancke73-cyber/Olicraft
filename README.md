@@ -24,13 +24,15 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Tag-Nacht-Zyklus (10 Minuten) mit Sonne, Mond und Sternen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
 - Blocklicht (0 bis 15, Ausbreitung wie in Minecraft, warmes Licht): Fackeln (Stufe 14), Lava (15) und brennende Öfen (13) beleuchten ihre Umgebung, Licht läuft über Chunkgrenzen und wird beim Entfernen korrekt nachgefüllt. Fackeln stehen auf dem Boden oder hängen an Wänden (nie an der Decke), fallen ab, wenn der Träger fehlt, brechen sofort und halten Zombies fern (sie erscheinen nur bei Licht 6 oder weniger)
-- Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, VSync, Vollbild, Spielmodus. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
+- Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, drei Lautstärkeregler, VSync, Vollbild, Spielmodus, Textur-Editor. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
 - Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
 
 Texturformate: Kacheln sind 16x16 (`textures/block_<name>.png`), die Skins `skin_player.png` und `skin_zombie.png` 64x32 im Minecraft-Layout (Kopf 0,0, Körper 16,16, Arm 40,16, Bein 0,16; linke Gliedmaßen werden gespiegelt; Minecraft-Skins im Format 64x64 werden akzeptiert, die obere Hälfte zählt), `skin_pig.png`, `skin_cow.png` und `skin_sheep.png` 64x64. Dateien mit falscher Größe werden beim Start ignoriert und gemeldet. Der Block-Export ist ein 64x48-Kreuznetz (4 x 3 Kacheln).
 
-Bewusst nicht enthalten: Hunger, Rüstung, Sound, Mehrspieler.
+- Ton (miniaudio): Schritte je Untergrund, Abbau- und Setzgeräusche je Material, Wasser, Lava, Essen, Aufheben, Herstellen, Schaden und Tod, Rufe von Schwein, Kuh, Schaf und Zombie (Richtung und Entfernung), Musik. Lautstärkeregler im Einstellungsmenü. Klangdateien liegen nicht bei: Dateinamen und Prompts stehen in [docs/SOUNDS.md](docs/SOUNDS.md), die Dateien kommen nach `sounds/`
+
+Bewusst nicht enthalten: Hunger, Rüstung, Mehrspieler.
 
 ## Steuerung
 
@@ -124,6 +126,9 @@ cmake --build build -j
 --save-path PFAD   Speicherdatei (Standard: saves/world.dat)
 --settings PFAD    Einstellungsdatei (Standard: settings.cfg)
 --textures PFAD    Ordner mit eigenen Texturen (Standard: textures)
+--sounds PFAD      Ordner mit Klangdateien (Standard: sounds, Musik in sounds/music)
+--no-sound         Ton aus
+--list-sounds      Benötigte Klangdateien als Tabelle ausgeben
 ```
 
 Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--demo mobs|water|torch|inv|craft|furnace|menu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
@@ -153,6 +158,7 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Player.*`, `src/Physics.*` | Bewegung und Kollision (auch für Mobs und Gegenstände) |
 | `src/Entities.*` | Mobs (KI, Spawnen, Modelle aus Quadern) und Gegenstände am Boden |
 | `src/Items.*`, `src/Inventory.*`, `src/Crafting.*`, `src/Furnace.h` | Gegenstände und Werkzeuge, Stapel, Klicklogik, Rezepte, Schmelzen, Ofenzustand |
+| `src/Audio.*`, `src/Sounds.*` | Tonausgabe (miniaudio), Klangereignisse, Dateinamen und Prompts |
 | `src/Menu.*`, `src/Settings.*` | Pause- und Einstellungsmenü, `settings.cfg` |
 | `src/TextureStore.*`, `src/TextureEditor.*`, `src/EditorUi.*`, `src/Image.*` | Texturspeicher mit PNG-Dateien, Editor-Logik (Werkzeuge, Rückgängig, Netze, Vorschau), Editor-Oberfläche |
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
@@ -163,13 +169,13 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 
 Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 
-1. **Sound:** Effekte und Musik. Vorher wird die Audio-Bibliothek geklärt.
-2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
-3. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+1. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
+2. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
 
 ## Drittanbieter
 
 - [GLFW](https://www.glfw.org/) 3.4 (zlib/libpng-Lizenz)
 - [GLM](https://github.com/g-truc/glm) 1.0.1 (MIT)
 - [stb_image und stb_image_write](https://github.com/nothings/stb) (gemeinfrei oder MIT) für PNG, liegen in `third_party/stb`
+- [miniaudio](https://miniaud.io/) 0.11.26 (gemeinfrei oder MIT-0) für den Ton, liegt in `third_party/miniaudio`
 - GLAD 2, erzeugt für OpenGL 3.3 Core, liegt in `third_party/glad` (SPDX laut Header: WTFPL OR CC0-1.0, AND Apache-2.0)

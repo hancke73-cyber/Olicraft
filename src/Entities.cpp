@@ -91,6 +91,7 @@ void EntityManager::clear() {
     items_.clear();
     mobs_.clear();
     playerHits_.clear();
+    soundEvents_.clear();
 }
 
 void EntityManager::spawnItem(const ItemStack& stack, const glm::vec3& pos, const glm::vec3& vel, float pickupDelay) {
@@ -111,6 +112,7 @@ Mob& EntityManager::spawnMob(MobType type, const glm::vec3& pos) {
     m.yaw = rng_.range(0.0f, 2.0f * PI);
     m.wanderYaw = m.yaw;
     m.stateTimer = rng_.range(1.0f, 4.0f);
+    m.idleSoundTimer = rng_.range(2.0f, 12.0f);
     mobs_.push_back(m);
     return mobs_.back();
 }
@@ -120,6 +122,18 @@ int EntityManager::countMobs(bool hostile) const {
     for (const Mob& m : mobs_)
         if (!m.dead() && mobSpec(m.type).hostile == hostile) ++n;
     return n;
+}
+
+void EntityManager::emitMobSound(const Mob& m, int kind) {
+    if (soundEvents_.size() > 64) return;
+    static const SoundId ids[4][4] = {
+        {SoundId::PigIdle, SoundId::PigHurt, SoundId::PigDeath, SoundId::PigIdle},
+        {SoundId::CowIdle, SoundId::CowHurt, SoundId::CowDeath, SoundId::CowIdle},
+        {SoundId::SheepIdle, SoundId::SheepHurt, SoundId::SheepDeath, SoundId::SheepIdle},
+        {SoundId::ZombieIdle, SoundId::ZombieHurt, SoundId::ZombieDeath, SoundId::ZombieAttack}};
+    const float pitch = rng_.range(0.92f, 1.08f);
+    soundEvents_.push_back({ids[static_cast<int>(m.type)][kind], m.pos.x, m.pos.y + mobSpec(m.type).height * 0.8f, m.pos.z,
+                            1.0f, pitch});
 }
 
 void EntityManager::dropLoot(const Mob& m) {
@@ -152,6 +166,9 @@ void EntityManager::hurtMob(Mob& m, int damage, const glm::vec3& from) {
     if (m.health <= 0) {
         m.deathTimer = 0.0f;
         dropLoot(m);
+        emitMobSound(m, 2);
+    } else {
+        emitMobSound(m, 1);
     }
 }
 
@@ -229,6 +246,12 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
         m.hurtTimer = std::max(0.0f, m.hurtTimer - dt);
         m.attackCooldown = std::max(0.0f, m.attackCooldown - dt);
         m.panicTimer = std::max(0.0f, m.panicTimer - dt);
+        m.idleSoundTimer -= dt;
+        if (m.idleSoundTimer <= 0.0f) {
+            m.idleSoundTimer = rng_.range(sp.hostile ? 5.0f : 7.0f, sp.hostile ? 14.0f : 20.0f);
+            const glm::vec3 d = player.pos - m.pos;
+            if (!env.playerDead && d.x * d.x + d.y * d.y + d.z * d.z < 28.0f * 28.0f) emitMobSound(m, 0);
+        }
     }
     m.inWater = world.inWaterAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f)) || world.inLavaAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f));
     if (!m.dead() && world.inLavaAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f))) {  // Lava: 4 Schaden pro Sekunde
@@ -237,7 +260,12 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
             m.lavaTimer = 0.0f;
             m.health -= 2;
             m.hurtTimer = 0.3f;
-            if (m.health <= 0) m.deathTimer = 0.0f;  // ohne Beute
+            if (m.health <= 0) {
+                m.deathTimer = 0.0f;  // ohne Beute
+                emitMobSound(m, 2);
+            } else {
+                emitMobSound(m, 1);
+            }
         }
     }
 
@@ -259,6 +287,7 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
             targetYaw = std::atan2(dir.y, dir.x);
             if (dist2d < 1.25f && std::fabs(toPlayer.y) < 1.6f && m.attackCooldown <= 0.0f) {
                 m.attackCooldown = 1.0f;
+                emitMobSound(m, 3);
                 playerHits_.push_back({3, glm::vec3(dir.x * 6.0f, 4.0f, dir.y * 6.0f)});
             }
             if (dist2d < 1.0f) speed = 0.0f;  // direkt vor dem Spieler stehen bleiben
@@ -454,7 +483,10 @@ void EntityManager::update(float dt, World& world, const Player& player, Invento
         bool remove = it.age > 300.0f || it.pos.y < -20.0f || world.inLavaAt(it.pos + glm::vec3(0.0f, 0.1f, 0.0f));  // Lava vernichtet
         if (!remove && !env.playerDead && it.pickupDelay <= 0.0f &&
             glm::length(pc - (it.pos + glm::vec3(0.0f, 0.1f, 0.0f))) < 1.5f) {
+            const int before = it.stack.count;
             int left = inv.add(it.stack.id, it.stack.count);
+            if (left < before && soundEvents_.size() <= 64)
+                soundEvents_.push_back({SoundId::ItemPickup, pc.x, pc.y, pc.z, 0.6f, rng_.range(0.9f, 1.3f)});
             if (left <= 0) remove = true;
             else it.stack.count = left;
         }

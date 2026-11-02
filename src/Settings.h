@@ -8,6 +8,9 @@ struct Settings {
     float mouseSensitivity = 0.09f;  // Grad je Pixel, 0.02..0.25
     float fov = 70.0f;               // Grad, 50..110
     bool vsync = true;
+    float masterVolume = 0.8f;  // 0..1
+    float effectVolume = 1.0f;
+    float musicVolume = 0.5f;
 
     static constexpr int MIN_DISTANCE = 4, MAX_DISTANCE = 24;
     static constexpr float MIN_SENS = 0.02f, MAX_SENS = 0.25f, DEFAULT_SENS = 0.09f;

@@ -8,6 +8,7 @@
 #include "Inventory.h"
 #include "Items.h"
 #include "Skins.h"
+#include "Sounds.h"
 
 namespace oc {
 
@@ -86,6 +87,7 @@ struct Mob {
     float walkAmount = 0.0f;
     float deathTimer = -1.0f;  // >= 0: tot, liegt am Boden und verschwindet
     float stuckTimer = 0.0f;
+    float idleSoundTimer = 4.0f;  // bis zum naechsten Ruf
 
     bool dead() const { return deathTimer >= 0.0f; }
 };
@@ -120,6 +122,9 @@ public:
     // Vom Spieler erlittene Treffer (werden vom Spiel abgeholt)
     std::vector<PlayerHit>& playerHits() { return playerHits_; }
 
+    // Klangereignisse seit dem letzten Abholen (das Spiel spielt sie ab und leert die Liste)
+    std::vector<SoundEvent>& soundEvents() { return soundEvents_; }
+
     void buildMesh(const World& world, const glm::vec3& camPos, float time, EntityBatches& out) const;
 
     const std::vector<Mob>& mobs() const { return mobs_; }
@@ -136,6 +141,8 @@ private:
     std::vector<ItemEntity> items_;
     std::vector<Mob> mobs_;
     std::vector<PlayerHit> playerHits_;
+    std::vector<SoundEvent> soundEvents_;
+    void emitMobSound(const Mob& m, int kind);  // 0 Ruf, 1 Treffer, 2 Tod, 3 Angriff
     Rng rng_;
     float spawnTimer_ = 2.0f;
 };

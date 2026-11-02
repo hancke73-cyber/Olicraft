@@ -1,13 +1,16 @@
 // Tests ohne OpenGL-Kontext: Welt, Terrain, Physik, Mesher, Speichern.
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 #include <string>
 #include <vector>
 
+#include "Audio.h"
 #include "Block.h"
 #include "TextureEditor.h"
 #include "TextureStore.h"
@@ -1037,18 +1040,23 @@ static void testSettingsAndMenu() {
     s.mouseSensitivity = 0.15f;
     s.fov = 95.0f;
     s.vsync = false;
+    s.masterVolume = 0.35f;
+    s.effectVolume = 0.6f;
+    s.musicVolume = 0.0f;
     CHECK(saveSettings(path, s));
     Settings r;
     CHECK(loadSettings(path, r));
     CHECK(r.renderDistance == 17 && std::fabs(r.mouseSensitivity - 0.15f) < 1e-4f && r.fov == 95.0f && !r.vsync);
+    CHECK(std::fabs(r.masterVolume - 0.35f) < 1e-3f && std::fabs(r.effectVolume - 0.6f) < 1e-3f && r.musicVolume == 0.0f);
     // Werte ausserhalb und Muell werden abgefangen
     {
         std::ofstream f(path);
-        f << "render_distance=999\nfov=abc\nmouse_sensitivity=-4\nunbekannt=1\nkeingleichzeichen\n";
+        f << "render_distance=999\nmaster_volume=7\nmusic_volume=-2\nfov=abc\nmouse_sensitivity=-4\nunbekannt=1\nkeingleichzeichen\n";
     }
     Settings c;
     CHECK(loadSettings(path, c));
     CHECK(c.renderDistance == Settings::MAX_DISTANCE && c.fov == 70.0f && c.mouseSensitivity == Settings::MIN_SENS);
+    CHECK(c.masterVolume == 1.0f && c.musicVolume == 0.0f && c.effectVolume == 1.0f);
     CHECK(!loadSettings("olicraft_test_settings/gibt_es_nicht.cfg", c));
     std::filesystem::remove_all("olicraft_test_settings");
 
@@ -1087,6 +1095,21 @@ static void testSettingsAndMenu() {
             CHECK(distanceFromFraction(sliderFraction(w, w.pos.x + w.size.x * w.fraction)) == 14);
             CHECK(sliderFraction(w, w.pos.x - 50.0f) == 0.0f && sliderFraction(w, w.pos.x + w.size.x + 50.0f) == 1.0f);
         }
+    // Lautstaerke-Regler
+    CHECK(volumeFromFraction(0.0f) == 0.0f && volumeFromFraction(1.0f) == 1.0f && volumeFromFraction(2.0f) == 1.0f &&
+          std::fabs(volumeFromFraction(0.52f) - 0.5f) < 1e-5f);
+    {
+        MenuState vs;
+        vs.masterVolume = 0.35f;
+        vs.musicVolume = 0.0f;
+        int sliders = 0;
+        for (const Widget& w : buildMenu(MenuScreen::Settings, vs, 1280, 720).widgets) {
+            if (w.id == W_VOL_MASTER) CHECK(w.type == Widget::Slider && w.text.find("35%") != std::string::npos && ++sliders);
+            if (w.id == W_VOL_EFFECTS) CHECK(w.type == Widget::Slider && w.text.find("100%") != std::string::npos && ++sliders);
+            if (w.id == W_VOL_MUSIC) CHECK(w.type == Widget::Slider && w.text.find("0%") != std::string::npos && ++sliders);
+        }
+        CHECK(sliders == 3);
+    }
     // HUD baut das Menue
     HudBatch batch;
     HudState hs;
@@ -2042,6 +2065,162 @@ static void testGoldAndTorches() {
     }
 }
 
+static void writeTestWav(const std::string& path, float seconds, float freq) {
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+    const int rate = 22050, n = static_cast<int>(seconds * rate);
+    std::ofstream f(path, std::ios::binary);
+    auto u32 = [&](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+    auto u16 = [&](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
+    f.write("RIFF", 4);
+    u32(36 + n * 2);
+    f.write("WAVEfmt ", 8);
+    u32(16);
+    u16(1);
+    u16(1);
+    u32(rate);
+    u32(rate * 2);
+    u16(2);
+    u16(16);
+    f.write("data", 4);
+    u32(n * 2);
+    for (int i = 0; i < n; ++i) {
+        const float env = 1.0f - static_cast<float>(i) / n;
+        int16_t s = static_cast<int16_t>(std::sin(6.2831853f * freq * i / rate) * 12000.0f * env);
+        f.write(reinterpret_cast<const char*>(&s), 2);
+    }
+}
+
+static void testSounds() {
+    // Tabelle
+    std::vector<std::string> files;
+    for (int i = 0; i < SOUND_COUNT; ++i) {
+        const SoundDef& d = soundDef(static_cast<SoundId>(i));
+        CHECK(std::string(d.file).size() > 2 && std::string(d.prompt).size() > 20 && std::string(d.desc).size() > 3);
+        CHECK(d.seconds > 0.1f && d.seconds < 5.0f && d.baseVolume > 0.0f && d.baseVolume <= 1.0f);
+        files.push_back(d.file);
+    }
+    std::sort(files.begin(), files.end());
+    CHECK(std::adjacent_find(files.begin(), files.end()) == files.end());
+    // Materialien
+    CHECK(blockMaterial(STONE) == Material::Stone && blockMaterial(COBBLE) == Material::Stone && blockMaterial(IRON_ORE) == Material::Stone);
+    CHECK(blockMaterial(GRASS) == Material::Grass && blockMaterial(LEAVES) == Material::Grass && blockMaterial(DIRT) == Material::Dirt);
+    CHECK(blockMaterial(SAND) == Material::Sand && blockMaterial(LOG) == Material::Wood && blockMaterial(TORCH_NZ) == Material::Wood);
+    CHECK(blockMaterial(GLASS) == Material::Glass && blockMaterial(SNOW) == Material::Snow);
+    CHECK(blockSound(Material::Wood) == SoundId::BlockWood && blockSound(Material::Glass) == SoundId::BlockGlass);
+    CHECK(stepSound(Material::Grass) == SoundId::StepGrass && stepSound(Material::Glass) == SoundId::StepStone &&
+          stepSound(Material::Snow) == SoundId::StepSnow);
+
+    // Ohne Engine passiert nichts
+    {
+        AudioEngine off;
+        CHECK(!off.active() && !off.play(SoundId::BlockStone, glm::vec3(0.0f)) && off.loadSounds("gibt_es_nicht") == 0);
+        off.update(1.0f);
+        off.setVolumes(1, 1, 1);
+    }
+
+    // Null-Geraet: Laden, Varianten, Abspielen, Aufraeumen, Musik
+    const std::string dir = "olicraft_test_sounds";
+    std::filesystem::remove_all(dir);
+    writeTestWav(dir + "/block_stone.wav", 0.15f, 440.0f);
+    writeTestWav(dir + "/step_grass_1.wav", 0.15f, 330.0f);
+    writeTestWav(dir + "/step_grass_2.wav", 0.15f, 350.0f);
+    writeTestWav(dir + "/pig_idle.wav", 0.2f, 220.0f);
+    writeTestWav(dir + "/music/a.wav", 0.6f, 262.0f);
+    {
+        std::ofstream bad(dir + "/cow_idle.wav", std::ios::binary);
+        bad << "kein Ton";
+    }
+    AudioEngine a;
+    CHECK(a.init(true) && a.active());
+    CHECK(!a.play(SoundId::BlockStone, glm::vec3(0.0f)));  // noch nichts geladen
+    CHECK(a.loadSounds(dir) == 3);
+    CHECK(a.variantCount(SoundId::BlockStone) == 1 && a.variantCount(SoundId::StepGrass) == 2 && a.variantCount(SoundId::PigIdle) == 1);
+    CHECK(a.variantCount(SoundId::CowIdle) == 0 && a.variantCount(SoundId::ZombieIdle) == 0);  // kaputte/fehlende Dateien
+    CHECK(a.musicTrackCount() == 1);
+    a.setVolumes(0.8f, 1.0f, 0.5f);
+    a.setListener(glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    CHECK(a.play(SoundId::BlockStone, glm::vec3(3.0f, 0.0f, 0.0f)));
+    CHECK(a.play(SoundId::StepGrass, glm::vec3(0.0f), 1.0f, 0.9f, false));
+    CHECK(a.playUi(SoundId::PigIdle));
+    CHECK(!a.play(SoundId::CowIdle, glm::vec3(0.0f)));
+    CHECK(a.voiceCount() == 3 && a.playedCount() == 3);
+    // Stimmen-Obergrenze
+    int accepted = 0;
+    for (int i = 0; i < 100; ++i) accepted += a.play(SoundId::BlockStone, glm::vec3(0.0f)) ? 1 : 0;
+    CHECK(accepted > 10 && accepted < 100 && a.voiceCount() <= 40);
+    // Nach der Spieldauer werden die Stimmen entfernt
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    a.update(0.1f);
+    CHECK(a.voiceCount() == 0);
+    // Musik startet nach der Anfangspause und endet von selbst
+    CHECK(!a.musicPlaying());
+    a.update(30.0f);
+    CHECK(a.musicPlaying());
+    a.setMusicEnabled(false);
+    CHECK(!a.musicPlaying());
+    a.setMusicEnabled(true);
+    a.update(100.0f);
+    CHECK(a.musicPlaying());
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    a.update(0.1f);
+    CHECK(!a.musicPlaying());
+    a.stopAll();
+    a.shutdown();
+    CHECK(!a.active());
+    std::filesystem::remove_all(dir);
+}
+
+static void testMobSounds() {
+    World world(1234);
+    world.setMeshingEnabled(false);
+    world.loadAround(world.findSpawn(), 3);
+    const int gy = 100;
+    for (int x = -20; x <= 20; ++x)
+        for (int z = -20; z <= 20; ++z) {
+            for (int y = gy; y < gy + 12; ++y) world.setBlock(x, y, z, AIR);
+            world.setBlock(x, gy - 1, z, STONE);
+        }
+    Player player;
+    player.pos = glm::vec3(0.5f, static_cast<float>(gy), 0.5f);
+    Inventory inv;
+    EntityManager em(77);
+    EntityEnv env;
+    env.allowSpawns = false;
+    Mob& pig = em.spawnMob(MobType::Pig, player.pos + glm::vec3(4.0f, 0.0f, 0.0f));
+    pig.idleSoundTimer = 0.05f;
+    em.update(0.1f, world, player, inv, env);
+    CHECK(!em.soundEvents().empty() && em.soundEvents()[0].id == SoundId::PigIdle);
+    em.soundEvents().clear();
+    // zu weit weg: kein Ruf
+    em.mobs()[0].pos = player.pos + glm::vec3(40.0f, 0.0f, 0.0f);
+    em.mobs()[0].idleSoundTimer = 0.05f;
+    em.update(0.1f, world, player, inv, env);
+    CHECK(em.soundEvents().empty());
+    // Treffer und Tod
+    Mob& cow = em.spawnMob(MobType::Cow, player.pos + glm::vec3(3.0f, 0.0f, 0.0f));
+    cow.idleSoundTimer = 100.0f;
+    em.hurtMob(em.mobs().back(), 1, player.pos);
+    CHECK(em.soundEvents().size() == 1 && em.soundEvents()[0].id == SoundId::CowHurt);
+    em.hurtMob(em.mobs().back(), 100, player.pos);
+    CHECK(em.soundEvents().size() == 2 && em.soundEvents()[1].id == SoundId::CowDeath);
+    em.soundEvents().clear();
+    // Zombie greift an
+    em.clear();
+    Mob& z = em.spawnMob(MobType::Zombie, player.pos + glm::vec3(0.8f, 0.0f, 0.0f));
+    z.idleSoundTimer = 100.0f;
+    for (int i = 0; i < 5 && em.playerHits().empty(); ++i) em.update(0.05f, world, player, inv, env);
+    bool attack = false;
+    for (const SoundEvent& e : em.soundEvents()) attack = attack || e.id == SoundId::ZombieAttack;
+    CHECK(!em.playerHits().empty() && attack);
+    // Aufsammeln
+    em.clear();
+    em.spawnItem({LOG, 1}, player.pos + glm::vec3(0.0f, 0.2f, 0.0f), glm::vec3(0.0f), 0.0f);
+    em.update(0.05f, world, player, inv, env);
+    bool pickup = false;
+    for (const SoundEvent& e : em.soundEvents()) pickup = pickup || e.id == SoundId::ItemPickup;
+    CHECK(pickup && inv.count(LOG) == 1);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -2071,12 +2250,14 @@ int main() {
     testSpawn();
     testItemsAndInventory();
     testSettingsAndMenu();
+    testMobSounds();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();
     testImagesAndTextures();
     testTextureEditor();
     testGoldAndTorches();
+    testSounds();
     testCamera();
     testSaveV2();
     testEntities();

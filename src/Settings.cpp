@@ -12,6 +12,9 @@ void Settings::clamp() {
     renderDistance = std::max(MIN_DISTANCE, std::min(MAX_DISTANCE, renderDistance));
     mouseSensitivity = std::max(MIN_SENS, std::min(MAX_SENS, mouseSensitivity));
     fov = std::max(MIN_FOV, std::min(MAX_FOV, fov));
+    masterVolume = std::max(0.0f, std::min(1.0f, masterVolume));
+    effectVolume = std::max(0.0f, std::min(1.0f, effectVolume));
+    musicVolume = std::max(0.0f, std::min(1.0f, musicVolume));
 }
 
 bool loadSettings(const std::string& path, Settings& s) {
@@ -33,6 +36,12 @@ bool loadSettings(const std::string& path, Settings& s) {
         } else if (key == "fov") {
             double v = std::strtod(val.c_str(), &end);
             if (end != val.c_str()) s.fov = static_cast<float>(v);
+        } else if (key == "master_volume" || key == "effect_volume" || key == "music_volume") {
+            double v = std::strtod(val.c_str(), &end);
+            if (end != val.c_str()) {
+                float& t = key == "master_volume" ? s.masterVolume : key == "effect_volume" ? s.effectVolume : s.musicVolume;
+                t = static_cast<float>(v);
+            }
         } else if (key == "vsync") {
             s.vsync = val == "1" || val == "true" || val == "an";
         }
@@ -52,6 +61,12 @@ bool saveSettings(const std::string& path, const Settings& s) {
     std::snprintf(buf, sizeof(buf), "%.1f", s.fov);
     f << "fov=" << buf << "\n";
     f << "vsync=" << (s.vsync ? 1 : 0) << "\n";
+    std::snprintf(buf, sizeof(buf), "%.2f", s.masterVolume);
+    f << "master_volume=" << buf << "\n";
+    std::snprintf(buf, sizeof(buf), "%.2f", s.effectVolume);
+    f << "effect_volume=" << buf << "\n";
+    std::snprintf(buf, sizeof(buf), "%.2f", s.musicVolume);
+    f << "music_volume=" << buf << "\n";
     return static_cast<bool>(f);
 }
 
