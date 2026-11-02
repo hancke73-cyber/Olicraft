@@ -54,6 +54,13 @@ const TileName TILE_NAMES[TILE_COUNT] = {
     {"axe_diamond", "Diamantaxt"},
     {"shovel_diamond", "Diamantschaufel"},
     {"sword_diamond", "Diamantschwert"},
+    {"gold_ore", "Golderz"},
+    {"gold_ingot", "Goldbarren"},
+    {"pickaxe_gold", "Goldspitzhacke"},
+    {"axe_gold", "Goldaxt"},
+    {"shovel_gold", "Goldschaufel"},
+    {"sword_gold", "Goldschwert"},
+    {"torch", "Fackel"},
 };
 static_assert(sizeof(TILE_NAMES) / sizeof(TILE_NAMES[0]) == TILE_COUNT, "Kachelnamen passen nicht zur Kachelliste");
 

@@ -160,6 +160,7 @@ void appendModel(SkinId skin, const Pose& pose, std::vector<Vertex>& out) {
                 v.v = uv.y;
                 v.shade = fd.shade * pose.tint;
                 v.sky = pose.sky;
+                v.light = pose.light;
                 out.push_back(v);
             }
         }

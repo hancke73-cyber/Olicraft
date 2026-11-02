@@ -57,6 +57,8 @@ void GpuMesh::upload(const std::vector<Vertex>& verts) {
         glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(Vertex, shade)));
         glEnableVertexAttribArray(3);
         glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(Vertex, sky)));
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(offsetof(Vertex, light)));
     } else {
         glBindVertexArray(vao_);
         glBindBuffer(GL_ARRAY_BUFFER, vbo_);

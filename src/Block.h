@@ -47,6 +47,13 @@ enum Block : BlockId {
     DIAMOND_ORE,
     FURNACE,
     FURNACE_LIT,
+    GOLD_ORE,
+    // Fackeln: TORCH steht auf dem Boden, die vier anderen haengen an einer Wand (Suffix = Seite des Traegerblocks)
+    TORCH,
+    TORCH_PX,
+    TORCH_NX,
+    TORCH_PZ,
+    TORCH_NZ,
     BLOCK_COUNT
 };
 
@@ -98,6 +105,13 @@ enum Tile : int {
     TILE_AXE_DIAMOND,
     TILE_SHOVEL_DIAMOND,
     TILE_SWORD_DIAMOND,
+    TILE_GOLD_ORE,
+    TILE_GOLD_INGOT,
+    TILE_PICKAXE_GOLD,
+    TILE_AXE_GOLD,
+    TILE_SHOVEL_GOLD,
+    TILE_SWORD_GOLD,
+    TILE_TORCH,
     TILE_COUNT
 };
 
@@ -143,6 +157,27 @@ inline float liquidHeight(BlockId id) {
     if (l == 0) return 0.0f;
     return isLava(id) ? static_cast<float>(8 - 2 * l) / 9.0f : static_cast<float>(8 - l) / 9.0f;
 }
+
+inline bool isTorch(BlockId id) { return id >= TORCH && id <= TORCH_NZ; }
+// Lage des Traegerblocks einer Fackel relativ zu ihr
+inline void torchSupportOffset(BlockId id, int& dx, int& dy, int& dz) {
+    dx = dy = dz = 0;
+    switch (id) {
+        case TORCH_PX: dx = 1; break;
+        case TORCH_NX: dx = -1; break;
+        case TORCH_PZ: dz = 1; break;
+        case TORCH_NZ: dz = -1; break;
+        default: dy = -1; break;
+    }
+}
+// Lichtstaerke, die ein Block aussendet (0..15)
+inline int lightEmission(BlockId id) {
+    if (isTorch(id)) return 14;
+    if (id >= LAVA && id <= LAVA_FALL) return 15;
+    if (id == FURNACE_LIT) return 13;
+    return 0;
+}
+constexpr int MAX_LIGHT = 15;
 
 // Auswahl in der Hotbar
 constexpr int HOTBAR_SIZE = 9;

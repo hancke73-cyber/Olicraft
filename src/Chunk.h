@@ -13,7 +13,8 @@ struct Vertex {
     float x, y, z;
     float u, v;
     float shade;  // Flaechenhelligkeit * Ambient Occlusion
-    float sky;    // Himmelslicht-Anteil 0..1
+    float sky;    // Himmelslicht-Anteil 0..1 (> 1.5: leuchtender Block)
+    float light = 0.0f;  // Blocklicht 0..1 (Fackeln, Lava)
 };
 
 // Maximale Quads pro Mesh (gemeinsamer Index-Puffer)
@@ -43,7 +44,7 @@ private:
 struct Chunk {
     static constexpr int VOLUME = CHUNK_W * CHUNK_W * CHUNK_H;
 
-    Chunk(int cx_, int cz_) : cx(cx_), cz(cz_), blocks(VOLUME, AIR) {}
+    Chunk(int cx_, int cz_) : cx(cx_), cz(cz_), blocks(VOLUME, AIR), light(VOLUME, 0) {}
 
     static int index(int x, int y, int z) { return x + z * CHUNK_W + y * CHUNK_W * CHUNK_W; }
     BlockId get(int x, int y, int z) const { return blocks[index(x, y, z)]; }
@@ -51,6 +52,7 @@ struct Chunk {
 
     int cx, cz;
     std::vector<BlockId> blocks;
+    std::vector<uint8_t> light;  // Blocklicht 0..15 je Zelle (wird nicht gespeichert, beim Laden neu berechnet)
 
     bool modified = false;  // vom Spieler veraendert -> wird gespeichert
     bool dirty = true;      // Mesh muss neu gebaut werden

@@ -30,7 +30,12 @@ constexpr ItemId ITEM_DIAMOND_PICKAXE = 218;
 constexpr ItemId ITEM_DIAMOND_AXE = 219;
 constexpr ItemId ITEM_DIAMOND_SHOVEL = 220;
 constexpr ItemId ITEM_DIAMOND_SWORD = 221;
-constexpr ItemId ITEM_LAST = 221;
+constexpr ItemId ITEM_GOLD_INGOT = 222;
+constexpr ItemId ITEM_GOLD_PICKAXE = 223;
+constexpr ItemId ITEM_GOLD_AXE = 224;
+constexpr ItemId ITEM_GOLD_SHOVEL = 225;
+constexpr ItemId ITEM_GOLD_SWORD = 226;
+constexpr ItemId ITEM_LAST = 226;
 
 struct ItemStack {
     ItemId id = ITEM_NONE;
@@ -59,6 +64,7 @@ struct ItemInfo {
     int maxDurability = 0;   // 0 = kein Werkzeug
     float speed = 1.0f;      // Abbaugeschwindigkeit bei passendem Block
     int attack = 2;          // Schaden gegen Mobs
+    bool flatIcon = false;   // Blockgegenstand mit flachem Symbol (Fackel)
 };
 
 bool itemValid(ItemId id);

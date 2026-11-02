@@ -16,7 +16,7 @@ double msSince(Clock::time_point t) {
 }
 }  // namespace
 
-World::World(int32_t seed) : terrain_(seed), padded_(PAD_VOLUME, AIR) {}
+World::World(int32_t seed) : terrain_(seed), padded_(PAD_VOLUME, AIR), paddedLight_(PAD_VOLUME, 0) {}
 
 World::~World() = default;
 
@@ -55,9 +55,12 @@ bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
     Chunk* c = find(cx, cz);
     if (!c) return false;
     int lx = x - cx * CHUNK_W, lz = z - cz * CHUNK_W;
-    if (c->get(lx, y, lz) == b) return false;
+    const BlockId oldB = c->get(lx, y, lz);
+    if (oldB == b) return false;
     c->set(lx, y, lz, b);
     c->modified = true;
+    lightUrgent_ = urgent;
+    relightAfterChange(x, y, z, oldB, b);
 
     // Betroffene Chunks (inkl. Diagonalen wegen Ambient Occlusion) neu bauen
     int dxs[3] = {0, 0, 0}, dzs[3] = {0, 0, 0};
@@ -74,7 +77,150 @@ bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
 bool World::setBlock(int x, int y, int z, BlockId b) {
     if (!setBlockImpl(x, y, z, b, true)) return false;
     scheduleFluidAround(x, y, z);
+    checkTorchSupports(x, y, z);
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Licht (Flood-Fill wie in Minecraft: Ausbreitung -1 je Block, Entfernen mit Nachfuellen)
+// ---------------------------------------------------------------------------
+
+namespace {
+const int DIRS6[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+}
+
+int World::lightAt(int x, int y, int z) const {
+    if (y < 0 || y >= CHUNK_H) return 0;
+    const int cx = floorDiv(x, CHUNK_W), cz = floorDiv(z, CHUNK_W);
+    const Chunk* c = find(cx, cz);
+    return c ? c->light[Chunk::index(x - cx * CHUNK_W, y, z - cz * CHUNK_W)] : 0;
+}
+
+void World::setLight(int x, int y, int z, uint8_t v) {
+    if (y < 0 || y >= CHUNK_H) return;
+    const int cx = floorDiv(x, CHUNK_W), cz = floorDiv(z, CHUNK_W);
+    Chunk* c = find(cx, cz);
+    if (!c) return;
+    const int lx = x - cx * CHUNK_W, lz = z - cz * CHUNK_W;
+    uint8_t& cell = c->light[Chunk::index(lx, y, lz)];
+    if (cell == v) return;
+    cell = v;
+    // geaendertes Licht: Mesh dieses Chunks und der Nachbarn am Rand neu bauen
+    for (int dz = (lz == 0 ? -1 : 0); dz <= (lz == CHUNK_W - 1 ? 1 : 0); ++dz)
+        for (int dx = (lx == 0 ? -1 : 0); dx <= (lx == CHUNK_W - 1 ? 1 : 0); ++dx) markDirty(cx + dx, cz + dz, lightUrgent_);
+}
+
+void World::propagateLight(std::vector<glm::ivec3>& q) {
+    for (size_t head = 0; head < q.size(); ++head) {
+        const glm::ivec3 p = q[head];
+        const int L = lightAt(p.x, p.y, p.z);
+        if (L <= 1) continue;
+        for (const auto& d : DIRS6) {
+            const int nx = p.x + d[0], ny = p.y + d[1], nz = p.z + d[2];
+            if (ny < 0 || ny >= CHUNK_H) continue;
+            const int cx = floorDiv(nx, CHUNK_W), cz = floorDiv(nz, CHUNK_W);
+            const Chunk* nc = find(cx, cz);
+            if (!nc) continue;
+            if (isOpaque(nc->get(nx - cx * CHUNK_W, ny, nz - cz * CHUNK_W))) continue;
+            if (lightAt(nx, ny, nz) < L - 1) {
+                setLight(nx, ny, nz, static_cast<uint8_t>(L - 1));
+                q.emplace_back(nx, ny, nz);
+            }
+        }
+    }
+}
+
+void World::removeLight(int x, int y, int z) {
+    const int old = lightAt(x, y, z);
+    if (old == 0) return;
+    setLight(x, y, z, 0);
+    struct Node {
+        glm::ivec3 p;
+        int level;
+    };
+    std::vector<Node> rq{{glm::ivec3(x, y, z), old}};
+    std::vector<glm::ivec3> readd;
+    for (size_t head = 0; head < rq.size(); ++head) {
+        const Node n = rq[head];
+        for (const auto& d : DIRS6) {
+            const int nx = n.p.x + d[0], ny = n.p.y + d[1], nz = n.p.z + d[2];
+            if (ny < 0 || ny >= CHUNK_H) continue;
+            const int l = lightAt(nx, ny, nz);
+            if (l == 0) continue;
+            const BlockId nb = getBlock(nx, ny, nz);
+            const int e = lightEmission(nb);
+            if (l < n.level && e < l) {
+                setLight(nx, ny, nz, 0);
+                rq.push_back({glm::ivec3(nx, ny, nz), l});
+            } else {
+                readd.emplace_back(nx, ny, nz);  // staerkere Quelle (oder Lichtquelle): von dort wieder ausbreiten
+            }
+        }
+    }
+    propagateLight(readd);
+}
+
+void World::relightAfterChange(int x, int y, int z, BlockId oldB, BlockId newB) {
+    const bool opaqueChanged = isOpaque(oldB) != isOpaque(newB);
+    const int eOld = lightEmission(oldB), eNew = lightEmission(newB);
+    if (!opaqueChanged && eOld == eNew) return;
+    removeLight(x, y, z);
+    std::vector<glm::ivec3> q;
+    if (eNew > 0) {
+        setLight(x, y, z, static_cast<uint8_t>(eNew));
+        q.emplace_back(x, y, z);
+    }
+    if (!isOpaque(newB)) {  // Licht der Nachbarn kann jetzt hineinfliessen
+        for (const auto& d : DIRS6)
+            if (lightAt(x + d[0], y + d[1], z + d[2]) > 1) q.emplace_back(x + d[0], y + d[1], z + d[2]);
+    }
+    propagateLight(q);
+}
+
+void World::lightChunkInit(Chunk& c, bool fullScan) {
+    std::fill(c.light.begin(), c.light.end(), static_cast<uint8_t>(0));
+    std::vector<glm::ivec3> q;
+    const int ox = c.cx * CHUNK_W, oz = c.cz * CHUNK_W;
+    const int yMax = fullScan ? CHUNK_H - 1 : LAVA_LEVEL + 1;
+    for (int y = 0; y <= yMax; ++y)
+        for (int z = 0; z < CHUNK_W; ++z)
+            for (int x = 0; x < CHUNK_W; ++x) {
+                const int e = lightEmission(c.get(x, y, z));
+                if (e > 0) {
+                    c.light[Chunk::index(x, y, z)] = static_cast<uint8_t>(e);
+                    q.emplace_back(ox + x, y, oz + z);
+                }
+            }
+    // Licht der geladenen Nachbarchunks fliesst ueber die gemeinsamen Raender herein
+    for (const auto& d : DIRS6) {
+        if (d[1] != 0) continue;
+        const Chunk* nb = find(c.cx + d[0], c.cz + d[2]);
+        if (!nb) continue;
+        for (int y = 0; y < CHUNK_H; ++y)
+            for (int i = 0; i < CHUNK_W; ++i) {
+                // Randspalte des Nachbarn, die an diesen Chunk grenzt
+                const int lx = d[0] > 0 ? 0 : (d[0] < 0 ? CHUNK_W - 1 : i);
+                const int lz = d[2] > 0 ? 0 : (d[2] < 0 ? CHUNK_W - 1 : i);
+                if (nb->light[Chunk::index(lx, y, lz)] > 1) q.emplace_back(nb->cx * CHUNK_W + lx, y, nb->cz * CHUNK_W + lz);
+            }
+    }
+    lightUrgent_ = false;
+    propagateLight(q);
+}
+
+// Fackeln fallen ab, wenn ihr Traeger fehlt
+void World::checkTorchSupports(int x, int y, int z) {
+    for (const auto& d : DIRS6) {
+        const int nx = x + d[0], ny = y + d[1], nz = z + d[2];
+        const BlockId b = getBlock(nx, ny, nz);
+        if (!isTorch(b)) continue;
+        int sx, sy, sz;
+        torchSupportOffset(b, sx, sy, sz);
+        if (!isOpaque(getBlock(nx + sx, ny + sy, nz + sz))) {
+            setBlockImpl(nx, ny, nz, AIR, true);
+            torchDrops_.emplace_back(nx, ny, nz);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +376,9 @@ Chunk& World::ensureChunk(int cx, int cz) {
         terrain_.generate(*chunk);
     }
     Chunk& ref = *chunk;
+    const bool restored = ref.modified;
     chunks_.emplace(ChunkKey{cx, cz}, std::move(chunk));
+    lightChunkInit(ref, restored);
     // Nachbarn muessen ihre Raender ggf. neu berechnen (sie warten ohnehin auf vollstaendige Nachbarschaft)
     return ref;
 }
@@ -258,12 +406,13 @@ void World::meshChunk(Chunk& c) {
                 lx -= dx * CHUNK_W;
                 const Chunk* src = nb[dz + 1][dx + 1];
                 padded_[padIndex(px, y, pz)] = src ? src->get(lx, y, lz) : static_cast<BlockId>(AIR);
+                paddedLight_[padIndex(px, y, pz)] = src ? src->light[Chunk::index(lx, y, lz)] : static_cast<uint8_t>(0);
             }
         }
     }
 
     static MeshOutput out;
-    buildChunkMesh(padded_.data(), out);
+    buildChunkMesh(padded_.data(), paddedLight_.data(), out);
     c.opaque.upload(out.opaque);
     c.water.upload(out.water);
     c.dirty = false;

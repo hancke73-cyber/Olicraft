@@ -13,6 +13,7 @@ const float AO_CURVE[4] = {0.50f, 0.68f, 0.84f, 1.00f};
 
 struct Ctx {
     const BlockId* p;
+    const uint8_t* light;       // Blocklicht (Layout wie p) oder nullptr
     int16_t hm[PAD_W * PAD_W];  // hoechster lichtblockierender Block je Spalte (-1 = keiner)
     int maxY;                   // hoechster nicht-leerer Block im Chunk
 
@@ -22,6 +23,10 @@ struct Ctx {
         return p[padIndex(x + 1, y, z + 1)];
     }
     bool opaqueAt(int x, int y, int z) const { return isOpaque(at(x, y, z)); }
+    float lightAt(int x, int y, int z) const {
+        if (!light || y < 0 || y >= CHUNK_H) return 0.0f;
+        return static_cast<float>(light[padIndex(x + 1, y, z + 1)]);
+    }
     float skyAt(int x, int y, int z) const {
         if (y >= CHUNK_H) return 1.0f;
         if (y < 0) return 0.0f;
@@ -137,19 +142,23 @@ void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, float lo, flo
         }
 
         float skySum = c.skyAt(fx, fy, fz);
+        float lightSum = c.lightAt(fx, fy, fz);
         int skyN = 1;
         const int cx4[3][3] = {{s1x, s1y, s1z}, {s2x, s2y, s2z}, {s1x + s2x, s1y + s2y, s1z + s2z}};
         for (auto& o : cx4) {
             if (!c.opaqueAt(fx + o[0], fy + o[1], fz + o[2])) {
                 skySum += c.skyAt(fx + o[0], fy + o[1], fz + o[2]);
+                lightSum += c.lightAt(fx + o[0], fy + o[1], fz + o[2]);
                 ++skyN;
             }
         }
         v[k].sky = skySum / static_cast<float>(skyN);
+        v[k].light = lightSum / static_cast<float>(skyN) / static_cast<float>(MAX_LIGHT);
         v[k].shade = fd.shade * AO_CURVE[ao];
         if (isLava(b) || bi.emissive) {  // leuchtende Bloecke: unabhaengig von Tageszeit und Schatten
             v[k].sky = 2.0f;
             v[k].shade = 1.0f;
+            v[k].light = 1.0f;
         }
         aoSum[k] = static_cast<float>(ao);
     }
@@ -165,12 +174,58 @@ void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, float lo, flo
     for (int k = 0; k < 4; ++k) out.push_back(v[order[k]]);
 }
 
+// Fackel: duenner Stab (2 Pixel breit, 13 Pixel hoch inklusive Flamme), an Waenden etwas schraeg
+void emitTorch(int x, int y, int z, BlockId b, std::vector<Vertex>& out) {
+    const UVRect uv = tileUV(TILE_TORCH);
+    int dx = 0, dy = 0, dz = 0;
+    torchSupportOffset(b, dx, dy, dz);
+    const float h = 1.0f / 16.0f, height = 13.0f / 16.0f;
+    float cx = 0.5f, cz = 0.5f, base = 0.0f, tiltX = 0.0f, tiltZ = 0.0f;
+    if (b != TORCH) {  // zur Wand verschoben und von ihr weg geneigt
+        cx += static_cast<float>(dx) * 0.3f;
+        cz += static_cast<float>(dz) * 0.3f;
+        base = 0.2f;
+        tiltX = -static_cast<float>(dx) * 0.22f;
+        tiltZ = -static_cast<float>(dz) * 0.22f;
+    }
+    for (int f = 0; f < 6; ++f) {
+        if (f == 3) continue;  // Unterseite sieht man nie
+        const FaceDef& fd = faceDef(f);
+        Vertex v[4];
+        for (int k = 0; k < 4; ++k) {
+            const int i = FACE_CORNER_I[k], j = FACE_CORNER_J[k];
+            float p[3];
+            for (int a = 0; a < 3; ++a) {
+                const float s = static_cast<float>(fd.n[a]) + (i ? 1.0f : -1.0f) * static_cast<float>(fd.t1[a]) +
+                                (j ? 1.0f : -1.0f) * static_cast<float>(fd.t2[a]);
+                p[a] = a == 1 ? (s > 0 ? height : 0.0f) : h * s;
+            }
+            const float shear = p[1] / height;
+            v[k].x = static_cast<float>(x) + cx + p[0] + tiltX * shear;
+            v[k].y = static_cast<float>(y) + base + p[1];
+            v[k].z = static_cast<float>(z) + cz + p[2] + tiltZ * shear;
+            float uu, vv;
+            faceUV(f, i, j, uu, vv);
+            // Kachel: mittlere zwei Pixel in u; Seiten zeigen Stab und Flamme (Zeilen 0..13), die Oberseite die Flammenspitze
+            const float tu = 7.0f / 16.0f + uu * 2.0f / 16.0f;
+            const float tv = f == 2 ? 12.0f / 16.0f + vv * 1.0f / 16.0f : vv * height;
+            v[k].u = uv.u0 + (uv.u1 - uv.u0) * tu;
+            v[k].v = uv.v0 + (uv.v1 - uv.v0) * tv;
+            v[k].shade = 1.0f;
+            v[k].sky = 2.0f;  // leuchtet
+            v[k].light = 1.0f;
+        }
+        for (int k = 0; k < 4; ++k) out.push_back(v[k]);
+    }
+}
+
 }  // namespace
 
-void buildChunkMesh(const BlockId* padded, MeshOutput& out) {
+void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out) {
     out.clear();
     Ctx c;
     c.p = padded;
+    c.light = light;
     computeHeightmap(c);
 
     for (int y = 0; y <= c.maxY; ++y) {
@@ -178,6 +233,10 @@ void buildChunkMesh(const BlockId* padded, MeshOutput& out) {
             for (int x = 0; x < CHUNK_W; ++x) {
                 BlockId b = padded[padIndex(x + 1, y, z + 1)];
                 if (b == AIR) continue;
+                if (isTorch(b)) {
+                    emitTorch(x, y, z, b, out.opaque);
+                    continue;
+                }
                 const bool liquid = blockInfo(b).liquid;
                 std::vector<Vertex>& dst = (liquid && !isLava(b)) ? out.water : out.opaque;
                 for (int f = 0; f < 6; ++f) {

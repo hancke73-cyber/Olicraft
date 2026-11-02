@@ -45,7 +45,7 @@ float turnToward(float cur, float target, float maxStep) {
 
 // Quader fuer Gegenstaende am Boden (Texturen aus dem Blockatlas); xf wandelt lokale Koordinaten in Kamera-Weltkoordinaten
 template <class XF>
-void addBox(std::vector<Vertex>& out, const glm::vec3& center, const glm::vec3& size, Tile tile, float sky, XF&& xf) {
+void addBox(std::vector<Vertex>& out, const glm::vec3& center, const glm::vec3& size, Tile tile, float sky, float light, XF&& xf) {
     const UVRect uv = tileUV(tile);
     for (int f = 0; f < 6; ++f) {
         const FaceDef& fd = faceDef(f);
@@ -68,6 +68,7 @@ void addBox(std::vector<Vertex>& out, const glm::vec3& center, const glm::vec3& 
             v.v = uv.v0 + (uv.v1 - uv.v0) * vv;
             v.shade = fd.shade;
             v.sky = sky;
+            v.light = light;
             out.push_back(v);
         }
     }
@@ -416,6 +417,7 @@ void EntityManager::trySpawn(World& world, const Player& player, const EntityEnv
                 if (!skyExposed(world, x, gy, z)) continue;
             }
             if (isLiquid(world.getBlock(x, gy - 1, z))) continue;
+            if (world.lightAt(x, gy, z) > 6) continue;  // Fackeln und Lava halten Zombies fern
             Mob& m = spawnMob(MobType::Zombie, glm::vec3(x + 0.5f, static_cast<float>(gy), z + 0.5f));
             (void)m;
             return;
@@ -509,6 +511,7 @@ void EntityManager::buildMesh(const World& world, const glm::vec3& camPos, float
         pose.time = time;
         pose.roll = m.dead() ? std::min(1.0f, m.deathTimer / 0.4f) * (PI * 0.5f) : 0.0f;
         pose.sky = skyExposed(world, bx, static_cast<int>(std::floor(m.pos.y + sp.height)), bz) ? 1.0f : 0.0f;
+        pose.light = static_cast<float>(world.lightAt(bx, static_cast<int>(std::floor(m.pos.y + sp.height * 0.5f)), bz)) / MAX_LIGHT;
         appendModel(skin, pose, flash ? out.skinHurt[skin] : out.skin[skin]);
     }
 
@@ -521,15 +524,16 @@ void EntityManager::buildMesh(const World& world, const glm::vec3& camPos, float
         const float cs = std::cos(spin), sn = std::sin(spin);
         const int bx = static_cast<int>(std::floor(it.pos.x)), bz = static_cast<int>(std::floor(it.pos.z));
         const float sky = skyExposed(world, bx, static_cast<int>(std::floor(it.pos.y + 0.3f)), bz) ? 1.0f : 0.0f;
+        const float blockLight = static_cast<float>(world.lightAt(bx, static_cast<int>(std::floor(it.pos.y + 0.3f)), bz)) / MAX_LIGHT;
         const glm::vec3 o = it.pos - camPos + glm::vec3(0.0f, 0.2f + bob, 0.0f);
         auto xf = [&](glm::vec3 l) {
             float x = l.x * cs - l.z * sn, z = l.x * sn + l.z * cs;
             return glm::vec3(o.x + x, o.y + l.y, o.z + z);
         };
-        if (info.isBlock) {
-            addBox(out.items, glm::vec3(0.0f), glm::vec3(0.26f), info.iconSide, sky, xf);
+        if (info.isBlock && !info.flatIcon) {
+            addBox(out.items, glm::vec3(0.0f), glm::vec3(0.26f), info.iconSide, sky, blockLight, xf);
         } else {
-            addBox(out.items, glm::vec3(0.0f), glm::vec3(0.42f, 0.42f, 0.04f), info.iconSide, sky, xf);
+            addBox(out.items, glm::vec3(0.0f), glm::vec3(0.42f, 0.42f, 0.04f), info.iconSide, sky, blockLight, xf);
         }
     }
 }

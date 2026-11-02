@@ -11,6 +11,8 @@ constexpr int PAD_W = CHUNK_W + 2;
 constexpr int PAD_VOLUME = PAD_W * PAD_W * CHUNK_H;
 inline int padIndex(int px, int y, int pz) { return px + pz * PAD_W + y * PAD_W * PAD_W; }
 
+class World;
+
 struct MeshOutput {
     std::vector<Vertex> opaque;  // feste Bloecke + Laub/Glas (Cutout)
     std::vector<Vertex> water;   // transparent
@@ -21,6 +23,7 @@ struct MeshOutput {
 };
 
 // Erzeugt die Geometrie fuer einen Chunk (Positionen relativ zur Chunk-Ecke).
-void buildChunkMesh(const BlockId* padded, MeshOutput& out);
+// light: Blocklicht im selben Layout wie padded (0..15), nullptr = dunkel.
+void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out);
 
 }  // namespace oc

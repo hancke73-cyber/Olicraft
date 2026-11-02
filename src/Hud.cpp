@@ -47,7 +47,7 @@ void HudBatch::text(float x, float y, float scale, const std::string& s, glm::ve
 void HudBatch::itemIcon(ItemId id, float cx, float cy, float s) {
     if (!itemValid(id)) return;
     const ItemInfo& info = itemInfo(id);
-    if (!info.isBlock) {
+    if (!info.isBlock || info.flatIcon) {
         const UVRect t = tileUV(info.iconSide);
         const float h = s * 1.15f;
         const glm::vec2 p[4] = {{cx - h, cy - h}, {cx + h, cy - h}, {cx + h, cy + h}, {cx - h, cy + h}};

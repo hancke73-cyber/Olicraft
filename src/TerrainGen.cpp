@@ -120,6 +120,7 @@ void TerrainGenerator::placeOres(Chunk& chunk) const {
     static const OreType ORES[] = {
         {COAL_ORE, 16, 5, 100, 8},
         {IRON_ORE, 10, 5, 64, 6},
+        {GOLD_ORE, 3, 5, 30, 5},
         {DIAMOND_ORE, 2, 5, 15, 4},
     };
     uint32_t s = hash3(chunk.cx, 0x0E5E, chunk.cz, static_cast<uint32_t>(seed_) ^ 0x0BEEFu);

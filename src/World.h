@@ -53,6 +53,15 @@ public:
     bool isChunkLoaded(int cx, int cz) const { return find(cx, cz) != nullptr; }
     bool setBlock(int x, int y, int z, BlockId b);
 
+    // Blocklicht (Fackeln, Lava, brennende Oefen) 0..15
+    int lightAt(int x, int y, int z) const;
+    // Fackeln, deren Traeger entfernt wurde (die Fackel ist schon weg, der Spieler holt die Gegenstaende ab)
+    std::vector<glm::ivec3> takeTorchDrops() {
+        std::vector<glm::ivec3> out;
+        out.swap(torchDrops_);
+        return out;
+    }
+
     // Fluessigkeiten: Wasser fliesst in Schritten von 0.25 s, Lava deutlich langsamer (1.5 s)
     void tick(float dt);
     void scheduleFluidAround(int x, int y, int z);
@@ -98,6 +107,13 @@ private:
     bool neighborsLoaded(int cx, int cz) const;
     void markDirty(int cx, int cz, bool urgent);
     bool setBlockImpl(int x, int y, int z, BlockId b, bool urgent);
+    // Licht
+    void setLight(int x, int y, int z, uint8_t v);
+    void propagateLight(std::vector<glm::ivec3>& queue);
+    void removeLight(int x, int y, int z);
+    void relightAfterChange(int x, int y, int z, BlockId oldB, BlockId newB);
+    void lightChunkInit(Chunk& c, bool fullScan);
+    void checkTorchSupports(int x, int y, int z);
     void scheduleFluid(int x, int y, int z);
     void updateFluidCell(int kind, int x, int y, int z);
     BlockId computeFluid(int kind, int x, int y, int z) const;
@@ -110,6 +126,9 @@ private:
     std::unordered_map<ChunkKey, std::unique_ptr<Chunk>, ChunkKeyHash> chunks_;
     std::unordered_map<ChunkKey, std::vector<BlockId>, ChunkKeyHash> stored_;  // entladene, veraenderte Chunks
     std::vector<BlockId> padded_;
+    std::vector<uint8_t> paddedLight_;
+    std::vector<glm::ivec3> torchDrops_;
+    bool lightUrgent_ = false;
     bool meshing_ = true;
     struct FluidQueue {
         std::vector<glm::ivec3> pending;

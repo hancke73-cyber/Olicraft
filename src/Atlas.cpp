@@ -351,6 +351,7 @@ void drawOre(TileCanvas& c, int tile, Rgba ore, Rgba light) {
 }
 void drawCoalOre(TileCanvas& c) { drawOre(c, TILE_COAL_ORE, {32, 32, 36, 255}, {64, 64, 70, 255}); }
 void drawIronOre(TileCanvas& c) { drawOre(c, TILE_IRON_ORE, {214, 160, 130, 255}, {240, 196, 170, 255}); }
+void drawGoldOre(TileCanvas& c) { drawOre(c, TILE_GOLD_ORE, {244, 200, 40, 255}, {255, 240, 150, 255}); }
 void drawDiamondOre(TileCanvas& c) { drawOre(c, TILE_DIAMOND_ORE, {70, 220, 226, 255}, {190, 255, 255, 255}); }
 
 void drawFurnaceBody(TileCanvas& c, int tile) {
@@ -417,6 +418,34 @@ void drawIronIngot(TileCanvas& c) {
     for (int x = 4; x <= 11; ++x) c.set(x, 10, {120, 120, 128, 255});
 }
 
+void drawTorch(TileCanvas& c) {
+    drawToolBase(c);
+    for (int y = 0; y <= 9; ++y) {
+        c.set(7, y, {138, 98, 52, 255});
+        c.set(8, y, {96, 66, 34, 255});
+    }
+    const Rgba flame[3][4] = {{{255, 170, 30, 255}, {255, 210, 60, 255}, {255, 210, 60, 255}, {255, 150, 20, 255}},
+                              {{255, 190, 40, 255}, {255, 245, 160, 255}, {255, 240, 140, 255}, {255, 170, 30, 255}},
+                              {{0, 0, 0, 0}, {255, 230, 100, 255}, {255, 215, 80, 255}, {0, 0, 0, 0}}};
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 4; ++col)
+            if (flame[row][col].a) c.set(6 + col, 10 + row, flame[row][col]);
+    c.set(7, 13, {255, 240, 150, 255});
+    c.set(8, 13, {255, 200, 70, 255});
+}
+
+void drawGoldIngot(TileCanvas& c) {
+    drawToolBase(c);
+    for (int y = 5; y <= 10; ++y)
+        for (int x = 2; x <= 13; ++x) {
+            const int slant = (10 - y) / 2;
+            if (x < 2 + slant || x > 11 + slant) continue;
+            int v = static_cast<int>((rnd(x, y, TILE_GOLD_INGOT) - 0.5f) * 20);
+            c.set(x, y, {246 + v / 4 - (y - 5) * 4, 200 + v - (y - 5) * 8, 40 + v / 2, 255});
+        }
+    for (int x = 4; x <= 11; ++x) c.set(x, 10, {160, 118, 20, 255});
+}
+
 void drawDiamondItem(TileCanvas& c) {
     drawToolBase(c);
     for (int y = 2; y <= 13; ++y)
@@ -481,12 +510,13 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_CRAFT_SIDE, drawCraftSide);
     make(TILE_STICK, drawStick);
     {
-        const Rgba mats[4] = {{214, 176, 102, 255}, {150, 150, 158, 255}, {226, 226, 232, 255}, {90, 232, 238, 255}};
-        const int tiles[4][4] = {{TILE_PICKAXE_WOOD, TILE_AXE_WOOD, TILE_SHOVEL_WOOD, TILE_SWORD_WOOD},
+        const Rgba mats[5] = {{214, 176, 102, 255}, {150, 150, 158, 255}, {226, 226, 232, 255}, {90, 232, 238, 255}, {250, 214, 60, 255}};
+        const int tiles[5][4] = {{TILE_PICKAXE_WOOD, TILE_AXE_WOOD, TILE_SHOVEL_WOOD, TILE_SWORD_WOOD},
                                  {TILE_PICKAXE_STONE, TILE_AXE_STONE, TILE_SHOVEL_STONE, TILE_SWORD_STONE},
                                  {TILE_PICKAXE_IRON, TILE_AXE_IRON, TILE_SHOVEL_IRON, TILE_SWORD_IRON},
-                                 {TILE_PICKAXE_DIAMOND, TILE_AXE_DIAMOND, TILE_SHOVEL_DIAMOND, TILE_SWORD_DIAMOND}};
-        for (int mat = 0; mat < 4; ++mat)
+                                 {TILE_PICKAXE_DIAMOND, TILE_AXE_DIAMOND, TILE_SHOVEL_DIAMOND, TILE_SWORD_DIAMOND},
+                                 {TILE_PICKAXE_GOLD, TILE_AXE_GOLD, TILE_SHOVEL_GOLD, TILE_SWORD_GOLD}};
+        for (int mat = 0; mat < 5; ++mat)
             for (int kind = 0; kind < 4; ++kind) {
                 TileCanvas cv(px, tiles[mat][kind]);
                 drawTool(cv, kind, mats[mat]);
@@ -495,6 +525,9 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_COAL_ORE, drawCoalOre);
     make(TILE_IRON_ORE, drawIronOre);
     make(TILE_DIAMOND_ORE, drawDiamondOre);
+    make(TILE_GOLD_ORE, drawGoldOre);
+    make(TILE_GOLD_INGOT, drawGoldIngot);
+    make(TILE_TORCH, drawTorch);
     make(TILE_FURNACE, drawFurnaceSide);
     make(TILE_FURNACE_LIT, drawFurnaceLit);
     make(TILE_FURNACE_TOP, drawFurnaceTop);

@@ -30,15 +30,17 @@ std::vector<Recipe> buildRecipes() {
     v.push_back(make({"P", "P"}, {{'P', PLANKS}}, {ITEM_STICK, 4}));
     v.push_back(make({"PP", "PP"}, {{'P', PLANKS}}, {CRAFTING_TABLE, 1}));
     v.push_back(make({"CCC", "C C", "CCC"}, {{'C', COBBLE}}, {FURNACE, 1}));
+    v.push_back(make({"C", "S"}, {{'C', ITEM_COAL}, {'S', ITEM_STICK}}, {TORCH, 4}));
 
     struct Mat {
         ItemId material;
         ItemId pick, axe, shovel, sword;
     };
-    const Mat mats[4] = {{PLANKS, ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD},
+    const Mat mats[5] = {{PLANKS, ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD},
                          {COBBLE, ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD},
                          {ITEM_IRON_INGOT, ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD},
-                         {ITEM_DIAMOND, ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD}};
+                         {ITEM_DIAMOND, ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD},
+                         {ITEM_GOLD_INGOT, ITEM_GOLD_PICKAXE, ITEM_GOLD_AXE, ITEM_GOLD_SHOVEL, ITEM_GOLD_SWORD}};
     for (const Mat& m : mats) {
         v.push_back(make({"MMM", " S ", " S "}, {{'M', m.material}, {'S', ITEM_STICK}}, {m.pick, 1}));
         v.push_back(make({"MM", "MS", " S"}, {{'M', m.material}, {'S', ITEM_STICK}}, {m.axe, 1}));
@@ -93,6 +95,7 @@ ItemStack matchRecipe(const ItemStack* cells, int n) {
 const SmeltRecipe* smeltRecipe(ItemId input) {
     static const SmeltRecipe table[] = {
         {IRON_ORE, {ITEM_IRON_INGOT, 1}},
+        {GOLD_ORE, {ITEM_GOLD_INGOT, 1}},
         {SAND, {GLASS, 1}},
         {COBBLE, {STONE, 1}},
         {ITEM_MEAT, {ITEM_COOKED_MEAT, 1}},

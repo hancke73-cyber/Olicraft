@@ -11,10 +11,10 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Abbauen und Setzen von Blöcken per Raycast
 - Survival- und Kreativmodus (Umschalten mit G): Abbauzeit je Block, Drops als Gegenstände am Boden, Gesundheit mit Herzen, Fallschaden, Ertrinken (Luftblasen), Regeneration, Tod und Wiedergeburt
 - Inventar (E): 27 Rucksack-Slots plus 9 Hotbar-Slots, Stapel bis 64, Mausbedienung wie in Minecraft (links ganzen Stapel, rechts Hälfte oder eines, Umschalt-Klick verschiebt). Im Kreativmodus zusätzlich eine Auswahl aller Blöcke
-- Erze: Kohle (Höhe 5 bis 100), Eisen (bis Höhe 64) und Diamant (tief unten, selten), in Adern im Stein
-- Ofen (8 Bruchstein im Ring): Eingabe, Brennstoff (Kohle 80 s, Holz und Bretter 15 s, Stöcke 5 s), Flamme und Fortschrittspfeil, 10 s je Gegenstand, leuchtet beim Brennen und arbeitet auch bei geschlossenem Fenster weiter. Schmelzen: Eisenerz → Eisenbarren, Sand → Glas, Bruchstein → Stein, rohes → gebratenes Fleisch (heilt 8 statt 4). Der Inhalt bleibt im Spielstand und fällt beim Abbauen heraus
-- Crafting: 2x2-Raster im Inventar, 3x3 an der Werkbank (Rechtsklick auf den Block, mit Umschalt wird er stattdessen gesetzt). Rezepte: Holz → 4 Bretter, 2 Bretter → 4 Stöcke, 4 Bretter → Werkbank, 8 Bruchstein → Ofen, Spitzhacke/Axt/Schaufel/Schwert aus Brettern, Bruchstein, Eisenbarren oder Diamanten mit Stöcken
-- Werkzeuge aus Holz, Stein, Eisen und Diamant mit Haltbarkeit (60, 132, 250, 1560 Nutzungen): passende Werkzeuge bauen schneller ab. Mindeststufe zum Ernten: Stein und Kohle Holz, Eisenerz Stein, Diamanterz Eisen, Obsidian Diamant. Ohne passendes Werkzeug dauert der Abbau länger und es fällt nichts. Schwerter und Äxte machen mehr Schaden gegen Mobs
+- Erze: Kohle (Höhe 5 bis 100), Eisen (bis Höhe 64), Gold (bis Höhe 30, selten) und Diamant (tief unten, am seltensten), in Adern im Stein
+- Ofen (8 Bruchstein im Ring): Eingabe, Brennstoff (Kohle 80 s, Holz und Bretter 15 s, Stöcke 5 s), Flamme und Fortschrittspfeil, 10 s je Gegenstand, leuchtet beim Brennen und arbeitet auch bei geschlossenem Fenster weiter. Schmelzen: Eisenerz → Eisenbarren, Golderz → Goldbarren, Sand → Glas, Bruchstein → Stein, rohes → gebratenes Fleisch (heilt 8 statt 4). Der Inhalt bleibt im Spielstand und fällt beim Abbauen heraus
+- Crafting: 2x2-Raster im Inventar, 3x3 an der Werkbank (Rechtsklick auf den Block, mit Umschalt wird er stattdessen gesetzt). Rezepte: Holz → 4 Bretter, 2 Bretter → 4 Stöcke, 4 Bretter → Werkbank, 8 Bruchstein → Ofen, Spitzhacke/Axt/Schaufel/Schwert aus Brettern, Bruchstein, Eisenbarren, Goldbarren oder Diamanten mit Stöcken, 1 Kohle über 1 Stock → 4 Fackeln
+- Werkzeuge aus Holz, Stein, Eisen, Gold und Diamant mit Haltbarkeit (60, 132, 250, 33, 1560 Nutzungen): passende Werkzeuge bauen schneller ab, Gold am schnellsten, bricht aber schnell. Mindeststufe zum Ernten: Stein und Kohle Holz, Eisenerz Stein, Gold- und Diamanterz Eisen, Obsidian Diamant (Goldwerkzeuge zählen als Holzstufe). Ohne passendes Werkzeug dauert der Abbau länger und es fällt nichts. Schwerter und Äxte machen mehr Schaden gegen Mobs
 - Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies erscheinen nur nachts (draußen und in dunklen Höhlen), verfolgen und greifen an und verschwinden am Tag (im Freien verbrennen sie, in Höhlen lösen sie sich nach 10 s auf)
 - Textur-Editor (Esc, Einstellungen, Textur-Editor): zeigt die aufgeklappte Textur (bei Blöcken das Kreuznetz aus Oberseite, vier Seiten und Unterseite, bei Figuren das komplette Skin-Netzblatt mit beschrifteten Flächen: V vorn, H hinten, R rechts, L links, O oben, U unten) und daneben eine drehbare 3D-Vorschau mit der echten Textur. Bemalen mit Stift (Pinselgröße 1 bis 3), Radierer, Füllen (ähnliche Farben), Pipette (auch Rechtsklick), 32 Farbfelder plus RGBA-Schieber, Rückgängig/Wiederholen, Raster und Netz einblendbar. Texturen von Blöcken, Gegenständen (Werkzeuge, Erze usw.) und Figuren (Spieler, Schwein, Kuh, Schaf, Zombie) lassen sich ändern
 - Eigene Texturen als PNG: "Speichern" schreibt nach `textures/`, beim nächsten Start lädt das Spiel diese Dateien statt der prozeduralen Texturen. "Exportieren" schreibt das aufgeklappte Netz nach `textures/export/`, das lässt sich in einem Malprogramm bearbeiten und mit "Importieren" wieder einlesen (danach noch speichern). "Zurücksetzen" stellt die Standardtextur wieder her und löscht die gespeicherte Datei
@@ -23,13 +23,14 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten) mit Sonne, Mond und Sternen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
+- Blocklicht (0 bis 15, Ausbreitung wie in Minecraft, warmes Licht): Fackeln (Stufe 14), Lava (15) und brennende Öfen (13) beleuchten ihre Umgebung, Licht läuft über Chunkgrenzen und wird beim Entfernen korrekt nachgefüllt. Fackeln stehen auf dem Boden oder hängen an Wänden (nie an der Decke), fallen ab, wenn der Träger fehlt, brechen sofort und halten Zombies fern (sie erscheinen nur bei Licht 6 oder weniger)
 - Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, VSync, Vollbild, Spielmodus. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
 - Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
 
 Texturformate: Kacheln sind 16x16 (`textures/block_<name>.png`), die Skins `skin_player.png` und `skin_zombie.png` 64x32 im Minecraft-Layout (Kopf 0,0, Körper 16,16, Arm 40,16, Bein 0,16; linke Gliedmaßen werden gespiegelt; Minecraft-Skins im Format 64x64 werden akzeptiert, die obere Hälfte zählt), `skin_pig.png`, `skin_cow.png` und `skin_sheep.png` 64x64. Dateien mit falscher Größe werden beim Start ignoriert und gemeldet. Der Block-Export ist ein 64x48-Kreuznetz (4 x 3 Kacheln).
 
-Bewusst nicht enthalten: Hunger, Rüstung, Gold, Sound, Mehrspieler.
+Bewusst nicht enthalten: Hunger, Rüstung, Sound, Mehrspieler.
 
 ## Steuerung
 
@@ -42,7 +43,7 @@ Bewusst nicht enthalten: Hunger, Rüstung, Gold, Sound, Mehrspieler.
 | Umschalt | Beim Fliegen sinken |
 | F oder Leertaste doppelt | Fliegen an/aus (nur Kreativ) |
 | Linksklick (halten) | Block abbauen, Mob angreifen |
-| Rechtsklick (halten) | Block setzen, Fleisch essen, Werkbank und Ofen öffnen |
+| Rechtsklick (halten) | Block oder Fackel setzen, Fleisch essen, Werkbank und Ofen öffnen |
 | Mittelklick | Block unter dem Fadenkreuz übernehmen (Kreativ: in den aktiven Slot, sonst Slot wählen) |
 | 1 bis 9, Mausrad | Hotbar-Slot wählen |
 | E | Inventar öffnen/schließen |
@@ -125,7 +126,7 @@ cmake --build build -j
 --textures PFAD    Ordner mit eigenen Texturen (Standard: textures)
 ```
 
-Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--demo mobs|water|inv|craft|furnace|menu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
+Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--demo mobs|water|torch|inv|craft|furnace|menu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
 
 ## Tests
 

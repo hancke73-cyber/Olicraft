@@ -41,6 +41,7 @@ struct Pose {
     float headPitch = 0.0f;   // Bogenmass, positiv = nach oben
     float roll = 0.0f;        // Umfallen (0..pi/2)
     float sky = 1.0f;
+    float light = 0.0f;       // Blocklicht 0..1
     float tint = 1.0f;
     bool armsSwing = false;   // Spieler: Arme schwingen mit, Zombies halten sie vor
 };

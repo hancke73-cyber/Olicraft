@@ -23,11 +23,13 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aUV;
 layout(location = 2) in float aShade;
 layout(location = 3) in float aSky;
+layout(location = 4) in float aLight;
 uniform mat4 uProjView;
 uniform vec3 uOffset;
 out vec2 vUV;
 out float vShade;
 out float vSky;
+out float vLight;
 out float vDist;
 void main() {
     vec3 p = aPos + uOffset;
@@ -35,6 +37,7 @@ void main() {
     vUV = aUV;
     vShade = aShade;
     vSky = aSky;
+    vLight = aLight;
     vDist = length(p);
 }
 )";
@@ -43,6 +46,7 @@ const char* CHUNK_FS = R"(#version 330 core
 in vec2 vUV;
 in float vShade;
 in float vSky;
+in float vLight;
 in float vDist;
 uniform sampler2D uAtlas;
 uniform float uSun;
@@ -56,7 +60,9 @@ void main() {
     vec4 t = texture(uAtlas, vUV);
     if (uCutout == 1 && t.a < 0.5) discard;
     float cave = min(0.40, uSun);
-    float light = vSky > 1.5 ? 1.0 : mix(cave, uSun, vSky);
+    float sunPart = vSky > 1.5 ? 1.0 : mix(cave, uSun, vSky);
+    float blk = pow(clamp(vLight, 0.0, 1.0), 1.25);
+    vec3 light = max(vec3(sunPart), blk * vec3(1.0, 0.83, 0.60));  // Fackellicht ist warm
     vec3 c = t.rgb * vShade * light * uTint;
     float f = clamp((vDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
     c = mix(c, uFogColor, f);

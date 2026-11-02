@@ -38,6 +38,12 @@ static const BlockInfo INFOS[BLOCK_COUNT] = {
     {"Diamanterz",  true,  true,  false, true,  false, true,  TILE_DIAMOND_ORE, TILE_DIAMOND_ORE, TILE_DIAMOND_ORE, 2.5f, DIAMOND_ORE, TOOL_PICKAXE, 3},
     {"Ofen",        true,  true,  false, true,  false, true,  TILE_FURNACE_TOP, TILE_FURNACE_TOP, TILE_FURNACE,     1.5f, FURNACE, TOOL_PICKAXE, 1},
     {"Ofen",        true,  true,  false, true,  false, true,  TILE_FURNACE_TOP, TILE_FURNACE_TOP, TILE_FURNACE_LIT, 1.5f, FURNACE, TOOL_PICKAXE, 1, true},
+    {"Golderz",     true,  true,  false, true,  false, true,  TILE_GOLD_ORE,    TILE_GOLD_ORE,    TILE_GOLD_ORE,    2.5f, GOLD_ORE, TOOL_PICKAXE, 3},
+    {"Fackel",     false, false, false, false, false, true,  TILE_TORCH,     TILE_TORCH,     TILE_TORCH,     0.0f, TORCH, TOOL_NONE, 0, true},
+    {"Fackel",     false, false, false, false, false, true,  TILE_TORCH,     TILE_TORCH,     TILE_TORCH,     0.0f, TORCH, TOOL_NONE, 0, true},
+    {"Fackel",     false, false, false, false, false, true,  TILE_TORCH,     TILE_TORCH,     TILE_TORCH,     0.0f, TORCH, TOOL_NONE, 0, true},
+    {"Fackel",     false, false, false, false, false, true,  TILE_TORCH,     TILE_TORCH,     TILE_TORCH,     0.0f, TORCH, TOOL_NONE, 0, true},
+    {"Fackel",     false, false, false, false, false, true,  TILE_TORCH,     TILE_TORCH,     TILE_TORCH,     0.0f, TORCH, TOOL_NONE, 0, true},
 };
 
 const BlockInfo& blockInfo(BlockId id) {

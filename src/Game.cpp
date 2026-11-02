@@ -846,6 +846,8 @@ void Game::update(float dt) {
         statusTimer_ = std::max(0.0f, statusTimer_ - dt);
         itemNameTimer_ = std::max(0.0f, itemNameTimer_ - dt);
         world_->tick(dt);
+        for (const glm::ivec3& p : world_->takeTorchDrops())
+            if (!creative_) entities_.spawnItem({TORCH, 1}, glm::vec3(p.x + 0.5f, p.y + 0.2f, p.z + 0.5f), glm::vec3(0.0f, 2.0f, 0.0f), 0.3f);
     } else {
         target_ = RayHit{};
         if (screen_ == MenuScreen::Editor && editorUi_.rotate) editorUi_.previewYaw += dt * 0.9f;
@@ -926,7 +928,18 @@ void Game::placeBlockOrUse() {
     if (p.y < 0 || p.y >= CHUNK_H) return;
     const BlockId cur = world_->getBlock(p.x, p.y, p.z);
     if (cur != AIR && !blockInfo(cur).liquid) return;
-    const BlockId id = itemBlock(sel.id);
+    BlockId id = itemBlock(sel.id);
+    if (id == TORCH) {
+        // Fackeln brauchen einen festen Traegerblock: auf dem Boden oder an einer Wand, nie an der Decke
+        const glm::ivec3& n = target_.normal;
+        if (n.y < 0 || cur != AIR) return;
+        if (!isOpaque(world_->getBlock(target_.block.x, target_.block.y, target_.block.z))) return;
+        if (n.y > 0) id = TORCH;
+        else if (n.x > 0) id = TORCH_NX;  // Traeger liegt auf der -x-Seite der Fackel
+        else if (n.x < 0) id = TORCH_PX;
+        else if (n.z > 0) id = TORCH_NZ;
+        else id = TORCH_PZ;
+    }
     if (blockInfo(id).solid && player_.intersectsBlock(p.x, p.y, p.z)) return;
     if (world_->setBlock(p.x, p.y, p.z, id)) {
         placeTimer_ = 0.2f;
@@ -1210,6 +1223,22 @@ void Game::applyDemo() {
         ip.y = groundAt(ip.x, ip.z);
         entities_.spawnItem({GRASS, 1}, ip + glm::vec3(0.5f, 0.0f, 0.0f), glm::vec3(0.0f), 99.0f);
         entities_.spawnItem({ITEM_MEAT, 1}, ip - glm::vec3(0.5f, 0.0f, 0.0f), glm::vec3(0.0f), 99.0f);
+    } else if (opt_.demo == "torch") {
+        const glm::vec3 side(-f.z, 0.0f, f.x);
+        for (int i = -2; i <= 2; ++i) {
+            glm::vec3 p = player_.pos + f * (5.0f + (i % 2 ? 1.5f : 0.0f)) + side * (3.0f * i);
+            p.y = groundAt(p.x, p.z);
+            world_->setBlock(static_cast<int>(std::floor(p.x)), static_cast<int>(p.y), static_cast<int>(std::floor(p.z)), TORCH);
+        }
+        // eine Wand mit Wandfackel
+        glm::vec3 w = player_.pos + f * 9.0f;
+        const int wx = static_cast<int>(std::floor(w.x)), wz = static_cast<int>(std::floor(w.z));
+        const int wy = static_cast<int>(groundAt(w.x, w.z));
+        for (int y = wy; y < wy + 4; ++y)
+            for (int d = -3; d <= 3; ++d) world_->setBlock(wx + (std::fabs(f.x) > std::fabs(f.z) ? 0 : d), y, wz + (std::fabs(f.x) > std::fabs(f.z) ? d : 0), PLANKS);
+        const bool alongX = std::fabs(f.x) > std::fabs(f.z);
+        const int sx = alongX ? (f.x > 0 ? -1 : 1) : 0, sz = alongX ? 0 : (f.z > 0 ? -1 : 1);
+        world_->setBlock(wx + sx, wy + 1, wz + sz, sx < 0 ? TORCH_PX : (sx > 0 ? TORCH_NX : (sz < 0 ? TORCH_PZ : TORCH_NZ)));
     } else if (opt_.demo == "water") {
         // Quelle auf einer Anhoehe, das Wasser laeuft ueber das Gelaende
         glm::vec3 p = player_.pos + f * 6.0f;
@@ -1685,6 +1714,62 @@ int Game::selfTest() {
         std::filesystem::remove_all("olicraft_selftest");
     }
 
+    // 18. Fackeln: auf Boden und Wand setzen, leuchten, fallen ab, werden aufgesammelt
+    {
+        dead_ = false;
+        creative_ = false;
+        paused_ = false;
+        inventoryOpen_ = false;
+        inventory_.clear();
+        entities_.clear();
+        slot_ = 0;
+        inventory_.slots[0] = {TORCH, 5};
+        placeTimer_ = 0.0f;
+        player_.pos = glm::vec3(0.5f, static_cast<float>(gy), 8.5f);
+        player_.vel = glm::vec3(0.0f);
+        for (int x = 8; x <= 14; ++x)  // Platz freiraeumen (aus frueheren Schritten kann Wasser hierhin geflossen sein)
+            for (int z = -10; z <= -2; ++z)
+                for (int y = gy; y <= gy + 4; ++y)
+                    if (world_->getBlock(x, y, z) != AIR) world_->setBlock(x, y, z, AIR);
+        target_ = world_->raycast(glm::vec3(10.5f, gy + 1.5f, -3.5f), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f);
+        SCHECK(target_.hit && target_.block == glm::ivec3(10, gy - 1, -4) && target_.normal == glm::ivec3(0, 1, 0));
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(10, gy, -4) == TORCH && inventory_.slots[0].count == 4 && world_->lightAt(10, gy, -4) == 14);
+        // an eine Wand: Saeule bei x = 13
+        for (int y = gy; y <= gy + 2; ++y) world_->setBlock(13, y, -4, STONE);
+        placeTimer_ = 0.0f;
+        target_ = world_->raycast(glm::vec3(11.5f, gy + 1.5f, -3.5f), glm::vec3(1.0f, 0.0f, 0.0f), 5.0f);
+        SCHECK(target_.hit && target_.block == glm::ivec3(13, gy + 1, -4) && target_.normal == glm::ivec3(-1, 0, 0));
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(12, gy + 1, -4) == TORCH_PX && inventory_.slots[0].count == 3);
+        // an der Decke: nicht moeglich
+        for (int x = 9; x <= 11; ++x) world_->setBlock(x, gy + 3, -8, STONE);
+        placeTimer_ = 0.0f;
+        target_ = world_->raycast(glm::vec3(10.5f, gy + 1.5f, -7.5f), glm::vec3(0.0f, 1.0f, 0.0f), 5.0f);
+        SCHECK(target_.hit && target_.normal == glm::ivec3(0, -1, 0));
+        placeBlockOrUse();
+        SCHECK(inventory_.slots[0].count == 3);
+        // auf eine Fackel selbst: nicht moeglich
+        placeTimer_ = 0.0f;
+        target_ = world_->raycast(glm::vec3(10.5f, gy + 2.5f, -3.5f), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f);
+        SCHECK(target_.hit && target_.block == glm::ivec3(10, gy, -4));
+        placeBlockOrUse();
+        SCHECK(inventory_.slots[0].count == 3);
+        // Traeger abbauen: die Wandfackel faellt ab
+        breakBlock(glm::ivec3(13, gy + 1, -4));
+        SCHECK(world_->getBlock(12, gy + 1, -4) == AIR && world_->lightAt(12, gy + 1, -4) < 14);  // nur noch Licht der anderen Fackel
+        auto drops = world_->takeTorchDrops();
+        SCHECK(drops.size() == 1 && drops[0] == glm::ivec3(12, gy + 1, -4));
+        // Fackel abbauen: sofort, mit Beute
+        entities_.clear();
+        breakBlock(glm::ivec3(10, gy, -4));
+        SCHECK(world_->getBlock(10, gy, -4) == AIR && entities_.items().size() == 1 && entities_.items()[0].stack.id == TORCH);
+        world_->setBlock(13, gy + 1, -4, AIR);
+        world_->setBlock(13, gy, -4, AIR);
+        world_->setBlock(13, gy + 2, -4, AIR);
+        for (int x = 9; x <= 11; ++x) world_->setBlock(x, gy + 3, -8, AIR);
+    }
+
     // 9. Inventar per Mausklick
     dead_ = false;
     health_ = 20;
@@ -1865,6 +1950,7 @@ void Game::render() {
         for (int y = static_cast<int>(std::floor(player_.pos.y + 1.8f)); y < CHUNK_H && sky; ++y)
             sky = !blockInfo(world_->getBlock(bx, y, bz)).blocksSky;
         pose.sky = sky ? 1.0f : 0.0f;
+        pose.light = static_cast<float>(world_->lightAt(bx, static_cast<int>(std::floor(player_.pos.y + 1.0f)), bz)) / MAX_LIGHT;
         const bool hurt = damageFlash_ > 0.35f || dead_;
         appendModel(SKIN_PLAYER, pose, hurt ? entityBatches_.skinHurt[SKIN_PLAYER] : entityBatches_.skin[SKIN_PLAYER]);
     }

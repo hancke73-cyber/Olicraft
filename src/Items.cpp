@@ -4,19 +4,22 @@ namespace oc {
 
 static const ItemInfo BLOCK_ITEM_NONE = {"", 0, false, TILE_STONE, TILE_STONE, TOOL_NONE, 0, 0, 1.0f, 2};
 
-static const ItemId CREATIVE_LIST[] = {GRASS, DIRT, STONE, COBBLE, SAND, SNOW, LOG, PLANKS, LEAVES, GLASS, WATER, LAVA, OBSIDIAN, BEDROCK,
+static const ItemId CREATIVE_LIST[] = {GRASS, DIRT, STONE, COBBLE, SAND, SNOW, LOG, PLANKS, LEAVES, GLASS, WATER, LAVA, OBSIDIAN, BEDROCK, TORCH,
                                        CRAFTING_TABLE, ITEM_STICK, ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL,
                                        ITEM_WOODEN_SWORD, ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL,
                                        ITEM_STONE_SWORD, ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD,
                                        ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD,
-                                       COAL_ORE, IRON_ORE, DIAMOND_ORE, FURNACE, ITEM_COAL, ITEM_IRON_INGOT, ITEM_DIAMOND,
+                                       ITEM_GOLD_PICKAXE, ITEM_GOLD_AXE, ITEM_GOLD_SHOVEL, ITEM_GOLD_SWORD,
+                                       COAL_ORE, IRON_ORE, DIAMOND_ORE, GOLD_ORE, FURNACE, ITEM_COAL, ITEM_IRON_INGOT,
+                                       ITEM_GOLD_INGOT, ITEM_DIAMOND,
                                        ITEM_MEAT, ITEM_COOKED_MEAT};
 
 bool itemValid(ItemId id) {
     if (id == ITEM_MEAT || (id >= ITEM_STICK && id <= ITEM_LAST)) return true;
     if (id > 0 && id < BLOCK_COUNT) {
         // Fliessendes Wasser gibt es nicht als Gegenstand
-        return !((id >= WATER_1 && id <= WATER_FALL) || (id >= LAVA_1 && id <= LAVA_FALL) || id == FURNACE_LIT);
+        return !((id >= WATER_1 && id <= WATER_FALL) || (id >= LAVA_1 && id <= LAVA_FALL) || id == FURNACE_LIT ||
+                 (id > TORCH && id <= TORCH_NZ));
     }
     return false;
 }
@@ -28,7 +31,7 @@ const ItemInfo& itemInfo(ItemId id) {
     if (!init) {
         for (int i = 1; i < BLOCK_COUNT; ++i) {
             const BlockInfo& bi = blockInfo(static_cast<BlockId>(i));
-            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2};
+            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH};
         }
         init = true;
     }
@@ -55,6 +58,11 @@ const ItemInfo& itemInfo(ItemId id) {
         {"Diamantaxt", 1, false, TILE_AXE_DIAMOND, TILE_AXE_DIAMOND, TOOL_AXE, 4, 1560, 8.0f, 7},
         {"Diamantschaufel", 1, false, TILE_SHOVEL_DIAMOND, TILE_SHOVEL_DIAMOND, TOOL_SHOVEL, 4, 1560, 8.0f, 5},
         {"Diamantschwert", 1, false, TILE_SWORD_DIAMOND, TILE_SWORD_DIAMOND, TOOL_SWORD, 4, 1560, 1.5f, 8},
+        {"Goldbarren", 64, false, TILE_GOLD_INGOT, TILE_GOLD_INGOT, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Goldspitzhacke", 1, false, TILE_PICKAXE_GOLD, TILE_PICKAXE_GOLD, TOOL_PICKAXE, 1, 33, 7.0f, 3},
+        {"Goldaxt", 1, false, TILE_AXE_GOLD, TILE_AXE_GOLD, TOOL_AXE, 1, 33, 7.0f, 4},
+        {"Goldschaufel", 1, false, TILE_SHOVEL_GOLD, TILE_SHOVEL_GOLD, TOOL_SHOVEL, 1, 33, 7.0f, 3},
+        {"Goldschwert", 1, false, TILE_SWORD_GOLD, TILE_SWORD_GOLD, TOOL_SWORD, 1, 33, 1.5f, 5},
     };
     if (id >= ITEM_STICK && id <= ITEM_LAST) return items[id - ITEM_STICK];
     if (id > 0 && id < BLOCK_COUNT) return cache[id];

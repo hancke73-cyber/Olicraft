@@ -266,12 +266,12 @@ static void testMesher() {
     MeshOutput out;
 
     set(5, 50, 5, STONE);
-    buildChunkMesh(pad.data(), out);
+    buildChunkMesh(pad.data(), nullptr, out);
     CHECK(out.opaque.size() == 6 * 4);
     CHECK(out.water.empty());
 
     set(6, 50, 5, STONE);
-    buildChunkMesh(pad.data(), out);
+    buildChunkMesh(pad.data(), nullptr, out);
     CHECK(out.opaque.size() == 10 * 4);  // 2 Bloecke, 2 verdeckte Flaechen
 
     // alle Vertex-Positionen liegen im Chunk und alle Helligkeiten in 0..1
@@ -288,7 +288,7 @@ static void testMesher() {
         std::vector<BlockId> p2(PAD_VOLUME, AIR);
         p2[padIndex(8 + 1, 50, 8 + 1)] = STONE;
         MeshOutput o2;
-        buildChunkMesh(p2.data(), o2);
+        buildChunkMesh(p2.data(), nullptr, o2);
         bool windingOk = true;
         const glm::vec3 center(8.5f, 50.5f, 8.5f);
         for (size_t q = 0; q + 3 < o2.opaque.size(); q += 4) {
@@ -310,7 +310,7 @@ static void testMesher() {
             p3[padIndex(x + 1, 41, z + 1)] = WATER;
         }
     MeshOutput o3;
-    buildChunkMesh(p3.data(), o3);
+    buildChunkMesh(p3.data(), nullptr, o3);
     CHECK(o3.water.size() == (9 + 4 * 3) * 4);  // Oberseite 9 + 4 Seiten * 3 Bloecke
     // Wasseroberflaeche liegt unter der vollen Blockhoehe
     bool lowered = true;
@@ -323,7 +323,7 @@ static void testMesher() {
     p4[padIndex(3 + 1, 70, 3 + 1)] = LEAVES;
     p4[padIndex(4 + 1, 70, 3 + 1)] = LEAVES;
     MeshOutput o4;
-    buildChunkMesh(p4.data(), o4);
+    buildChunkMesh(p4.data(), nullptr, o4);
     CHECK(o4.opaque.size() == 10 * 4);
 
     // Himmelslicht: Block mit Dach darueber bekommt weniger Himmelslicht an der Oberseite als ein freier
@@ -333,7 +333,7 @@ static void testMesher() {
     for (int x = 8; x <= 12; ++x)
         for (int z = 8; z <= 12; ++z) p5[padIndex(x + 1, 55, z + 1)] = STONE;
     MeshOutput o5;
-    buildChunkMesh(p5.data(), o5);
+    buildChunkMesh(p5.data(), nullptr, o5);
     float skyFree = -1, skyCovered = -1;
     for (const Vertex& v : o5.opaque) {
         if (v.y == 51.0f && v.x >= 2 && v.x <= 3 && v.z >= 2 && v.z <= 3) skyFree = v.sky;
@@ -532,7 +532,7 @@ static void testFluidMesh() {
     set(5, 41, 5, WATER);
     set(6, 41, 5, WATER_4);
     MeshOutput out;
-    buildChunkMesh(pad.data(), out);
+    buildChunkMesh(pad.data(), nullptr, out);
     // Quelle: Oberseite + 3 Seiten + ein Teilstueck zur niedrigeren Nachbarzelle; Stroemung: Oberseite + 3 Seiten
     CHECK(out.water.size() == 9 * 4);
     bool hasStep = false;
@@ -544,7 +544,7 @@ static void testFluidMesh() {
     p2[padIndex(3 + 1, 41, 3 + 1)] = WATER_FALL;
     p2[padIndex(3 + 1, 40, 3 + 1)] = STONE;
     MeshOutput o2;
-    buildChunkMesh(p2.data(), o2);
+    buildChunkMesh(p2.data(), nullptr, o2);
     float maxY = 0;
     for (const Vertex& v : o2.water) maxY = std::max(maxY, v.y);
     CHECK(std::fabs(maxY - 42.0f) < 1e-4f);
@@ -1004,7 +1004,7 @@ static void testLava() {
     pad[padIndex(8 + 1, 40, 8 + 1)] = STONE;
     pad[padIndex(8 + 1, 41, 8 + 1)] = WATER;
     MeshOutput out;
-    buildChunkMesh(pad.data(), out);
+    buildChunkMesh(pad.data(), nullptr, out);
     bool emissive = false, water = !out.water.empty();
     for (const Vertex& v : out.opaque)
         if (v.sky > 1.5f && v.y > 41.0f) emissive = true;
@@ -1863,6 +1863,185 @@ static void testTextureEditor() {
     std::filesystem::remove_all(dir);
 }
 
+static void testGoldAndTorches() {
+    // Gold: Erzverteilung, Schmelzen, Werkzeuge, Abbaustufe
+    {
+        World w(42);
+        w.setMeshingEnabled(false);
+        w.loadAround(glm::vec3(0.0f), 4);
+        int gold = 0, high = 0;
+        for (int x = -64; x < 64; ++x)
+            for (int z = -64; z < 64; ++z)
+                for (int y = 0; y < CHUNK_H; ++y)
+                    if (w.getBlock(x, y, z) == GOLD_ORE) {
+                        ++gold;
+                        if (y > 30 + 5) ++high;
+                    }
+        CHECK(gold >= 10 && high == 0);
+        CHECK(smeltRecipe(GOLD_ORE) && smeltRecipe(GOLD_ORE)->output.id == ITEM_GOLD_INGOT);
+        const ItemStack hand, sp{ITEM_STONE_PICKAXE, 1}, ip{ITEM_IRON_PICKAXE, 1};
+        CHECK(!canHarvest(GOLD_ORE, hand) && !canHarvest(GOLD_ORE, sp) && canHarvest(GOLD_ORE, ip));
+        CHECK(blockDropItem(GOLD_ORE) == GOLD_ORE);
+        for (ItemId id = ITEM_GOLD_PICKAXE; id <= ITEM_GOLD_SWORD; ++id) {
+            CHECK(itemValid(id) && itemInfo(id).maxDurability > 0 && itemInfo(id).maxDurability < itemInfo(ITEM_STONE_PICKAXE).maxDurability);
+            if (id != ITEM_GOLD_SWORD) CHECK(itemInfo(id).speed > itemInfo(ITEM_IRON_PICKAXE).speed);  // schnell, aber zerbrechlich
+        }
+        std::vector<ItemStack> g(9);
+        g[0] = g[1] = g[2] = {ITEM_GOLD_INGOT, 1};
+        g[4] = g[7] = {ITEM_STICK, 1};
+        CHECK(matchRecipe(g.data(), 3).id == ITEM_GOLD_PICKAXE);
+        // Fackeln: Kohle ueber Stock
+        std::vector<ItemStack> tg(4);
+        tg[0] = {ITEM_COAL, 1};
+        tg[2] = {ITEM_STICK, 1};
+        ItemStack r = matchRecipe(tg.data(), 2);
+        CHECK(r.id == TORCH && r.count == 4);
+        tg[2].clear();
+        tg[1] = {ITEM_STICK, 1};
+        CHECK(matchRecipe(tg.data(), 2).empty());  // nebeneinander: kein Rezept
+        CHECK(itemValid(TORCH) && !itemValid(TORCH_PX) && itemInfo(TORCH).flatIcon && itemIsBlock(TORCH));
+        CHECK(blockDropItem(TORCH_NZ) == TORCH && blockDropItem(TORCH) == TORCH);
+        CHECK(miningSeconds(TORCH, hand) == 0.0f);  // bricht sofort
+        CHECK(!blockInfo(TORCH).solid && !blockInfo(TORCH).opaque && lightEmission(TORCH_PX) == 14 && lightEmission(LAVA_2) == 15 &&
+              lightEmission(STONE) == 0 && lightEmission(FURNACE_LIT) > lightEmission(FURNACE));
+    }
+
+    // Licht
+    World w(3);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z) {
+            for (int y = 100; y < 125; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, 99, z, STONE);
+        }
+    CHECK(w.lightAt(0, 100, 0) == 0 && w.lightAt(1000, 100, 0) == 0 && w.lightAt(0, -3, 0) == 0 && w.lightAt(0, 500, 0) == 0);
+    w.setBlock(0, 100, 0, TORCH);
+    CHECK(w.lightAt(0, 100, 0) == 14 && w.lightAt(1, 100, 0) == 13 && w.lightAt(0, 100, 5) == 9);
+    CHECK(w.lightAt(3, 103, 0) == 8);       // Abstand 6
+    CHECK(w.lightAt(13, 100, 0) == 1 && w.lightAt(14, 100, 0) == 0);
+    CHECK(w.lightAt(0, 99, 0) == 0);        // Stein nimmt kein Licht auf
+    // Wand: dahinter dunkel; oeffnen laesst Licht durch
+    for (int z = -14; z <= 14; ++z)
+        for (int y = 100; y < 112; ++y) w.setBlock(2, y, z, STONE);
+    CHECK(w.lightAt(2, 100, 0) == 0 && w.lightAt(3, 100, 0) == 0 && w.lightAt(1, 100, 0) == 13);
+    w.setBlock(2, 100, 0, AIR);
+    CHECK(w.lightAt(2, 100, 0) == 12 && w.lightAt(3, 100, 0) == 11 && w.lightAt(3, 101, 0) == 10);
+    w.setBlock(2, 100, 0, STONE);
+    CHECK(w.lightAt(3, 100, 0) == 0 && w.lightAt(3, 101, 0) == 0);
+    // zweite Fackel: Maximum, und die erste zu entfernen laesst die zweite bestehen
+    for (int y = 100; y < 112; ++y) w.setBlock(2, y, 0, AIR);
+    w.setBlock(6, 100, 0, TORCH_NX);
+    CHECK(w.lightAt(4, 100, 0) == 12);
+    w.setBlock(0, 100, 0, AIR);
+    CHECK(w.lightAt(0, 100, 0) == 8 && w.lightAt(6, 100, 0) == 14 && w.lightAt(4, 100, 0) == 12);
+    w.setBlock(6, 100, 0, AIR);
+    int lit = 0;
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z)
+            for (int y = 99; y < 125; ++y) lit += w.lightAt(x, y, z) > 0;
+    CHECK(lit == 0);
+    // Lava und Fackel: Lava entfernen darf die Fackel nicht ausloeschen
+    w.setBlock(-8, 100, 0, LAVA);
+    w.setBlock(-6, 100, 0, TORCH);
+    CHECK(w.lightAt(-8, 100, 0) == 15 && w.lightAt(-7, 100, 0) == 14);
+    w.setBlock(-8, 100, 0, AIR);
+    CHECK(w.lightAt(-6, 100, 0) == 14 && w.lightAt(-7, 100, 0) == 13 && w.lightAt(-8, 100, 0) == 12);
+    w.setBlock(-6, 100, 0, AIR);
+    // Chunkgrenze: Licht fliesst hinueber, der Nachbar wird neu gemeshed
+    w.setBlock(15, 100, 0, TORCH);
+    CHECK(w.lightAt(17, 100, 0) == 12 && w.chunkAt(1, 0) && w.chunkAt(1, 0)->dirty);
+    // Entladen und neu laden ergibt dasselbe Licht (veraenderte Chunks werden komplett abgetastet)
+    w.update(glm::vec3(16.0f * 40, 64.0f, 0.0f), 3, 1000.0);
+    CHECK(!w.isChunkLoaded(0, 0) && !w.isChunkLoaded(1, 0));
+    w.update(glm::vec3(8.0f, 64.0f, 8.0f), 3, 1000.0);
+    CHECK(w.isChunkLoaded(0, 0) && w.isChunkLoaded(1, 0));
+    CHECK(w.getBlock(15, 100, 0) == TORCH && w.lightAt(15, 100, 0) == 14 && w.lightAt(17, 100, 0) == 12 && w.lightAt(5, 100, 0) == 4);
+    w.setBlock(15, 100, 0, AIR);
+    CHECK(w.lightAt(17, 100, 0) == 0 && w.lightAt(5, 100, 0) == 0);
+
+    // Fackeln fallen ab, wenn der Traeger fehlt
+    w.setBlock(5, 100, 5, TORCH);
+    w.setBlock(7, 100, 7, TORCH_PX);  // Traeger bei +x
+    w.setBlock(8, 100, 7, STONE);
+    w.setBlock(9, 100, 9, TORCH_NZ);  // Traeger bei -z
+    w.setBlock(9, 100, 8, STONE);
+    CHECK(w.takeTorchDrops().empty());
+    w.setBlock(5, 99, 5, AIR);
+    auto drops = w.takeTorchDrops();
+    CHECK(drops.size() == 1 && drops[0] == glm::ivec3(5, 100, 5) && w.getBlock(5, 100, 5) == AIR);
+    w.setBlock(8, 100, 7, AIR);
+    w.setBlock(9, 100, 8, AIR);
+    drops = w.takeTorchDrops();
+    CHECK(drops.size() == 2 && w.getBlock(7, 100, 7) == AIR && w.getBlock(9, 100, 9) == AIR);
+    w.setBlock(7, 100, 7, TORCH);  // auf dem Boden: der Nachbarblock spielt keine Rolle
+    w.setBlock(8, 100, 7, STONE);
+    w.setBlock(8, 100, 7, AIR);
+    CHECK(w.takeTorchDrops().empty() && w.getBlock(7, 100, 7) == TORCH);
+
+    // Lava-Seen beleuchten Hoehlen
+    {
+        World cave(7);
+        cave.setMeshingEnabled(false);
+        cave.loadAround(glm::vec3(0.0f), 4);
+        int litCells = 0, maxLight = 0, insideSolid = 0, lavaCells = 0;
+        for (int x = -50; x < 50; ++x)
+            for (int z = -50; z < 50; ++z)
+                for (int y = 0; y < 40; ++y) {
+                    const int l = cave.lightAt(x, y, z);
+                    litCells += l > 0;
+                    maxLight = std::max(maxLight, l);
+                    if (l > 0 && isOpaque(cave.getBlock(x, y, z))) ++insideSolid;
+                    if (cave.getBlock(x, y, z) == LAVA) {
+                        ++lavaCells;
+                        if (l != 15) ++insideSolid;
+                    }
+                }
+        CHECK(lavaCells > 0 && litCells > lavaCells && maxLight == 15 && insideSolid == 0);
+    }
+
+    // Mesher: Blocklicht gelangt in die Eckpunkte, Fackel ist ein duenner leuchtender Stab
+    {
+        std::vector<BlockId> pad(PAD_VOLUME, AIR);
+        std::vector<uint8_t> lightPad(PAD_VOLUME, 0);
+        pad[padIndex(5 + 1, 50, 5 + 1)] = STONE;
+        for (int y = 51; y < 53; ++y)
+            for (int x = 4; x <= 6; ++x)
+                for (int z = 4; z <= 6; ++z) lightPad[padIndex(x + 1, y, z + 1)] = 8;
+        MeshOutput out;
+        buildChunkMesh(pad.data(), lightPad.data(), out);
+        float topLight = -1;
+        for (const Vertex& v : out.opaque)
+            if (v.y == 51.0f) topLight = std::max(topLight, v.light);  // die Oberseite liegt in der beleuchteten Schicht
+        CHECK(std::fabs(topLight - 8.0f / 15.0f) < 1e-4f);
+        buildChunkMesh(pad.data(), nullptr, out);
+        for (const Vertex& v : out.opaque) CHECK(v.light == 0.0f);
+
+        std::vector<BlockId> tp(PAD_VOLUME, AIR);
+        tp[padIndex(8 + 1, 60, 8 + 1)] = TORCH;
+        buildChunkMesh(tp.data(), nullptr, out);
+        CHECK(out.opaque.size() == 5 * 4);
+        bool slim = true, glow = true;
+        for (const Vertex& v : out.opaque) {
+            slim = slim && v.x > 8.4f && v.x < 8.6f && v.z > 8.4f && v.z < 8.6f && v.y >= 60.0f && v.y <= 60.82f;
+            glow = glow && v.sky > 1.5f && v.light == 1.0f;
+        }
+        CHECK(slim && glow);
+        // Wandfackel: oben von der Wand (bei +x) weggeneigt, unten zur Wand verschoben
+        std::vector<BlockId> wp(PAD_VOLUME, AIR);
+        wp[padIndex(8 + 1, 60, 8 + 1)] = TORCH_PX;
+        buildChunkMesh(wp.data(), nullptr, out);
+        float minX = 1e9f, maxX = -1e9f, topX = 0, bottomX = 0;
+        for (const Vertex& v : out.opaque) {
+            minX = std::min(minX, v.x);
+            maxX = std::max(maxX, v.x);
+            if (v.y > 60.9f) topX = v.x;
+            if (v.y < 60.3f) bottomX = v.x;
+        }
+        CHECK(bottomX > 8.7f && topX < bottomX - 0.15f && maxX < 9.0f);
+    }
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -1897,6 +2076,7 @@ int main() {
     testSkinsAndModels();
     testImagesAndTextures();
     testTextureEditor();
+    testGoldAndTorches();
     testCamera();
     testSaveV2();
     testEntities();
