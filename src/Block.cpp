@@ -95,8 +95,8 @@ struct InfoTable {
         static const char* SLAB_NAMES[STAIR_MATERIALS] = {"Brettplatte", "Bruchsteinplatte", "Steinziegelplatte", "Ziegelplatte", "Sandsteinplatte"};
         for (int m = 0; m < STAIR_MATERIALS; ++m) {
             const BlockInfo& mb = BASE_INFOS[stairMaterialBlock(m)];
-            for (int f = 0; f < 4; ++f) {
-                BlockInfo& i = infos[makeStairs(m, f)];
+            for (int f = 0; f < 8; ++f) {  // 4 Richtungen, normal und umgedreht
+                BlockInfo& i = infos[makeStairs(m, f & 3, f >= 4)];
                 i = mb;
                 i.name = STAIR_NAMES[m];
                 i.opaque = false;

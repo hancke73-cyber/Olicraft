@@ -1871,7 +1871,12 @@ void Game::placeBlockOrUse() {
         const int lookDir = std::fabs(f.x) >= std::fabs(f.z) ? (f.x > 0 ? 0 : 1) : (f.z > 0 ? 2 : 3);
         const glm::vec3 hitPoint = player_.eyePos() + f * (target_.dist + 0.002f);
         if (isStairs(id)) {
-            id = makeStairs(stairMaterial(id), lookDir);
+            // wie Platten: an die Unterseite oder in die obere Haelfte einer Seitenflaeche gesetzt, steht die Treppe umgedreht
+            bool top;
+            if (target_.normal.y > 0) top = false;
+            else if (target_.normal.y < 0) top = true;
+            else top = hitPoint.y - static_cast<float>(p.y) > 0.5f;
+            id = makeStairs(stairMaterial(id), lookDir, top);
         } else if (isSlab(id)) {
             const int mat = slabMaterial(id);
             const BlockId tb2 = world_->getBlock(target_.block.x, target_.block.y, target_.block.z);
@@ -2312,6 +2317,26 @@ void Game::applyDemo() {
                 world_->setBlock(ox + x, gy, oz + z, z == 25 && x % 4 == 0 ? WATER : FARMLAND);
                 if (z != 25) put(x, 0, z, x < 4 ? static_cast<BlockId>(WHEAT_0 + (x % 4)) : static_cast<BlockId>(CARROT_0 + (x % 4)));
             }
+        // Walmdach aus Treppen: die Ecken ergeben sich aus den Nachbarn
+        for (int k = 0; k < 3; ++k) {
+            const int lo = 14 + k, hi = 20 - k, zlo = k, zhi = 6 - k;
+            for (int x = lo; x <= hi; ++x)
+                for (int z = zlo; z <= zhi; ++z) {
+                    if (x != lo && x != hi && z != zlo && z != zhi) continue;
+                    put(x, k, z, makeStairs(3, x == lo ? 0 : (x == hi ? 1 : (z == zlo ? 2 : 3))));
+                }
+        }
+        put(17, 3, 3, BRICKS);
+        // Bogen mit umgedrehten Treppen unter der Decke
+        for (int z = 0; z <= 2; ++z) {
+            for (int y = 0; y <= 2; ++y) {
+                put(24, y, z, STONE_BRICKS);
+                put(28, y, z, STONE_BRICKS);
+            }
+            put(25, 2, z, makeStairs(2, 0, true));
+            put(26, 2, z, makeSlab(2, true));
+            put(27, 2, z, makeStairs(2, 1, true));
+        }
         player_.pos = glm::vec3(static_cast<float>(ox + 5), static_cast<float>(gy + 11), static_cast<float>(oz - 3));
         player_.yaw = 90.0f;
         player_.pitch = -42.0f;
@@ -3245,6 +3270,23 @@ int Game::selfTest() {
         aim(8.5f, gy + 2.0f, -12.5f, 0.0f, -1.0f, 0.0f);
         placeBlockOrUse();
         SCHECK(world_->getBlock(8, gy, -13) == makeStairs(0, 0) && inventory_.slots[0].count == 3);
+        // Treppe von unten an die Decke gesetzt oder an die obere Haelfte einer Wand: umgedreht
+        world_->setBlock(6, gy + 3, -13, STONE);
+        inventory_.slots[0] = {makeStairs(0, 0), 4};
+        aim(6.5f, gy, -12.5f, 0.0f, 1.0f, 0.0f);  // von unten gegen die Decke
+        SCHECK(target_.hit && target_.normal == glm::ivec3(0, -1, 0));
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(6, gy + 2, -13) == makeStairs(0, 0, true) && inventory_.slots[0].count == 3);
+        // Vorn davon eine Treppe in Querrichtung: die erste zeigt dann eine Ecke (aus den Nachbarn abgeleitet)
+        world_->setBlock(7, gy + 2, -13, makeStairs(0, 2, true));
+        {
+            Box cb[MAX_BOXES];
+            SCHECK(world_->collisionBoxes(6, gy + 2, -13, cb) == 2);
+            SCHECK(cb[1].x0 == 0.5f && cb[1].z0 == 0.5f && cb[1].y1 == 0.5f);
+        }
+        world_->setBlock(7, gy + 2, -13, AIR);
+        world_->setBlock(6, gy + 2, -13, AIR);
+        world_->setBlock(6, gy + 3, -13, AIR);
         // Platte: von oben unten, von unten oben, zweite Platte ergibt einen Vollblock
         inventory_.slots[0] = {makeSlab(1, false), 6};
         aim(10.5f, gy + 2.0f, -12.5f, 0.0f, -1.0f, 0.0f);

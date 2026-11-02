@@ -130,6 +130,9 @@ enum Block : BlockId {
     // Betten aus zwei Bloecken: id = BED_BASE + (Kopf ? 4 : 0) + Richtung (vom Fussteil zum Kopfteil)
     BED_BASE,
     BED_END = BED_BASE + 7,
+    // Umgedrehte Treppen (hohe Seite unten): gleiche Anordnung wie STAIRS_BASE. Am Ende, damit alte Spielstaende gueltig bleiben.
+    STAIRS_TOP_BASE,
+    STAIRS_TOP_END = STAIRS_TOP_BASE + 19,
     BLOCK_COUNT
 };
 
@@ -327,10 +330,14 @@ inline float liquidHeight(BlockId id) {
 
 // --- Bauteile
 constexpr int STAIR_MATERIALS = 5;  // Bretter, Bruchstein, Steinziegel, Ziegel, Sandstein
-inline bool isStairs(BlockId id) { return id >= STAIRS_BASE && id <= STAIRS_END; }
-inline int stairMaterial(BlockId id) { return (id - STAIRS_BASE) / 4; }
-inline int stairFacing(BlockId id) { return (id - STAIRS_BASE) % 4; }  // Richtung der hohen Seite: 0 +X, 1 -X, 2 +Z, 3 -Z
-inline BlockId makeStairs(int material, int facing) { return static_cast<BlockId>(STAIRS_BASE + material * 4 + facing); }
+inline bool stairIsTop(BlockId id) { return id >= STAIRS_TOP_BASE && id <= STAIRS_TOP_END; }  // umgedreht: Stufe unten, Platte oben
+inline bool isStairs(BlockId id) { return (id >= STAIRS_BASE && id <= STAIRS_END) || stairIsTop(id); }
+inline int stairIndex(BlockId id) { return stairIsTop(id) ? id - STAIRS_TOP_BASE : id - STAIRS_BASE; }
+inline int stairMaterial(BlockId id) { return stairIndex(id) / 4; }
+inline int stairFacing(BlockId id) { return stairIndex(id) % 4; }  // Richtung der hohen Seite: 0 +X, 1 -X, 2 +Z, 3 -Z
+inline BlockId makeStairs(int material, int facing, bool top = false) {
+    return static_cast<BlockId>((top ? STAIRS_TOP_BASE : STAIRS_BASE) + material * 4 + facing);
+}
 inline bool isSlab(BlockId id) { return id >= SLAB_BASE && id <= SLAB_END; }
 inline int slabMaterial(BlockId id) { return (id - SLAB_BASE) / 2; }
 inline bool slabIsTop(BlockId id) { return (id - SLAB_BASE) % 2 == 1; }

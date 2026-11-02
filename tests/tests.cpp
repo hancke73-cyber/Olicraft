@@ -3321,6 +3321,143 @@ static void testCreativeTabsAndGui() {
     }
 }
 
+static void testStairCorners() {
+    CHECK(BLOCK_COUNT <= 200);  // darueber beginnen die Gegenstands-IDs
+    // IDs: alle Materialien, Richtungen und beide Lagen sind eindeutig und kehren zurueck
+    std::set<int> ids;
+    for (int m = 0; m < STAIR_MATERIALS; ++m)
+        for (int f = 0; f < 4; ++f)
+            for (bool top : {false, true}) {
+                const BlockId s = makeStairs(m, f, top);
+                CHECK(isStairs(s) && stairMaterial(s) == m && stairFacing(s) == f && stairIsTop(s) == top);
+                CHECK(blockInfo(s).shape == SH_STAIRS && !blockInfo(s).opaque && blockInfo(s).solid);
+                CHECK(blockInfo(s).drop == makeStairs(m, 0));
+                CHECK(ids.insert(s).second);
+                CHECK(itemValid(s) == (f == 0 && !top));
+                CHECK(blockDropItem(s) == makeStairs(m, 0));
+            }
+    CHECK(ids.size() == 40);
+    CHECK(!isStairs(AIR) && !isStairs(SLAB_BASE) && !isStairs(BED_END) && !stairIsTop(makeStairs(0, 0)));
+    CHECK(STAIRS_TOP_BASE > BED_END && std::string(blockInfo(makeStairs(1, 2, true)).name) == std::string(blockInfo(makeStairs(1, 2)).name));
+
+    std::map<std::array<int, 3>, BlockId> w;
+    auto get = [&](int x, int y, int z) {
+        auto it = w.find({x, y, z});
+        return it == w.end() ? static_cast<BlockId>(AIR) : it->second;
+    };
+    Box bx[MAX_BOXES];
+    auto boxes = [&](BlockId b) { return blockBoxes(b, 0, 0, 0, get, false, bx); };
+    auto stepIs = [&](const Box& b, float x0, float z0, float x1, float z1, float y0, float y1) {
+        return b.x0 == x0 && b.z0 == z0 && b.x1 == x1 && b.z1 == z1 && b.y0 == y0 && b.y1 == y1;
+    };
+    const BlockId E = makeStairs(0, 0);  // hohe Seite +X
+    // allein: gerade
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0, 1, 1, 0.5f, 1));
+    // vorn (+X) eine Treppe, die nach +Z zeigt: Aussenecke mit Viertel bei +Z
+    w[{1, 0, 0}] = makeStairs(0, 2);
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0.5f, 1, 1, 0.5f, 1));
+    // nach -Z: Viertel bei -Z
+    w[{1, 0, 0}] = makeStairs(0, 3);
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0, 1, 0.5f, 0.5f, 1));
+    // vorn gleiche Richtung oder Gegenrichtung: gerade
+    w[{1, 0, 0}] = makeStairs(0, 0);
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0, 1, 1, 0.5f, 1));
+    w[{1, 0, 0}] = makeStairs(0, 1);
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0, 1, 1, 0.5f, 1));
+    // vorn eine umgedrehte Treppe (andere Lage): keine Ecke, Material ist egal
+    w[{1, 0, 0}] = makeStairs(0, 2, true);
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0, 1, 1, 0.5f, 1));
+    w[{1, 0, 0}] = makeStairs(3, 2);
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0.5f, 1, 1, 0.5f, 1));
+    // Nachbar der Stufenreihe auf der Gegenseite der Nachbarstufe: dann keine Ecke
+    w[{0, 0, -1}] = E;  // (pos - G) mit G = +Z
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0, 1, 1, 0.5f, 1));
+    w.clear();
+    // hinten (-X) eine Treppe nach +Z: Innenecke, drei Boxen
+    w[{-1, 0, 0}] = makeStairs(0, 2);
+    CHECK(boxes(E) == 3 && stepIs(bx[1], 0.5f, 0, 1, 1, 0.5f, 1) && stepIs(bx[2], 0, 0.5f, 0.5f, 1, 0.5f, 1));
+    w[{-1, 0, 0}] = makeStairs(0, 3);
+    CHECK(boxes(E) == 3 && stepIs(bx[2], 0, 0, 0.5f, 0.5f, 0.5f, 1));
+    // Innenecke wird verhindert, wenn auf der Seite der Nachbarstufe schon eine gleiche Treppe steht
+    w[{0, 0, -1}] = E;
+    CHECK(boxes(E) == 2);
+    w.clear();
+    // Voll- und Plattenbloecke ergeben keine Ecken
+    w[{1, 0, 0}] = STONE;
+    w[{-1, 0, 0}] = makeSlab(0, false);
+    CHECK(boxes(E) == 2 && stepIs(bx[1], 0.5f, 0, 1, 1, 0.5f, 1));
+    w.clear();
+    // umgedreht: Platte oben, Stufe darunter, Ecken wie gehabt
+    const BlockId ET = makeStairs(0, 0, true);
+    CHECK(boxes(ET) == 2 && bx[0].y0 == 0.5f && bx[0].y1 == 1.0f && stepIs(bx[1], 0.5f, 0, 1, 1, 0, 0.5f));
+    w[{1, 0, 0}] = makeStairs(2, 2, true);
+    CHECK(boxes(ET) == 2 && stepIs(bx[1], 0.5f, 0.5f, 1, 1, 0, 0.5f));
+    w[{1, 0, 0}] = makeStairs(2, 2, false);  // normale Treppe daneben: keine Ecke
+    CHECK(boxes(ET) == 2 && stepIs(bx[1], 0.5f, 0, 1, 1, 0, 0.5f));
+    w.clear();
+    // Alle Richtungen: Aussenecken liegen immer innerhalb der Zelle und decken genau ein Viertel der Flaeche
+    for (int f = 0; f < 4; ++f)
+        for (int g = 0; g < 4; ++g)
+            for (bool top : {false, true}) {
+                static const int DX[4] = {1, -1, 0, 0}, DZ[4] = {0, 0, 1, -1};
+                w.clear();
+                w[{DX[f], 0, DZ[f]}] = makeStairs(0, g, top);
+                const int n = boxes(makeStairs(0, f, top));
+                CHECK(n == 2);
+                const float area = (bx[1].x1 - bx[1].x0) * (bx[1].z1 - bx[1].z0);
+                const bool perp = (f >> 1) != (g >> 1);
+                CHECK(std::fabs(area - (perp ? 0.25f : 0.5f)) < 1e-6f);
+                CHECK(bx[1].x0 >= 0 && bx[1].x1 <= 1 && bx[1].z0 >= 0 && bx[1].z1 <= 1);
+                w.clear();
+                w[{-DX[f], 0, -DZ[f]}] = makeStairs(0, g, top);
+                const int n2 = boxes(makeStairs(0, f, top));
+                CHECK(n2 == (perp ? 3 : 2));
+                if (perp) CHECK(std::fabs((bx[2].x1 - bx[2].x0) * (bx[2].z1 - bx[2].z0) - 0.25f) < 1e-6f);
+            }
+    w.clear();
+
+    // Welt: Kollision folgt der Ecke, Spieler steigt auf, Netz bleibt gueltig
+    World world(3);
+    world.setMeshingEnabled(false);
+    world.loadAround(glm::vec3(0.0f), 2);
+    const int gy = 100;
+    for (int x = -6; x <= 6; ++x)
+        for (int z = -6; z <= 6; ++z) {
+            for (int y = gy - 2; y < gy + 8; ++y) world.setBlock(x, y, z, AIR);
+            world.setBlock(x, gy - 1, z, STONE);
+        }
+    world.setBlock(0, gy, 0, makeStairs(0, 0));      // Aussenecke: Nachbar vorn nach +Z
+    world.setBlock(1, gy, 0, makeStairs(0, 2));
+    Box cb[MAX_BOXES];
+    const int nc = world.collisionBoxes(0, gy, 0, cb);
+    CHECK(nc == 2 && cb[1].x0 == 0.5f && cb[1].z0 == 0.5f && cb[1].x1 == 1.0f && cb[1].z1 == 1.0f);
+    world.setBlock(1, gy, 0, AIR);  // ohne Nachbarn wieder gerade
+    CHECK(world.collisionBoxes(0, gy, 0, cb) == 2 && cb[1].z0 == 0.0f && cb[1].z1 == 1.0f);
+    world.setBlock(-1, gy, 0, makeStairs(0, 3));    // Innenecke
+    CHECK(world.collisionBoxes(0, gy, 0, cb) == 3);
+    world.setBlock(-1, gy, 0, AIR);
+    // Mesher: Treppe mit Ecke erzeugt mehr Flaechen als eine gerade, alles liegt in der Zelle
+    {
+        std::vector<BlockId> pad(PAD_VOLUME, AIR);
+        auto set = [&](int x, int y, int z, BlockId b) { pad[padIndex(x + 1, y, z + 1)] = b; };
+        MeshOutput out;
+        set(5, 50, 5, makeStairs(0, 0));
+        buildChunkMesh(pad.data(), nullptr, out);
+        const size_t straight = out.opaque.size();
+        set(6, 50, 5, makeStairs(0, 2));
+        buildChunkMesh(pad.data(), nullptr, out);
+        CHECK(straight > 0 && out.opaque.size() % 4 == 0);
+        set(6, 50, 5, AIR);
+        set(4, 50, 5, makeStairs(0, 2));  // Innenecke
+        buildChunkMesh(pad.data(), nullptr, out);
+        CHECK(out.opaque.size() > straight);
+        bool inRange = true;
+        for (const Vertex& v : out.opaque)
+            if (v.x < 3.99f || v.x > 6.01f || v.y < 49.99f || v.y > 51.01f || v.z < 4.99f || v.z > 6.01f) inRange = false;
+        CHECK(inRange);
+    }
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -3558,6 +3695,7 @@ int main() {
     testArmor();
     testParticlesAndGraphics();
     testWorlds();
+    testStairCorners();
     testCreativeTabsAndGui();
     testCraftingAndTools();
     testOresAndFurnace();

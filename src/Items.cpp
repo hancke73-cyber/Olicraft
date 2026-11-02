@@ -57,7 +57,7 @@ bool itemValid(ItemId id) {
         if ((id >= WATER_1 && id <= WATER_FALL) || (id >= LAVA_1 && id <= LAVA_FALL) || id == FURNACE_LIT || (id > TORCH && id <= TORCH_NZ))
             return false;
         const BlockId b = static_cast<BlockId>(id);
-        if (isStairs(b)) return stairFacing(b) == 0;
+        if (isStairs(b)) return stairFacing(b) == 0 && !stairIsTop(b);
         if (isSlab(b)) return !slabIsTop(b);
         if (isDoor(b) || b == LANTERN_HANG || isCrop(b) || isBedPart(b)) return false;
         if (isLadder(b)) return b == LADDER_BASE;

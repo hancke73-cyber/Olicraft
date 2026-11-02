@@ -1,4 +1,6 @@
 #pragma once
+#include <algorithm>
+
 #include "Block.h"
 
 namespace oc {
@@ -24,6 +26,36 @@ inline bool shapeConnects(BlockId self, BlockId other) {
     }
 }
 
+// Treppenecken werden wie bei Minecraft aus den Nachbarn abgeleitet (nichts davon steht im Block):
+// Steht vor der Treppe (in Richtung der hohen Seite) eine gleichartige Treppe quer dazu, ist es eine Aussenecke,
+// steht hinter ihr eine quer dazu, eine Innenecke. corner = Richtung der Nachbarstufe, -1 gerade.
+template <class G>
+int stairCorner(BlockId b, int x, int y, int z, const G& get, bool& inner) {
+    static const int DX[4] = {1, -1, 0, 0}, DZ[4] = {0, 0, 1, -1};
+    inner = false;
+    const int f = stairFacing(b);
+    const bool top = stairIsTop(b);
+    auto same = [&](BlockId n) { return isStairs(n) && stairIsTop(n) == top; };
+    auto canTake = [&](int dir) {
+        const BlockId n = get(x + DX[dir], y, z + DZ[dir]);
+        return !isStairs(n) || stairFacing(n) != f || stairIsTop(n) != top;
+    };
+    const BlockId front = get(x + DX[f], y, z + DZ[f]);
+    if (same(front)) {
+        const int g = stairFacing(front);
+        if ((g >> 1) != (f >> 1) && canTake(g ^ 1)) return g;
+    }
+    const BlockId back = get(x - DX[f], y, z - DZ[f]);
+    if (same(back)) {
+        const int g = stairFacing(back);
+        if ((g >> 1) != (f >> 1) && canTake(g)) {
+            inner = true;
+            return g;
+        }
+    }
+    return -1;
+}
+
 // Boxen des Blocks b an (x, y, z). get(x, y, z) liefert Nachbarbloecke (fuer verbindende Formen).
 // visual = false: Kollision (Zaeune 1.5 hoch, offene Tueren behalten ihre Platte), true: Darstellung.
 // Rueckgabe: Anzahl Boxen (0 = keine, z. B. Laterne bei der Kollision).
@@ -42,12 +74,37 @@ int blockBoxes(BlockId b, int x, int y, int z, const G& get, bool visual, Box* o
             else add(0, 0, 0, 1, 0.5f, 1);
             return n;
         case SH_STAIRS: {
-            add(0, 0, 0, 1, 0.5f, 1);
-            switch (stairFacing(b)) {
-                case 0: add(0.5f, 0.5f, 0, 1, 1, 1); break;
-                case 1: add(0, 0.5f, 0, 0.5f, 1, 1); break;
-                case 2: add(0, 0.5f, 0.5f, 1, 1, 1); break;
-                default: add(0, 0.5f, 0, 1, 1, 0.5f); break;
+            const bool top = stairIsTop(b);
+            const int f = stairFacing(b);
+            if (top) add(0, 0.5f, 0, 1, 1, 1);  // umgedreht: Platte oben, Stufe darunter
+            else add(0, 0, 0, 1, 0.5f, 1);
+            const float y0 = top ? 0.0f : 0.5f, y1 = top ? 0.5f : 1.0f;
+            // Hälften der Zelle in Richtung d: {x0, z0, x1, z1}
+            auto half = [](int d, float r[4]) {
+                r[0] = 0; r[1] = 0; r[2] = 1; r[3] = 1;
+                switch (d) {
+                    case 0: r[0] = 0.5f; break;
+                    case 1: r[2] = 0.5f; break;
+                    case 2: r[1] = 0.5f; break;
+                    default: r[3] = 0.5f; break;
+                }
+            };
+            bool inner = false;
+            const int g = stairCorner(b, x, y, z, get, inner);
+            float hf[4];
+            half(f, hf);
+            if (g < 0) {  // gerade: die ganze hintere Haelfte
+                add(hf[0], y0, hf[1], hf[2], y1, hf[3]);
+            } else if (!inner) {  // Aussenecke: nur das Viertel zur Seite der Nachbarstufe
+                float hg[4];
+                half(g, hg);
+                add(std::max(hf[0], hg[0]), y0, std::max(hf[1], hg[1]), std::min(hf[2], hg[2]), y1, std::min(hf[3], hg[3]));
+            } else {  // Innenecke: hintere Haelfte plus das Viertel vorn zur Seite der Nachbarstufe
+                float hg[4], ho[4];
+                half(g, hg);
+                half(f ^ 1, ho);
+                add(hf[0], y0, hf[1], hf[2], y1, hf[3]);
+                add(std::max(ho[0], hg[0]), y0, std::max(ho[1], hg[1]), std::min(ho[2], hg[2]), y1, std::min(ho[3], hg[3]));
             }
             return n;
         }
