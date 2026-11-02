@@ -18,6 +18,7 @@
 #include "Camera.h"
 #include "Models.h"
 #include "Skins.h"
+#include "Sky.h"
 #include "Crafting.h"
 #include "Entities.h"
 #include "Hud.h"
@@ -2322,6 +2323,39 @@ static void testPlayerSkins() {
     CHECK(buildMenu(MenuScreen::Settings, ms, 320, 240).skinPreview.z == 0.0f);  // zu schmal: keine Vorschau
 }
 
+static void testSky() {
+    const std::vector<uint8_t> sun = sunPixels();
+    CHECK(sun.size() == static_cast<size_t>(SUN_PX * SUN_PX * 4));
+    auto alpha = [](const std::vector<uint8_t>& p, int w, int x, int y) { return p[(static_cast<size_t>(y) * w + x) * 4 + 3]; };
+    CHECK(alpha(sun, SUN_PX, 8, 8) == 255 && alpha(sun, SUN_PX, 0, 0) == 0 && alpha(sun, SUN_PX, 15, 15) == 0);
+    CHECK(sun[(8 * SUN_PX + 8) * 4] == 255);  // warmes Rot
+    const std::vector<uint8_t> moon = moonPixels();
+    const int mw = MOON_PX * MOON_PHASES;
+    CHECK(moon.size() == static_cast<size_t>(mw * MOON_PX * 4));
+    auto litCount = [&](int phase, int x0, int x1) {
+        int n = 0;
+        for (int y = 0; y < MOON_PX; ++y)
+            for (int x = x0; x < x1; ++x) n += alpha(moon, mw, phase * MOON_PX + x, y) == 255;
+        return n;
+    };
+    const int full = litCount(0, 0, MOON_PX);
+    CHECK(full > 100 && litCount(4, 0, MOON_PX) == 0);                      // Neumond unbeleuchtet
+    CHECK(litCount(2, 8, MOON_PX) > 40 && litCount(2, 0, 8) == 0);          // zunehmend: rechte Haelfte
+    CHECK(litCount(6, 0, 8) > 40 && litCount(6, 8, MOON_PX) == 0);          // abnehmend: linke Haelfte
+    CHECK(litCount(1, 0, MOON_PX) > litCount(2, 0, MOON_PX) && litCount(2, 0, MOON_PX) > litCount(3, 0, MOON_PX));
+    const std::vector<uint8_t> glow = glowPixels();
+    CHECK(glow.size() == static_cast<size_t>(GLOW_PX * GLOW_PX * 4));
+    CHECK(alpha(glow, GLOW_PX, 32, 32) > 200 && alpha(glow, GLOW_PX, 0, 0) == 0 && alpha(glow, GLOW_PX, 32, 48) < alpha(glow, GLOW_PX, 32, 40));
+    const std::vector<StarDef> stars = generateStars(900), again = generateStars(900);
+    CHECK(stars.size() == 900 && stars[10].dir == again[10].dir);
+    int big = 0;
+    for (const StarDef& s : stars) {
+        CHECK(std::fabs(glm::length(s.dir) - 1.0f) < 1e-4f && s.size >= 1.0f && s.size <= 4.0f && s.brightness > 0.0f && s.brightness <= 1.0f);
+        big += s.size > 3.0f;
+    }
+    CHECK(big > 10 && big < 150);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -2353,6 +2387,7 @@ int main() {
     testSettingsAndMenu();
     testMobSounds();
     testPlayerSkins();
+    testSky();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

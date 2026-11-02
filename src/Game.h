@@ -50,6 +50,7 @@ struct Options {
     bool hasLook = false;
     float yaw = -90.0f, pitch = 0.0f;
     bool hasTime = false;
+    int moonPhase = -1;  // --moon N: feste Mondphase 0..7 (Test)
     float timeOfDay = 0.3f;
     bool fly = false;
     int benchFrames = 0;  // >0: automatisch fliegen, Zeiten messen, beenden
@@ -162,6 +163,7 @@ private:
     int slot_ = 0;
     float timeOfDay_ = 0.30f;
     float gameTime_ = 0.0f;
+    int dayCount_ = 0;  // vergangene Tage dieser Sitzung (bestimmt die Mondphase)
     bool paused_ = false;
     bool inventoryOpen_ = false;
     bool firstMouse_ = true;

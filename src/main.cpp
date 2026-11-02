@@ -115,6 +115,9 @@ int main(int argc, char** argv) {
             need(1);
             opt.hasTime = true;
             opt.timeOfDay = static_cast<float>(std::atof(argv[++i]));
+        } else if (a == "--moon") {
+            need(1);
+            opt.moonPhase = std::atoi(argv[++i]);
         } else if (a == "--bench") {
             need(1);
             opt.benchFrames = std::atoi(argv[++i]);

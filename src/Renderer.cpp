@@ -86,6 +86,89 @@ out vec4 FragColor;
 void main() { FragColor = uColor; }
 )";
 
+const char* DOME_VS = R"(#version 330 core
+uniform mat4 uInvVP;
+out vec3 vDir;
+void main() {
+    vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);  // Dreieck, das den Bildschirm deckt
+    vec4 w = uInvVP * vec4(p * 2.0 - 1.0, 1.0, 1.0);
+    vDir = w.xyz / w.w;
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+
+const char* DOME_FS = R"(#version 330 core
+in vec3 vDir;
+uniform vec3 uHorizon;
+uniform vec3 uZenith;
+uniform vec3 uSunDir;
+uniform vec3 uMoonDir;
+uniform vec3 uDuskCol;
+uniform float uDusk;
+uniform float uSunGlow;
+uniform float uNight;
+out vec4 FragColor;
+void main() {
+    vec3 d = normalize(vDir);
+    float h = d.y;
+    vec3 col = mix(uHorizon, uZenith, pow(clamp(h, 0.0, 1.0), 0.55));
+    float s = max(dot(d, uSunDir), 0.0);
+    col += vec3(1.0, 0.85, 0.55) * (pow(s, 5.0) * 0.18 + pow(s, 48.0) * 0.45) * uSunGlow;
+    vec2 hd = normalize(d.xz + vec2(1e-4)), sd = normalize(uSunDir.xz + vec2(1e-4));
+    float az = max(dot(hd, sd), 0.0);
+    float band = exp(-pow((h - 0.02) / 0.26, 2.0)) * pow(az, 1.6);
+    col = mix(col, uDuskCol, clamp(uDusk * band, 0.0, 1.0) * 0.85);
+    float m = max(dot(d, uMoonDir), 0.0);
+    col += vec3(0.30, 0.38, 0.62) * pow(m, 20.0) * 0.30 * uNight;
+    FragColor = vec4(col, 1.0);
+}
+)";
+
+const char* SPRITE_VS = R"(#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUV;
+uniform mat4 uMVP;
+out vec2 vUV;
+void main() {
+    vUV = aUV;
+    gl_Position = uMVP * vec4(aPos, 1.0);
+}
+)";
+
+const char* SPRITE_FS = R"(#version 330 core
+in vec2 vUV;
+uniform sampler2D uTex;
+uniform vec4 uTint;
+out vec4 FragColor;
+void main() {
+    vec4 t = texture(uTex, vUV);
+    FragColor = vec4(t.rgb * uTint.rgb, t.a * uTint.a);
+}
+)";
+
+const char* STAR_VS = R"(#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aInfo;  // Groesse, Helligkeit, Phase
+uniform mat4 uMVP;
+uniform float uTime;
+uniform float uScale;
+uniform float uAlpha;
+out vec4 vColor;
+void main() {
+    gl_Position = uMVP * vec4(aPos, 1.0);
+    gl_PointSize = aInfo.x * uScale;
+    float tw = 0.78 + 0.22 * sin(uTime * (1.3 + aInfo.z * 2.2) + aInfo.z * 40.0);
+    vec3 tint = aInfo.z < 0.15 ? vec3(0.75, 0.82, 1.0) : (aInfo.z > 0.88 ? vec3(1.0, 0.86, 0.68) : vec3(1.0));
+    vColor = vec4(tint, aInfo.y * tw * uAlpha);
+}
+)";
+
+const char* STAR_FS = R"(#version 330 core
+in vec4 vColor;
+out vec4 FragColor;
+void main() { FragColor = vColor; }
+)";
+
 const char* HUD_VS = R"(#version 330 core
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec2 aUV;
@@ -163,6 +246,9 @@ bool Renderer::init(const TextureStore& textures) {
     if (!chunkShader_.build(CHUNK_VS, CHUNK_FS, "chunk")) return false;
     if (!colorShader_.build(COLOR_VS, COLOR_FS, "color")) return false;
     if (!hudShader_.build(HUD_VS, HUD_FS, "hud")) return false;
+    if (!domeShader_.build(DOME_VS, DOME_FS, "dome")) return false;
+    if (!spriteShader_.build(SPRITE_VS, SPRITE_FS, "sprite")) return false;
+    if (!starShader_.build(STAR_VS, STAR_FS, "star")) return false;
 
     // Texturatlas
     const std::vector<uint8_t>& px = textures.atlasPixels();
@@ -201,6 +287,31 @@ bool Renderer::init(const TextureStore& textures) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
 
+    // Himmelstexturen: Sonne, Mondphasen, Lichtkranz
+    {
+        auto makeTex = [](GLuint& tex, int w, int h, const std::vector<uint8_t>& px, GLint filter) {
+            glGenTextures(1, &tex);
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        };
+        makeTex(sunTex_, SUN_PX, SUN_PX, sunPixels(), GL_NEAREST);
+        makeTex(moonTex_, MOON_PX * MOON_PHASES, MOON_PX, moonPixels(), GL_NEAREST);
+        makeTex(glowTex_, GLOW_PX, GLOW_PX, glowPixels(), GL_LINEAR);
+        glGenVertexArrays(1, &spriteVao_);
+        glGenBuffers(1, &spriteVbo_);
+        glBindVertexArray(spriteVao_);
+        glBindBuffer(GL_ARRAY_BUFFER, spriteVbo_);
+        glBufferData(GL_ARRAY_BUFFER, 4 * 5 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+    }
+
     // Sonne/Mond (2 Quads), dynamisch
     glGenVertexArrays(1, &skyVao_);
     glGenBuffers(1, &skyVbo_);
@@ -210,27 +321,22 @@ bool Renderer::init(const TextureStore& textures) {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
 
-    // Sterne
+    // Sterne: Position, Groesse, Helligkeit, Phase
     {
         std::vector<float> stars;
-        for (int i = 0; i < 700; ++i) {
-            uint32_t h1 = hash3(i, 1, 0, 77u), h2 = hash3(i, 2, 0, 77u);
-            float u = (h1 & 0xFFFFu) / 65535.0f * 2.0f - 1.0f;
-            float a = (h2 & 0xFFFFu) / 65535.0f * 2.0f * PI;
-            float r = std::sqrt(1.0f - u * u);
-            stars.push_back(r * std::cos(a) * 90.0f);
-            stars.push_back(u * 90.0f);
-            stars.push_back(r * std::sin(a) * 90.0f);
+        for (const StarDef& st : generateStars(900)) {
+            stars.insert(stars.end(), {st.dir.x * 90.0f, st.dir.y * 90.0f, st.dir.z * 90.0f, st.size, st.brightness, st.phase});
         }
-        starCount_ = static_cast<int>(stars.size() / 3);
+        starCount_ = static_cast<int>(stars.size() / 6);
         glGenVertexArrays(1, &starVao_);
         glGenBuffers(1, &starVbo_);
         glBindVertexArray(starVao_);
         glBindBuffer(GL_ARRAY_BUFFER, starVbo_);
-        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(stars.size() * sizeof(float)), stars.data(),
-                     GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(stars.size() * sizeof(float)), stars.data(), GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), nullptr);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     }
 
     // Auswahlrahmen (Wuerfelkanten)
@@ -299,10 +405,15 @@ void Renderer::shutdown() {
         skinHurtMesh_[i].release();
         if (skinTex_[i]) glDeleteTextures(1, &skinTex_[i]);
     }
-    GLuint vaos[] = {skyVao_, starVao_, lineVao_, hudVao_};
-    GLuint vbos[] = {skyVbo_, starVbo_, lineVbo_, hudVbo_};
-    glDeleteVertexArrays(4, vaos);
-    glDeleteBuffers(4, vbos);
+    GLuint vaos[] = {skyVao_, starVao_, lineVao_, hudVao_, spriteVao_};
+    GLuint vbos[] = {skyVbo_, starVbo_, lineVbo_, hudVbo_, spriteVbo_};
+    glDeleteVertexArrays(5, vaos);
+    glDeleteBuffers(5, vbos);
+    GLuint texs[] = {sunTex_, moonTex_, glowTex_};
+    glDeleteTextures(3, texs);
+    domeShader_.release();
+    spriteShader_.release();
+    starShader_.release();
     chunkShader_.release();
     colorShader_.release();
     hudShader_.release();
@@ -314,10 +425,16 @@ void Renderer::render(const World& world, const FrameInfo& f) {
     const float day = daylight(f.timeOfDay);
     const float sh = sunHeight(f.timeOfDay);
 
-    glm::vec3 skyDay(0.52f, 0.74f, 0.96f), skyNight(0.012f, 0.018f, 0.05f), dusk(0.95f, 0.50f, 0.28f);
-    glm::vec3 sky = glm::mix(skyNight, skyDay, day);
-    float duskAmt = std::exp(-(sh / 0.20f) * (sh / 0.20f)) * 0.65f;
-    sky = glm::mix(sky, dusk * (0.35f + 0.65f * day), duskAmt);
+    // Verlauf: Horizont hell und blass, Zenit tiefer; nachts fast schwarz mit blauem Hauch
+    const glm::vec3 horDay(0.70f, 0.83f, 0.98f), zenDay(0.27f, 0.52f, 0.90f);
+    const glm::vec3 horNight(0.025f, 0.035f, 0.085f), zenNight(0.004f, 0.007f, 0.028f);
+    SkyColors sc;
+    sc.horizon = glm::mix(horNight, horDay, day);
+    sc.zenith = glm::mix(zenNight, zenDay, day);
+    sc.dusk = glm::vec3(1.00f, 0.52f, 0.26f) * (0.45f + 0.55f * day);
+    sc.duskAmt = std::exp(-(sh / 0.30f) * (sh / 0.30f));
+    // Rundum leichte Roetung am Horizont (Nebel passt dazu), stark nur in Richtung der Sonne (im Himmelsshader)
+    glm::vec3 sky = glm::mix(sc.horizon, sc.dusk, sc.duskAmt * 0.30f);
 
     glm::vec3 fogColor = sky;
     float sunLevel = 0.22f + 0.78f * day;
@@ -338,7 +455,7 @@ void Renderer::render(const World& world, const FrameInfo& f) {
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
-    if (!f.underwater && !f.underLava) drawSky(f, sky);
+    if (!f.underwater && !f.underLava) drawSky(f, sc);
     drawWorld(world, f, fogColor, sunLevel);
     if (f.hud.show) {
         drawSelection(f);
@@ -346,59 +463,102 @@ void Renderer::render(const World& world, const FrameInfo& f) {
     drawHud(f);
 }
 
-void Renderer::drawSky(const FrameInfo& f, const glm::vec3& skyColor) {
-    glm::mat4 viewRot = glm::mat4(glm::mat3(f.view));
-    glm::mat4 vp = f.proj * viewRot;
+void Renderer::drawSky(const FrameInfo& f, const SkyColors& sc) {
+    const glm::mat4 viewRot = glm::mat4(glm::mat3(f.view));
+    const glm::mat4 vp = f.proj * viewRot;
     const float angle = f.timeOfDay * 2.0f * PI;
+    const float sh = sunHeight(f.timeOfDay);
+    const glm::vec3 sunDir = glm::normalize(glm::vec3(std::cos(angle), std::sin(angle), 0.30f));
+    const glm::vec3 moonDir = -sunDir;
+    const float night = 1.0f - smooth01(-0.25f, 0.05f, sh);
+    const float sunUp = smooth01(-0.18f, 0.10f, sh);
+
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+
+    // Himmelsverlauf mit Abendrot und Glanz um die Sonne
+    domeShader_.use();
+    domeShader_.setMat4("uInvVP", glm::inverse(vp));
+    domeShader_.setVec3("uHorizon", sc.horizon);
+    domeShader_.setVec3("uZenith", sc.zenith);
+    domeShader_.setVec3("uSunDir", sunDir);
+    domeShader_.setVec3("uMoonDir", moonDir);
+    domeShader_.setVec3("uDuskCol", sc.dusk);
+    domeShader_.setFloat("uDusk", sc.duskAmt);
+    domeShader_.setFloat("uSunGlow", sunUp);
+    domeShader_.setFloat("uNight", night);
+    glBindVertexArray(skyVao_);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    colorShader_.use();
-
-    // Sterne (nachts)
-    float starAlpha = 1.0f - smooth01(-0.25f, 0.05f, sunHeight(f.timeOfDay));
-    if (starAlpha > 0.01f) {
+    // Sterne: funkeln, nur nachts
+    if (night > 0.01f) {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
         glEnable(GL_PROGRAM_POINT_SIZE);
-        glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f));
-        colorShader_.setMat4("uMVP", vp * rot);
-        colorShader_.setVec4("uColor", glm::vec4(1.0f, 1.0f, 1.0f, starAlpha * 0.9f));
-        colorShader_.setFloat("uPointSize", 2.0f);
+        const glm::mat4 rot = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f));
+        starShader_.use();
+        starShader_.setMat4("uMVP", vp * rot);
+        starShader_.setFloat("uTime", f.time);
+        starShader_.setFloat("uScale", std::max(1.0f, std::floor(static_cast<float>(f.height) / 540.0f) + 0.0f));
+        starShader_.setFloat("uAlpha", night);
         glBindVertexArray(starVao_);
         glDrawArrays(GL_POINTS, 0, starCount_);
     }
 
-    auto drawDisc = [&](glm::vec3 dir, float size, glm::vec4 color) {
-        dir = glm::normalize(dir);
-        glm::vec3 right = glm::normalize(glm::cross(dir, glm::vec3(0.0f, 1.0f, 0.0f)));
-        glm::vec3 up = glm::cross(right, dir);
-        glm::vec3 c = dir * 100.0f;
-        float q[12];
-        glm::vec3 p0 = c - right * size - up * size, p1 = c + right * size - up * size;
-        glm::vec3 p2 = c + right * size + up * size, p3 = c - right * size + up * size;
-        const glm::vec3 pts[4] = {p0, p1, p3, p2};  // Triangle-Strip
+    // Quad zur Himmelsrichtung dir mit halber Kantenlaenge size, UV-Ausschnitt u0..u1
+    auto drawSprite = [&](GLuint tex, const glm::vec3& dir, float size, float u0, float u1, const glm::vec4& tint) {
+        const glm::vec3 right = glm::normalize(glm::cross(dir, glm::vec3(0.0f, 1.0f, 0.0f)));
+        const glm::vec3 up = glm::cross(right, dir);
+        const glm::vec3 c = dir * 100.0f;
+        const glm::vec3 p[4] = {c - right * size - up * size, c + right * size - up * size, c - right * size + up * size,
+                                c + right * size + up * size};
+        const float uv[4][2] = {{u0, 1.0f}, {u1, 1.0f}, {u0, 0.0f}, {u1, 0.0f}};
+        float q[20];
         for (int i = 0; i < 4; ++i) {
-            q[i * 3 + 0] = pts[i].x;
-            q[i * 3 + 1] = pts[i].y;
-            q[i * 3 + 2] = pts[i].z;
+            q[i * 5 + 0] = p[i].x;
+            q[i * 5 + 1] = p[i].y;
+            q[i * 5 + 2] = p[i].z;
+            q[i * 5 + 3] = uv[i][0];
+            q[i * 5 + 4] = uv[i][1];
         }
-        glBindVertexArray(skyVao_);
-        glBindBuffer(GL_ARRAY_BUFFER, skyVbo_);
+        glBindVertexArray(spriteVao_);
+        glBindBuffer(GL_ARRAY_BUFFER, spriteVbo_);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(q), q);
-        colorShader_.setMat4("uMVP", vp);
-        colorShader_.setVec4("uColor", color);
+        spriteShader_.setMat4("uMVP", vp);
+        spriteShader_.setVec4("uTint", tint);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        spriteShader_.setInt("uTex", 0);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     };
 
-    glm::vec3 sunDir(std::cos(angle), std::sin(angle), 0.30f);
-    drawDisc(sunDir, 14.0f, glm::vec4(1.0f, 0.97f, 0.80f, 1.0f));
-    drawDisc(-sunDir, 10.0f, glm::vec4(0.86f, 0.90f, 0.98f, 1.0f));
-    (void)skyColor;
+    spriteShader_.use();
+    // Sonne: tief am Horizont groesser und orange
+    {
+        const float low = 1.0f - smooth01(0.0f, 0.45f, sh);
+        const glm::vec3 warm = glm::mix(glm::vec3(1.0f), glm::vec3(1.0f, 0.60f, 0.32f), low);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        drawSprite(glowTex_, sunDir, 46.0f * (1.0f + 0.5f * low), 0.0f, 1.0f, glm::vec4(warm * glm::vec3(1.0f, 0.88f, 0.60f), 0.55f * sunUp));
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        drawSprite(sunTex_, sunDir, 13.0f * (1.0f + 0.25f * low), 0.0f, 1.0f, glm::vec4(warm, 1.0f));
+    }
+    // Mond mit Phase und blassem Schein
+    {
+        const int ph = ((f.moonPhase % MOON_PHASES) + MOON_PHASES) % MOON_PHASES;
+        const float fullness = ph == 0 ? 1.0f : (ph == 1 || ph == 7) ? 0.7f : (ph == 2 || ph == 6) ? 0.4f : (ph == 3 || ph == 5) ? 0.2f : 0.0f;
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        drawSprite(glowTex_, moonDir, 30.0f, 0.0f, 1.0f, glm::vec4(0.55f, 0.65f, 0.95f, 0.30f * fullness * night));
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        drawSprite(moonTex_, moonDir, 10.0f, static_cast<float>(ph) / MOON_PHASES, static_cast<float>(ph + 1) / MOON_PHASES,
+                   glm::vec4(1.0f));
+    }
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
+    glDisable(GL_PROGRAM_POINT_SIZE);
 }
 
 void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3& fogColor, float sunLevel) {

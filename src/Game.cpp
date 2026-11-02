@@ -848,7 +848,9 @@ void Game::update(float dt) {
     if (!paused_) {
         gameTime_ += dt;
         timeOfDay_ += dt / DAY_SECONDS;
-        timeOfDay_ -= std::floor(timeOfDay_);
+        const float wraps = std::floor(timeOfDay_);
+        timeOfDay_ -= wraps;
+        dayCount_ += static_cast<int>(wraps);
         jumpTapTimer_ = std::max(0.0f, jumpTapTimer_ - dt);
 
         MoveInput in;
@@ -2122,6 +2124,8 @@ void Game::render() {
     const float farPlane = static_cast<float>(opt_.renderDistance + 3) * CHUNK_W * 1.5f;
     f.proj = glm::perspective(glm::radians(settings_.fov), static_cast<float>(fbW_) / static_cast<float>(fbH_), 0.05f, farPlane);
     f.timeOfDay = timeOfDay_;
+    f.moonPhase = opt_.moonPhase >= 0 ? opt_.moonPhase : dayCount_ % MOON_PHASES;
+    f.time = static_cast<float>(glfwGetTime());
     f.renderDistance = opt_.renderDistance;
     f.underwater = world_->inWaterAt(f.camPos);
     f.underLava = world_->inLavaAt(f.camPos);

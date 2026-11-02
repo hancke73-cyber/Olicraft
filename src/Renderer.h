@@ -10,6 +10,7 @@
 #include "Entities.h"
 #include "Hud.h"
 #include "Shader.h"
+#include "Sky.h"
 #include "TextureStore.h"
 #include "World.h"
 
@@ -21,6 +22,8 @@ struct FrameInfo {
     glm::vec3 camPos{0.0f};
     int width = 1, height = 1;
     float timeOfDay = 0.3f;  // 0..1, 0.25 = Mittag, 0.75 = Mitternacht
+    int moonPhase = 0;       // 0 Vollmond .. 7
+    float time = 0.0f;       // Sekunden, fuer Funkeln der Sterne
     bool underwater = false;
     bool underLava = false;
     int renderDistance = 8;  // in Chunks
@@ -52,7 +55,11 @@ public:
     uint64_t drawnQuads() const { return drawnQuads_; }
 
 private:
-    void drawSky(const FrameInfo& f, const glm::vec3& skyColor);
+    struct SkyColors {
+        glm::vec3 horizon, zenith, dusk;
+        float duskAmt = 0.0f;
+    };
+    void drawSky(const FrameInfo& f, const SkyColors& sc);
     void drawWorld(const World& world, const FrameInfo& f, const glm::vec3& fogColor, float sunLevel);
     void drawSelection(const FrameInfo& f);
     void drawHud(const FrameInfo& f);
@@ -60,7 +67,9 @@ private:
 
     void flushHud(const FrameInfo& f);
 
-    Shader chunkShader_, colorShader_, hudShader_;
+    Shader chunkShader_, colorShader_, hudShader_, domeShader_, spriteShader_, starShader_;
+    GLuint sunTex_ = 0, moonTex_ = 0, glowTex_ = 0;
+    GLuint spriteVao_ = 0, spriteVbo_ = 0;
     GLuint atlas_ = 0;
     GLuint guiTex_ = 0;
     GLuint viewTex_ = 0;     // Bild der Editor-Leinwand
