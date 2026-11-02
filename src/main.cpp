@@ -29,6 +29,7 @@ static void printHelp() {
         "  --no-sound        Ton aus\n"
         "  --village         Beim Start zum naechsten Dorf springen\n"
         "  --no-menu         Ohne Hauptmenue direkt ins Spiel\n"
+        "  --style N         Grafikstil fuer diesen Lauf: 0 Standard, 1 Kloetzchen\n"
         "  --list-sounds     Alle benoetigten Klangdateien mit Beschreibung und Vorschlag fuer die Erzeugung ausgeben\n"
         "  --help            Diese Hilfe\n"
         "\n"
@@ -83,6 +84,9 @@ int main(int argc, char** argv) {
                 std::printf("| `%s` | %s | %.1f s | %s |\n", d.file, d.desc, d.seconds, d.prompt);
             }
             return 0;
+        } else if (a == "--style") {
+            need(1);
+            opt.blockStyle = std::atoi(argv[++i]);
         } else if (a == "--no-sound") {
             opt.sound = false;
         } else if (a == "--distance") {

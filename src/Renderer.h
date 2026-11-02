@@ -36,6 +36,7 @@ struct FrameInfo {
     bool clouds = true;
     int texFilter = 0;        // 0 Pixel, 1 Weich
     int anisotropy = 8;
+    int blockStyle = 0;       // 0 Standard, 1 Kloetzchen
     const std::vector<Vertex>* particles = nullptr;  // Billboards in kamerarelativen Koordinaten
 };
 

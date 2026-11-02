@@ -40,7 +40,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
         case MenuScreen::Main: s = std::max(1.0f, std::min(wantedS, std::floor((0.64f * H - 8.0f) / 165.0f))); break;
         case MenuScreen::NewWorld: s = std::max(1.0f, std::min(wantedS, std::floor((0.70f * H - 8.0f) / 128.0f))); break;
         case MenuScreen::Pause: s = guiScaleFit(h, 150.0f, wantedS); break;
-        case MenuScreen::Graphics: s = guiScaleFit(h, 170.0f, wantedS); break;
+        case MenuScreen::Graphics: s = guiScaleFit(h, 7 * 24.0f + 20.0f, wantedS); break;
         default: s = guiScaleFit(h, 14 * 24.0f + 20.0f, wantedS); break;  // Einstellungen: 14 Zeilen
     }
     m.scale = s;
@@ -134,7 +134,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
 
     if (screen == MenuScreen::Graphics) {
         m.title = "Grafik";
-        const int rowsG = 6;
+        const int rowsG = 7;
         const float total = rowsG * bh + (rowsG - 1) * gap + 24.0f * s;
         float y = std::floor((h - total) * 0.5f) + 24.0f * s;
         m.titlePos = {0.0f, y - 22.0f * s};
@@ -149,6 +149,8 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
         y += bh + gap;
         std::snprintf(buf, sizeof(buf), "Anisotrope Filterung: %dx", st.anisotropy);
         m.widgets.push_back(button(W_GFX_ANISO, buf, x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_GFX_STYLE, std::string("Stil: ") + (st.blockStyle == 1 ? "Kloetzchen" : "Standard"), x, y, bw, bh));
         y += bh + gap;
         m.widgets.push_back(button(W_BACK, "Zurueck", x, y, bw, bh));
         return m;

@@ -56,6 +56,7 @@ struct Options {
     float yaw = -90.0f, pitch = 0.0f;
     bool hasTime = false;
     bool noMenu = false;       // --no-menu: ohne Hauptmenue direkt ins Spiel
+    int blockStyle = -1;       // --style N: Grafikstil fuer diesen Lauf (0 Standard, 1 Kloetzchen)
     bool gotoVillage = false;  // --village: zum naechsten Dorf springen (Test)
     int villageSide = 0;       // --village-side N: Blickrichtung 0..3
     int moonPhase = -1;  // --moon N: feste Mondphase 0..7 (Test)

@@ -3533,17 +3533,30 @@ static void testParticlesAndGraphics() {
     std::filesystem::create_directories("olicraft_test_gfx");
     const std::string path = "olicraft_test_gfx/g.cfg";
     Settings s;
-    s.shadows = 2; s.clouds = false; s.particles = false; s.texFilter = 1; s.anisotropy = 4;
+    s.shadows = 2; s.clouds = false; s.particles = false; s.texFilter = 1; s.anisotropy = 4; s.blockStyle = 1;
     CHECK(saveSettings(path, s));
     Settings r;
     CHECK(loadSettings(path, r));
-    CHECK(r.shadows == 2 && !r.clouds && !r.particles && r.texFilter == 1 && r.anisotropy == 4);
+    CHECK(r.shadows == 2 && !r.clouds && !r.particles && r.texFilter == 1 && r.anisotropy == 4 && r.blockStyle == 1);
+    CHECK(Settings().blockStyle == 0);  // Standardstil
+    {
+        // Stil-Knopf im Grafikmenue, Beschriftung wechselt
+        MenuState ms;
+        auto label = [&](int style) {
+            ms.blockStyle = style;
+            for (const Widget& w : buildMenu(MenuScreen::Graphics, ms, 1280, 720).widgets)
+                if (w.id == W_GFX_STYLE) return w.text;
+            return std::string();
+        };
+        CHECK(label(0) == "Stil: Standard" && label(1) == "Stil: Kloetzchen");
+    }
     {
         std::ofstream f(path);
-        f << "shadows=9\ntex_filter=-3\nanisotropy=64\n";
+        f << "shadows=9\ntex_filter=-3\nanisotropy=64\nblock_style=7\n";
     }
     Settings c;
     CHECK(loadSettings(path, c));
+    CHECK(c.blockStyle == 1);
     CHECK(c.shadows == 2 && c.texFilter == 0 && (c.anisotropy == 16 || c.anisotropy == 8 || c.anisotropy == 4 || c.anisotropy == 2 || c.anisotropy == 1));
     std::filesystem::remove_all("olicraft_test_gfx");
 

@@ -54,6 +54,7 @@ bool Game::init() {
     if (opt_.distanceCli) settings_.renderDistance = opt_.renderDistance;
     if (opt_.vsyncCli) settings_.vsync = opt_.vsync;
     settings_.clamp();
+    if (opt_.blockStyle >= 0) settings_.blockStyle = opt_.blockStyle > 0 ? 1 : 0;
     setGuiSize(settings_.guiSize);
     opt_.renderDistance = settings_.renderDistance;
     opt_.vsync = settings_.vsync;
@@ -565,6 +566,7 @@ MenuState Game::menuState() const {
     s.texFilter = settings_.texFilter;
     s.anisotropy = settings_.anisotropy;
     s.guiSize = settings_.guiSize;
+    s.blockStyle = settings_.blockStyle;
     for (const WorldEntry& w : worlds_)
         s.worldLabels.push_back(w.name + "  (" + (w.creative ? "Kreativ" : "Survival") + ", Seed " + std::to_string(w.seed) + ")");
     s.worldSel = worldSel_;
@@ -647,6 +649,7 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
         case W_GFX_PARTICLES: settings_.particles = !settings_.particles; persistSettings(); break;
         case W_GFX_FILTER: settings_.texFilter = 1 - settings_.texFilter; persistSettings(); break;
         case W_GUI_SIZE: settings_.guiSize = (settings_.guiSize + 1) % 5; setGuiSize(settings_.guiSize); persistSettings(); break;
+        case W_GFX_STYLE: settings_.blockStyle = 1 - settings_.blockStyle; persistSettings(); break;
         case W_GFX_ANISO: settings_.anisotropy = settings_.anisotropy >= 16 ? 1 : settings_.anisotropy * 2; persistSettings(); break;
         case W_MAIN_PLAY: {
             if (worldSel_ < 0 || worldSel_ >= static_cast<int>(worlds_.size())) break;
@@ -3639,6 +3642,12 @@ int Game::selfTest() {
         for (int i = 0; i < 4; ++i) clickMenu(W_GUI_SIZE);
         SCHECK(settings_.guiSize == 0 && guiSizeSetting() == 0);
         setPaused(false);
+        // Grafikstil im Grafikmenue
+        paused_ = true;
+        screen_ = MenuScreen::Graphics;
+        SCHECK(settings_.blockStyle == 0 && clickMenu(W_GFX_STYLE) && settings_.blockStyle == 1);
+        SCHECK(clickMenu(W_GFX_STYLE) && settings_.blockStyle == 0);
+        setPaused(false);
     }
 
 #undef SCHECK
@@ -3668,6 +3677,7 @@ void Game::render() {
     f.clouds = settings_.clouds;
     f.texFilter = settings_.texFilter;
     f.anisotropy = settings_.anisotropy;
+    f.blockStyle = settings_.blockStyle;
     f.moonPhase = opt_.moonPhase >= 0 ? opt_.moonPhase : dayCount_ % MOON_PHASES;
     f.time = static_cast<float>(glfwGetTime());
     f.renderDistance = opt_.renderDistance;
