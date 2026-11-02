@@ -235,8 +235,13 @@ void EntityManager::emitMobSound(const Mob& m, int kind) {
 void EntityManager::dropLoot(const Mob& m) {
     int n = 0;
     switch (m.type) {
-        case MobType::Pig:
-        case MobType::Cow: n = rng_.irange(1, 3); break;
+        case MobType::Pig: n = rng_.irange(1, 3); break;
+        case MobType::Cow:
+            n = rng_.irange(1, 3);
+            if (rng_.irange(0, 2) > 0)
+                spawnItem({ITEM_LEATHER, rng_.irange(1, 2)}, m.pos + glm::vec3(0.0f, 0.6f, 0.0f),
+                          glm::vec3(rng_.range(-1.5f, 1.5f), 4.0f, rng_.range(-1.5f, 1.5f)), 0.4f);
+            break;
         case MobType::Sheep:
             n = rng_.irange(1, 2);
             spawnItem({WOOL_WHITE, rng_.irange(1, 2)}, m.pos + glm::vec3(0.0f, 0.6f, 0.0f),

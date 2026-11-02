@@ -272,6 +272,9 @@ enum Tile : int {
     TILE_LADDER,
     TILE_BED_FOOT_TOP,
     TILE_BED_HEAD_TOP,
+    TILE_LEATHER,
+    TILE_ARMOR_BASE,  // + material*4 + Teil (Helm, Brustpanzer, Hose, Stiefel); Material: Leder, Eisen, Gold, Diamant
+    TILE_ARMOR_END = TILE_ARMOR_BASE + 15,
     TILE_COUNT
 };
 

@@ -63,6 +63,18 @@ const std::vector<ModelPart>& partsFor(SkinId id) {
         {{-5.5f, 5, 3.5f}, {4, 10, 4}, {-5.5f, 10, 3.5f}, A_LEG_A, 48, 27, false},
         {{-5.5f, 5, -3.5f}, {4, 10, 4}, {-5.5f, 10, -3.5f}, A_LEG_B, 48, 27, true},
     };
+    static const std::vector<ModelPart> armor = {
+        // Helm, Brustpanzer samt Aermeln, Hosen (obere 8/16 der Beine), Stiefel (untere 4/16); Netze der Stiefel im freien Texturbereich
+        {{0, 28, 0}, {8, 8, 8}, {0, 24, 0}, A_HEAD, 0, 0, false, 0.9f, 0},
+        {{0, 18, 0}, {4, 12, 8}, {0, 18, 0}, A_NONE, 16, 16, false, 0.6f, 1},
+        {{0, 18, 6}, {4, 12, 4}, {0, 24, 6}, A_ARM_SWING_A, 40, 16, false, 0.6f, 1},
+        {{0, 18, -6}, {4, 12, 4}, {0, 24, -6}, A_ARM_SWING_B, 40, 16, true, 0.6f, 1},
+        {{0, 8, 2}, {4, 8, 4}, {0, 12, 2}, A_LEG_B, 0, 16, false, 0.5f, 2},
+        {{0, 8, -2}, {4, 8, 4}, {0, 12, -2}, A_LEG_A, 0, 16, true, 0.5f, 2},
+        {{0, 2, 2}, {4, 4, 4}, {0, 12, 2}, A_LEG_B, 32, 0, false, 0.75f, 3},
+        {{0, 2, -2}, {4, 4, 4}, {0, 12, -2}, A_LEG_A, 32, 0, true, 0.75f, 3},
+    };
+    if (isArmorSkin(id)) return armor;
     switch (id) {
         case SKIN_PLAYER: return player;
         case SKIN_PIG: return pig;
@@ -80,6 +92,7 @@ const std::vector<ModelPart>& partsFor(SkinId id) {
 }  // namespace
 
 const std::vector<ModelPart>& modelParts(SkinId skin) { return partsFor(skin); }
+const std::vector<ModelPart>& armorParts() { return partsFor(SKIN_ARMOR_LEATHER); }
 
 glm::ivec2 skinNetSize(const ModelPart& p) {
     const int L = static_cast<int>(p.size.x), H = static_cast<int>(p.size.y), W = static_cast<int>(p.size.z);
@@ -120,13 +133,15 @@ glm::vec2 skinCornerUV(const ModelPart& p, int face, int i, int j, int texW, int
     return {x / static_cast<float>(texW), y / static_cast<float>(texH)};
 }
 
-void appendModel(SkinId skin, const Pose& pose, std::vector<Vertex>& out) {
+namespace {
+void appendParts(const std::vector<ModelPart>& parts, int onlySlot, SkinId skin, const Pose& pose, std::vector<Vertex>& out) {
     const SkinInfo& si = skinInfo(skin);
     const float cy = std::cos(pose.yaw), sy = std::sin(pose.yaw);
     const float cr = std::cos(pose.roll), sr = std::sin(pose.roll);
     const float swing = std::sin(pose.walkPhase) * 0.9f * pose.walkAmount;
 
-    for (const ModelPart& p : partsFor(skin)) {
+    for (const ModelPart& p : parts) {
+        if (onlySlot >= 0 && p.slot != onlySlot) continue;
         float angle = 0.0f;
         switch (p.anim) {
             case A_LEG_A: angle = swing; break;
@@ -154,7 +169,7 @@ void appendModel(SkinId skin, const Pose& pose, std::vector<Vertex>& out) {
             float x = l.x * cy - l.z * sy, z = l.x * sy + l.z * cy;  // Blickrichtung
             return glm::vec3(pose.pos.x + x, pose.pos.y + l.y, pose.pos.z + z);
         };
-        const glm::vec3 c = p.center / 16.0f, sz = p.size / 16.0f;
+        const glm::vec3 c = p.center / 16.0f, sz = (p.size + glm::vec3(2.0f * p.grow)) / 16.0f;
         for (int f = 0; f < 6; ++f) {
             const FaceDef& fd = faceDef(f);
             for (int k = 0; k < 4; ++k) {
@@ -180,6 +195,13 @@ void appendModel(SkinId skin, const Pose& pose, std::vector<Vertex>& out) {
             }
         }
     }
+}
+}  // namespace
+
+void appendModel(SkinId skin, const Pose& pose, std::vector<Vertex>& out) { appendParts(partsFor(skin), -1, skin, pose, out); }
+
+void appendArmor(SkinId armorSkin, int slot, const Pose& pose, std::vector<Vertex>& out) {
+    appendParts(partsFor(armorSkin), slot, armorSkin, pose, out);
 }
 
 }  // namespace oc

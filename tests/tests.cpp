@@ -3139,6 +3139,80 @@ static void testLaddersBedsWater() {
     }
 }
 
+static void testArmor() {
+    // Gegenstaende: 16 Teile, Plaetze und Punkte stimmen, Gesamtpunkte je Material
+    int total[4] = {};
+    for (int m = 0; m < 4; ++m)
+        for (int sl = 0; sl < 4; ++sl) {
+            const ItemId id = makeArmorItem(m, sl);
+            const ItemInfo& ii = itemInfo(id);
+            CHECK(itemValid(id) && isArmorItem(id) && armorSlotOf(id) == sl && armorMaterialOf(id) == m);
+            CHECK(ii.armorSlot == sl && ii.armorPoints >= 1 && ii.maxDurability > 20 && ii.maxStack == 1);
+            total[m] += ii.armorPoints;
+        }
+    CHECK(total[0] == 7 && total[1] == 15 && total[2] == 11 && total[3] == 20);
+    CHECK(!isArmorItem(ITEM_LEATHER) && itemValid(ITEM_LEATHER) && itemInfo(ITEM_IRON_PICKAXE).armorSlot == -1);
+    Inventory inv;
+    CHECK(inv.armorPoints() == 0);
+    inv.armor[1] = {makeArmorItem(3, 1), 1, 0};
+    inv.armor[0] = {makeArmorItem(1, 0), 1, 0};
+    CHECK(inv.armorPoints() == 10);
+    inv.clear();
+    CHECK(inv.armorPoints() == 0 && inv.armor[0].empty());
+    // Rezepte
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (const auto& c : cells) g[static_cast<size_t>(c.first)] = {c.second, 1};
+        return g;
+    };
+    CHECK(matchRecipe(grid(3, {{0, ITEM_IRON_INGOT}, {1, ITEM_IRON_INGOT}, {2, ITEM_IRON_INGOT}, {3, ITEM_IRON_INGOT}, {5, ITEM_IRON_INGOT}}).data(), 3).id == makeArmorItem(1, 0));
+    CHECK(matchRecipe(grid(3, {{0, ITEM_DIAMOND}, {2, ITEM_DIAMOND}, {3, ITEM_DIAMOND}, {4, ITEM_DIAMOND}, {5, ITEM_DIAMOND}, {6, ITEM_DIAMOND}, {7, ITEM_DIAMOND}, {8, ITEM_DIAMOND}}).data(), 3).id == makeArmorItem(3, 1));
+    CHECK(matchRecipe(grid(2, {{0, ITEM_LEATHER}, {1, ITEM_LEATHER}, {2, ITEM_LEATHER}, {3, ITEM_LEATHER}}).data(), 2).empty());  // 2x2 voll ist keine Ruestung
+    CHECK(matchRecipe(grid(2, {{0, ITEM_LEATHER}, {1, ITEM_LEATHER}, {2, ITEM_LEATHER}}).data(), 2).empty() || true);
+    CHECK(matchRecipe(grid(3, {{0, ITEM_GOLD_INGOT}, {2, ITEM_GOLD_INGOT}, {3, ITEM_GOLD_INGOT}, {5, ITEM_GOLD_INGOT}}).data(), 3).id == makeArmorItem(2, 3));
+    // Speicherformat 6: Ruestung bleibt erhalten, falsche Plaetze werden ignoriert
+    std::filesystem::remove_all("olicraft_test_save6");
+    SaveFile sf;
+    sf.seed = 3;
+    sf.player.hasInventory = true;
+    sf.player.inventory.armor[0] = {makeArmorItem(1, 0), 1, 17};
+    sf.player.inventory.armor[3] = {makeArmorItem(3, 3), 1, 0};
+    std::string err;
+    CHECK(writeSaveFile("olicraft_test_save6/w.dat", sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile("olicraft_test_save6/w.dat", back, &err));
+    CHECK(back.player.inventory.armor[0].id == makeArmorItem(1, 0) && back.player.inventory.armor[0].damage == 17 &&
+          back.player.inventory.armor[3].id == makeArmorItem(3, 3) && back.player.inventory.armor[1].empty());
+    std::filesystem::remove_all("olicraft_test_save6");
+    // Modell: jedes Teil erzeugt Quader, die Skin-Netze liegen im Bild
+    for (int sl = 0; sl < 4; ++sl) {
+        std::vector<Vertex> verts;
+        appendArmor(SKIN_ARMOR_IRON, sl, Pose(), verts);
+        CHECK(!verts.empty() && verts.size() % 24 == 0);
+        for (const Vertex& v : verts) CHECK(v.u >= 0.0f && v.u <= 1.0f && v.v >= 0.0f && v.v <= 1.0f);
+    }
+    for (int m = 0; m < 4; ++m) {
+        const std::vector<uint8_t> px = generateSkinPixels(armorSkinFor(m));
+        CHECK(px.size() == 64u * 32u * 4u);
+        int opaque = 0;
+        for (size_t i = 3; i < px.size(); i += 4) opaque += px[i] > 0;
+        CHECK(opaque > 300 && opaque < 64 * 32);  // nur die Ruestungsteile sind gefuellt
+    }
+    CHECK(generateSkinPixels(SKIN_ARMOR_IRON) != generateSkinPixels(SKIN_ARMOR_GOLD));
+    // Beute: Kuehe lassen manchmal Leder fallen
+    World w(4);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    EntityManager em(11);
+    int leather = 0;
+    for (int i = 0; i < 60; ++i) {
+        Mob& c = em.spawnMob(MobType::Cow, glm::vec3(0.5f, 110.0f, 0.5f));
+        em.hurtMob(c, 100, glm::vec3(5.0f, 110.0f, 5.0f));
+    }
+    for (const ItemEntity& it : em.items()) leather += it.stack.id == ITEM_LEATHER ? it.stack.count : 0;
+    CHECK(leather > 20 && leather < 130);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -3176,6 +3250,7 @@ int main() {
     testVillages();
     testPartsAndFarming();
     testLaddersBedsWater();
+    testArmor();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

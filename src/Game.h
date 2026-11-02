@@ -101,6 +101,8 @@ private:
     bool buyTrade(int index);
     InvLayout invLayout() const;
     void useBed(const glm::ivec3& pos);
+    // Ruestungsteil anlegen (tauscht mit dem getragenen Teil); true, wenn es eine Ruestung war
+    bool equipArmor(ItemStack& from);
     // Rezeptbuch
     struct BookItem {
         const Recipe* recipe = nullptr;

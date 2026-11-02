@@ -21,6 +21,10 @@ const SkinInfo SKINS[SKIN_COUNT] = {
     {"Dorfbewohner Schmied", "skin_villager_smith.png", 64, 32},
     {"Dorfbewohner Steinmetz", "skin_villager_mason.png", 64, 32},
     {"Dorfbewohner Schaefer", "skin_villager_shepherd.png", 64, 32},
+    {"Ruestung Leder", "skin_armor_leather.png", 64, 32},
+    {"Ruestung Eisen", "skin_armor_iron.png", 64, 32},
+    {"Ruestung Gold", "skin_armor_gold.png", 64, 32},
+    {"Ruestung Diamant", "skin_armor_diamond.png", 64, 32},
 };
 
 struct Rgb {
@@ -167,6 +171,44 @@ void paintVillager(Img& img, SkinId id) {
     for (int x = 2; x <= 5; ++x) px(img, fr, x, 7, {140, 96, 76});
 }
 
+void paintArmor(Img& img, SkinId id) {
+    struct Look {
+        Rgb base, dark, light;
+    };
+    static const Look looks[4] = {
+        {{150, 98, 58}, {104, 66, 36}, {186, 130, 82}},   // Leder
+        {{204, 204, 210}, {150, 152, 160}, {236, 236, 242}},  // Eisen
+        {{246, 208, 56}, {186, 146, 24}, {255, 238, 140}},   // Gold
+        {{78, 218, 226}, {32, 140, 150}, {190, 255, 255}},   // Diamant
+    };
+    const Look& L = looks[std::max(0, std::min(3, static_cast<int>(id) - static_cast<int>(SKIN_ARMOR_LEATHER)))];
+    uint32_t salt = 700;
+    for (const ModelPart& p : modelParts(SKIN_ARMOR_LEATHER)) {
+        fillPart(img, p, L.base, 10, salt);
+        salt += 10;
+        // Kanten: oben hell, unten dunkel
+        fill(img, skinNetRect(p, 2), L.light, 6, salt++);
+        fill(img, skinNetRect(p, 3), L.dark, 6, salt++);
+        for (int f : {0, 1, 4, 5}) {
+            const NetRect r = skinNetRect(p, f);
+            fill(img, r, L.dark, 6, salt++, r.h - 1, r.h);
+        }
+        if (p.slot == 0) {  // Helm: Sehschlitz vorn
+            const NetRect fr = skinNetRect(p, 0);
+            for (int x = 1; x < fr.w - 1; ++x) px(img, fr, x, 4, {30, 30, 36});
+            for (int x = 1; x < fr.w - 1; ++x) px(img, fr, x, 5, {44, 44, 52});
+        }
+        if (p.slot == 1 && p.size.z == 8) {  // Brustpanzer: Mittelnaht
+            const NetRect fr = skinNetRect(p, 0);
+            for (int y = 0; y < fr.h; ++y) px(img, fr, fr.w / 2, y, L.dark);
+        }
+        if (p.slot == 3) {  // Stiefel: dunkle Sohle
+            const NetRect fr = skinNetRect(p, 3);
+            fill(img, fr, L.dark, 4, salt++);
+        }
+    }
+}
+
 void paintPig(Img& img) {
     const Rgb pink = {236, 152, 162};
     fillPart(img, part(SKIN_PIG, 0), pink, 9, 200);                 // Koerper
@@ -247,6 +289,10 @@ std::vector<uint8_t> generateSkinPixels(SkinId id) {
         case SKIN_VILLAGER_SMITH:
         case SKIN_VILLAGER_MASON:
         case SKIN_VILLAGER_SHEPHERD: paintVillager(img, id); break;
+        case SKIN_ARMOR_LEATHER:
+        case SKIN_ARMOR_IRON:
+        case SKIN_ARMOR_GOLD:
+        case SKIN_ARMOR_DIAMOND: paintArmor(img, id); break;
         case SKIN_PIG: paintPig(img); break;
         case SKIN_COW: paintCow(img); break;
         case SKIN_SHEEP: paintSheep(img); break;

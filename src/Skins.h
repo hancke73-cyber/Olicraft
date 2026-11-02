@@ -5,10 +5,14 @@
 namespace oc {
 
 // Figuren-Texturen ("Skins"): aufgeklappte Quadernetze wie bei Minecraft.
-enum SkinId { SKIN_PLAYER = 0, SKIN_PIG, SKIN_COW, SKIN_SHEEP, SKIN_ZOMBIE, SKIN_VILLAGER, SKIN_VILLAGER_LIBRARIAN, SKIN_VILLAGER_SMITH, SKIN_VILLAGER_MASON, SKIN_VILLAGER_SHEPHERD, SKIN_COUNT };
+enum SkinId { SKIN_PLAYER = 0, SKIN_PIG, SKIN_COW, SKIN_SHEEP, SKIN_ZOMBIE, SKIN_VILLAGER, SKIN_VILLAGER_LIBRARIAN, SKIN_VILLAGER_SMITH, SKIN_VILLAGER_MASON, SKIN_VILLAGER_SHEPHERD,
+               SKIN_ARMOR_LEATHER, SKIN_ARMOR_IRON, SKIN_ARMOR_GOLD, SKIN_ARMOR_DIAMOND, SKIN_COUNT };
 
 // Dorfbewohner: je Beruf (Bauer, Bibliothekar, Schmied, Steinmetz, Schaefer) eine eigene Textur
 inline bool isVillagerSkin(SkinId id) { return id >= SKIN_VILLAGER && id <= SKIN_VILLAGER_SHEPHERD; }
+// Ruestungstexturen (gleiches Netz-Layout wie die Spielerfigur, aber nur die Ruestungsteile): je Material eine
+inline bool isArmorSkin(SkinId id) { return id >= SKIN_ARMOR_LEATHER && id <= SKIN_ARMOR_DIAMOND; }
+inline SkinId armorSkinFor(int material) { return static_cast<SkinId>(SKIN_ARMOR_LEATHER + (material < 0 || material > 3 ? 0 : material)); }
 inline SkinId villagerSkinFor(int profession) { return static_cast<SkinId>(SKIN_VILLAGER + (profession < 0 || profession > 4 ? 0 : profession)); }
 
 struct SkinInfo {

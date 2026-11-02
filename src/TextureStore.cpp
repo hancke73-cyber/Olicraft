@@ -145,6 +145,23 @@ const TileName TILE_NAMES[TILE_COUNT] = {
     {"ladder", "Leiter"},
     {"bed_foot_top", "Bett Fussteil oben"},
     {"bed_head_top", "Bett Kopfteil oben"},
+    {"leather", "Leder"},
+    {"armor_leather_helmet", "Lederkappe"},
+    {"armor_leather_chest", "Lederjacke"},
+    {"armor_leather_legs", "Lederhose"},
+    {"armor_leather_boots", "Lederstiefel"},
+    {"armor_iron_helmet", "Eisenhelm"},
+    {"armor_iron_chest", "Eisenbrustpanzer"},
+    {"armor_iron_legs", "Eisenhose"},
+    {"armor_iron_boots", "Eisenstiefel"},
+    {"armor_gold_helmet", "Goldhelm"},
+    {"armor_gold_chest", "Goldbrustpanzer"},
+    {"armor_gold_legs", "Goldhose"},
+    {"armor_gold_boots", "Goldstiefel"},
+    {"armor_diamond_helmet", "Diamanthelm"},
+    {"armor_diamond_chest", "Diamantbrustpanzer"},
+    {"armor_diamond_legs", "Diamanthose"},
+    {"armor_diamond_boots", "Diamantstiefel"},
 };
 static_assert(sizeof(TILE_NAMES) / sizeof(TILE_NAMES[0]) == TILE_COUNT, "Kachelnamen passen nicht zur Kachelliste");
 

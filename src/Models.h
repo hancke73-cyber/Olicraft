@@ -17,6 +17,8 @@ struct ModelPart {
     ModelAnim anim;
     int u, v;      // Ursprung des Netzes in der Skin-Textur (Pixel)
     bool mirror;   // gespiegelt (linke Gliedmassen teilen sich das Netz mit den rechten)
+    float grow = 0.0f;  // Aufblasen in 1/16 Block je Seite (Ruestung sitzt ueber dem Koerper)
+    int slot = -1;      // Ruestungsteil (0 Helm, 1 Brustpanzer, 2 Hose, 3 Stiefel), sonst -1
 };
 
 const std::vector<ModelPart>& modelParts(SkinId skin);
@@ -48,5 +50,9 @@ struct Pose {
 
 // Haengt die Geometrie des Modells an (Quads, Positionen in Kamera-Weltkoordinaten)
 void appendModel(SkinId skin, const Pose& pose, std::vector<Vertex>& out);
+// Ruestungsteil (slot) in der Textur der Ruestung ueber die Spielerfigur legen
+void appendArmor(SkinId armorSkin, int slot, const Pose& pose, std::vector<Vertex>& out);
+// Alle Ruestungsquader (zum Einfaerben der Textur und fuer die Editor-Vorschau)
+const std::vector<ModelPart>& armorParts();
 
 }  // namespace oc

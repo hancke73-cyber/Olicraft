@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,8 @@ struct InvLayout {
     bool chest = false;     // Truhenfenster (3 Reihen zu 9 Plaetzen anstelle des Handwerksrasters)
     glm::vec2 chestTop{0.0f};
     int tradeRows = 0;      // Handelsfenster: Anzahl Angebote (Reihen)
+    bool armor = false;     // Ruestungsplaetze links neben dem Handwerksraster
+    glm::vec4 figure{0.0f}; // Platz fuer die Spielerfigur (x, y, Breite, Hoehe), Breite 0: keine
     glm::vec2 panelPos{0.0f}, panelSize{0.0f};
     glm::vec2 craftTop{0.0f};    // linke obere Ecke des Handwerksrasters
     glm::vec2 resultPos{0.0f};   // Ergebnisfeld
@@ -73,6 +76,8 @@ struct InvLayout {
     glm::vec2 craftPos(int index) const;
     glm::vec2 chestPos(int index) const;  // Truhenplatz 0..26
     int hitChest(glm::vec2 m) const;      // -1: keiner
+    glm::vec2 armorPos(int i) const { return craftTop - glm::vec2(pitch(), 0.0f) + glm::vec2(0.0f, i * pitch()); }
+    int hitArmor(glm::vec2 m) const;  // Ruestungsplatz 0..3 oder -1
     glm::vec2 tradePos(int row) const { return chestTop + glm::vec2(0.0f, row * pitch()); }
     int hitTrade(glm::vec2 m) const;      // Angebot unter der Maus oder -1
     bool inside(glm::vec2 m) const;
@@ -141,6 +146,9 @@ struct HudState {
     float breakProgress = 0.0f;
     float damageFlash = 0.0f;
     bool dead = false;
+    int armorPoints = 0;                  // 0..20
+    std::array<ItemStack, 4> armorSlots;  // getragene Ruestung
+    std::vector<PreviewQuad> invPreview;  // Figur im Inventarfenster
     bool underwater = false;
     bool underLava = false;
     bool burning = false;

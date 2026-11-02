@@ -95,9 +95,10 @@ InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furna
     float height = pad + title;
     float craftOffset = 0.0f;
     if (creative) height += paletteRows * 18.0f * s + 8.0f * s;
+    l.armor = craftSize > 0 && !furnace && !chest && tradeRows == 0 && !creative;
     if (craftSize > 0) {
         craftOffset = height;
-        height += craftSize * 18.0f * s + 8.0f * s;
+        height += std::max(craftSize, l.armor ? 4 : 0) * 18.0f * s + 8.0f * s;
     }
     float chestOffset = 0.0f;
     if (chest) {
@@ -117,6 +118,7 @@ InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furna
     l.resultPos = l.panelPos + glm::vec2(pad + 6.0f * 18.0f * s, craftOffset + (craftSize - 1) * 9.0f * s);
     l.chestTop = l.panelPos + glm::vec2(pad, chestOffset);
     l.storageTop = l.panelPos + glm::vec2(pad, storageOffset);
+    if (l.armor && craftSize == 2) l.figure = glm::vec4(l.craftTop.x, l.craftTop.y + 2.0f * 18.0f * s, 2.0f * 18.0f * s, 2.0f * 18.0f * s);
     l.hotbarTop = l.storageTop + glm::vec2(0.0f, 3.0f * 18.0f * s + 4.0f * s);
     return l;
 }
@@ -180,6 +182,13 @@ int InvLayout::hitChest(glm::vec2 m) const {
     if (!chest) return -1;
     for (int i = 0; i < Chest::SIZE; ++i)
         if (inRect(m, chestPos(i), pitch(), pitch())) return i;
+    return -1;
+}
+
+int InvLayout::hitArmor(glm::vec2 m) const {
+    if (!armor) return -1;
+    for (int i = 0; i < 4; ++i)
+        if (inRect(m, armorPos(i), pitch(), pitch())) return i;
     return -1;
 }
 
@@ -366,6 +375,34 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
             b.itemIcon(st.craftResult.id, L.resultPos.x + pt * 0.5f, L.resultPos.y + pt * 0.5f, 6.3f * s);
     }
 
+    // Ruestungsplaetze und Figur
+    const int hoverArmor = L.hitArmor(st.mouse);
+    if (L.armor) {
+        for (int i = 0; i < 4; ++i) {
+            const glm::vec2 p = L.armorPos(i);
+            slotRect(p, i == hoverArmor);
+            const ItemStack& as = st.armorSlots[static_cast<size_t>(i)];
+            if (!as.empty()) {
+                b.itemIcon(as.id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+                drawDurability(b, as, p.x, p.y, pt, s);
+            } else {  // schwacher Hinweis, welches Teil hierher gehoert
+                static const char* hint[4] = {"H", "B", "O", "S"};
+                b.text(p.x + pt * 0.5f - 2.5f * s, p.y + pt * 0.5f - 3.5f * s, s, hint[i], glm::vec4(1, 1, 1, 0.25f));
+            }
+        }
+        if (L.figure.z > 0.0f) {
+            const float fx = L.figure.x, fy = L.figure.y, fw = L.figure.z, fh = L.figure.w;
+            b.rect(fx, fy, fx + fw, fy + fh, glm::vec4(0.12f, 0.12f, 0.15f, 1.0f));
+            const glm::vec2 c(fx + fw * 0.5f, fy + fh * 0.5f);
+            const float scale = std::min(fw, fh) * 0.5f * 0.95f;
+            for (const PreviewQuad& q : st.invPreview) {
+                glm::vec2 pts2[4];
+                for (int k = 0; k < 4; ++k) pts2[k] = c + q.p[k] * scale;
+                b.quad(pts2, q.uv, glm::vec4(q.shade, q.shade, q.shade, 1.0f), HUD_TEX_SKIN);
+            }
+        }
+    }
+
     // Rucksack + Hotbar
     const Inventory* inv = st.inventory;
     for (int i = 0; i < Inventory::SIZE; ++i) {
@@ -411,6 +448,7 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     if (hoverPal >= 0) hoverItem = creativeItem(hoverPal);
     else if (hoverSlot >= 0 && inv && !inv->slots[hoverSlot].empty()) hoverItem = inv->slots[hoverSlot].id;
     else if (hoverCraft >= 0 && !st.craftCells[hoverCraft].empty()) hoverItem = st.craftCells[hoverCraft].id;
+    else if (hoverArmor >= 0 && !st.armorSlots[static_cast<size_t>(hoverArmor)].empty()) hoverItem = st.armorSlots[static_cast<size_t>(hoverArmor)].id;
     else if (hoverChest >= 0 && st.chest && !st.chest->slots[static_cast<size_t>(hoverChest)].empty())
         hoverItem = st.chest->slots[static_cast<size_t>(hoverChest)].id;
     else if (hoverFurnace == 0 && !st.furnaceIn.empty()) hoverItem = st.furnaceIn.id;
@@ -672,6 +710,25 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
             drawDurability(b, stack, x0 + i * slot, y0, slot, s);
         }
 
+        // Ruestungsanzeige ueber den Herzen
+        if (!st.creative && st.armorPoints > 0) {
+            static const char* SHIELD[9] = {".#######.", "#########", "#########", "#########", "#########", ".#######.", "..#####..", "...###...", "....#...."};
+            const float hy = y0 - 22.0f * s;
+            for (int i = 0; i < 10; ++i) {
+                const float hx = x0 + i * 8.0f * s;
+                const int state = st.armorPoints >= 2 * i + 2 ? 2 : (st.armorPoints == 2 * i + 1 ? 1 : 0);
+                for (int row = 0; row < 9; ++row)
+                    for (int col = 0; col < 9; ++col) {
+                        if (SHIELD[row][col] != '#') continue;
+                        const bool edge = row == 0 || row == 5 || col == 0 || col == 8 || row >= 6 || (row > 0 && SHIELD[row - 1][col] != '#');
+                        glm::vec4 colr = state == 2 ? glm::vec4(0.82f, 0.86f, 0.92f, 1.0f) : glm::vec4(0.16f, 0.16f, 0.2f, 0.9f);
+                        if (state == 1 && col < 5) colr = glm::vec4(0.82f, 0.86f, 0.92f, 1.0f);
+                        if (edge && state > 0) colr *= 0.78f;
+                        colr.a = 1.0f;
+                        b.rect(hx + col * s, hy + row * s, hx + (col + 1) * s, hy + (row + 1) * s, colr);
+                    }
+            }
+        }
         // Herzen
         if (!st.creative) {
             const float hy = y0 - 12.0f * s;
@@ -685,7 +742,7 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
         // Luftblasen
         if (st.showAir) {
             const int n = static_cast<int>(std::ceil(std::max(0.0f, st.air) * 10.0f));
-            const float hy = y0 - 12.0f * s - (st.creative ? 0.0f : 10.0f * s);
+            const float hy = y0 - 12.0f * s - (st.creative ? 0.0f : 10.0f * s) - (!st.creative && st.armorPoints > 0 ? 10.0f * s : 0.0f);
             for (int i = 0; i < n; ++i)
                 b.sprite(iconBubble(), x0 + total - (i + 1) * 8.0f * s - s, hy, 9.0f * s, 9.0f * s);
         }

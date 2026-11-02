@@ -11,7 +11,7 @@ namespace oc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x52434C4Fu;  // "OLCR" (little endian)
-constexpr uint32_t VERSION = 5;
+constexpr uint32_t VERSION = 6;
 
 class Writer {
 public:
@@ -167,6 +167,13 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
             w.f32(save.player.spawn.x);
             w.f32(save.player.spawn.y);
             w.f32(save.player.spawn.z);
+            // Version 6: Ruestung
+            w.u8(4);
+            for (const ItemStack& st : save.player.inventory.armor) {
+                w.u16(st.empty() ? 0 : st.id);
+                w.u8(static_cast<uint8_t>(st.empty() ? 0 : st.count));
+                w.u16(static_cast<uint16_t>(st.empty() ? 0 : std::min(st.damage, 65535)));
+            }
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
                 w.i32(c.cx);
@@ -293,6 +300,24 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
         save.player.spawn.x = r.f32();
         save.player.spawn.y = r.f32();
         save.player.spawn.z = r.f32();
+    }
+    if (version >= 6) {
+        const int n = r.u8();
+        for (int i = 0; i < n; ++i) {
+            ItemId id = r.u16();
+            int cnt = r.u8();
+            int dmg = r.u16();
+            if (i < 4 && itemValid(id) && isArmorItem(id) && armorSlotOf(id) == i && cnt > 0) {
+                ItemStack& st = save.player.inventory.armor[static_cast<size_t>(i)];
+                st.id = id;
+                st.count = 1;
+                st.damage = std::min(dmg, itemInfo(id).maxDurability);
+            }
+        }
+        if (!r.ok()) {
+            if (error) *error = "Beschaedigte Speicherdatei";
+            return false;
+        }
     }
     uint32_t n = r.u32();
     if (!r.ok() || n > 10000000u) {

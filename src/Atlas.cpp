@@ -1130,6 +1130,47 @@ void drawBedTop(TileCanvas& c, int tile, bool head) {
         }
 }
 
+
+void drawLeatherItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 2; y < 14; ++y)
+        for (int x = 3; x < 13; ++x) {
+            const float dx = (x - 7.5f) / 5.0f, dy = (y - 7.5f) / 6.0f;
+            if (dx * dx * dx * dx + dy * dy * dy * dy > 1.0f) continue;
+            const int d = static_cast<int>((rnd(x, y, TILE_LEATHER) - 0.5f) * 20);
+            put(c, x, y, shade({166, 110, 66, 255}, d + (y < 6 ? -14 : 0)));
+        }
+    put(c, 4, 12, {120, 78, 44, 255});
+    put(c, 11, 11, {120, 78, 44, 255});
+}
+
+// Ruestungssymbole: Masken von oben nach unten, '#' = Material
+void drawArmorIcon(TileCanvas& c, int tile, int slot, Rgba base) {
+    static const char* MASKS[4][16] = {
+        {"................", "................", "................", "....########....", "...##########...", "..############..", "..############..", "..####....####..",
+         "..###......###..", "..###......###..", "................", "................", "................", "................", "................", "................"},
+        {"................", "..###......###..", ".#####....#####.", ".#####....#####.", ".#############..", "..############..", "..############..", "..############..",
+         "..############..", "..############..", "..############..", "...##########...", "................", "................", "................", "................"},
+        {"................", "..############..", "..############..", "..####....####..", "..####....####..", "..####....####..", "..####....####..", "..###......###..",
+         "..###......###..", "..###......###..", "..###......###..", "................", "................", "................", "................", "................"},
+        {"................", "................", "................", "................", "..####....####..", "..####....####..", "..####....####..", "..####....####..",
+         ".#####....#####.", ".######..######.", ".######..######.", "................", "................", "................", "................", "................"}};
+    clearTile(c);
+    for (int row = 0; row < 16; ++row)
+        for (int x = 0; x < 16; ++x) {
+            if (MASKS[slot][row][x] != '#') continue;
+            const int y = 15 - row;
+            const bool edgeR = x == 15 || MASKS[slot][row][x + 1] != '#';
+            const bool edgeB = row == 15 || MASKS[slot][row + 1][x] != '#';
+            const bool edgeL = x == 0 || MASKS[slot][row][x - 1] != '#';
+            const bool edgeT = row == 0 || MASKS[slot][row - 1][x] != '#';
+            int d = static_cast<int>((rnd(x, y, tile) - 0.5f) * 14);
+            if (edgeR || edgeB) d -= 36;
+            if (edgeL || edgeT) d += 22;
+            put(c, x, y, shade(base, d));
+        }
+}
+
 }  // namespace
 
 std::vector<uint8_t> generateAtlasPixels() {
@@ -1273,6 +1314,15 @@ std::vector<uint8_t> generateAtlasPixels() {
     }
     make(TILE_FARMLAND, drawFarmland);
     make(TILE_LADDER, drawLadder);
+    make(TILE_LEATHER, drawLeatherItem);
+    {
+        const Rgba armorCols[4] = {{160, 104, 62, 255}, {208, 208, 214, 255}, {248, 212, 60, 255}, {84, 224, 230, 255}};
+        for (int m = 0; m < 4; ++m)
+            for (int sl = 0; sl < 4; ++sl) {
+                TileCanvas cv(px, TILE_ARMOR_BASE + m * 4 + sl);
+                drawArmorIcon(cv, TILE_ARMOR_BASE + m * 4 + sl, sl, armorCols[m]);
+            }
+    }
     {
         TileCanvas bf(px, TILE_BED_FOOT_TOP), bh(px, TILE_BED_HEAD_TOP);
         drawBedTop(bf, TILE_BED_FOOT_TOP, false);

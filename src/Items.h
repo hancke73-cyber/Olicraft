@@ -56,7 +56,14 @@ constexpr ItemId ITEM_HOE_GOLD = 244;
 constexpr ItemId ITEM_HOE_DIAMOND = 245;
 constexpr ItemId ITEM_DOOR_WOOD = 246;
 constexpr ItemId ITEM_DOOR_IRON = 247;
-constexpr ItemId ITEM_LAST = 247;
+constexpr ItemId ITEM_LEATHER = 248;
+// Ruestungen: ITEM_ARMOR_BASE + material*4 + Teil; Material 0 Leder, 1 Eisen, 2 Gold, 3 Diamant; Teil 0 Helm, 1 Brustpanzer, 2 Hose, 3 Stiefel
+constexpr ItemId ITEM_ARMOR_BASE = 249;
+constexpr ItemId ITEM_LAST = 264;
+inline bool isArmorItem(ItemId id) { return id >= ITEM_ARMOR_BASE && id < ITEM_ARMOR_BASE + 16; }
+inline int armorSlotOf(ItemId id) { return (id - ITEM_ARMOR_BASE) % 4; }
+inline int armorMaterialOf(ItemId id) { return (id - ITEM_ARMOR_BASE) / 4; }
+inline ItemId makeArmorItem(int material, int slot) { return static_cast<ItemId>(ITEM_ARMOR_BASE + material * 4 + slot); }
 
 struct ItemStack {
     ItemId id = ITEM_NONE;
@@ -86,6 +93,8 @@ struct ItemInfo {
     float speed = 1.0f;      // Abbaugeschwindigkeit bei passendem Block
     int attack = 2;          // Schaden gegen Mobs
     bool flatIcon = false;   // Blockgegenstand mit flachem Symbol (Fackel)
+    int armorSlot = -1;      // Ruestung: 0 Helm, 1 Brustpanzer, 2 Hose, 3 Stiefel
+    int armorPoints = 0;     // Schutz (20 = volle Diamantruestung)
 };
 
 bool itemValid(ItemId id);

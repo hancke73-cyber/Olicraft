@@ -11,6 +11,10 @@ public:
     static constexpr int HOTBAR = 9;
 
     std::array<ItemStack, SIZE> slots;
+    std::array<ItemStack, 4> armor;  // Helm, Brustpanzer, Hose, Stiefel
+
+    // Gesamtschutz der getragenen Ruestung (0..20)
+    int armorPoints() const;
 
     // Legt Gegenstaende ab (erst bestehende Stapel, dann leere Plaetze). Rueckgabe: Rest, der nicht passte.
     int add(ItemId id, int count, int damage = 0);

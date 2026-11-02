@@ -212,6 +212,17 @@ bool Game::init() {
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     if (opt_.demo == "inv") openInventory();
+    if (opt_.demo == "armor" || opt_.demo == "armorinv") {
+        inventory_.clear();
+        inventory_.armor[0] = {makeArmorItem(1, 0), 1, 30};
+        inventory_.armor[1] = {makeArmorItem(3, 1), 1, 100};
+        inventory_.armor[2] = {makeArmorItem(2, 2), 1, 0};
+        inventory_.armor[3] = {makeArmorItem(0, 3), 1, 20};
+        inventory_.add(makeArmorItem(3, 0), 1);
+        inventory_.add(ITEM_LEATHER, 7);
+        inventory_.add(ITEM_IRON_INGOT, 12);
+        if (opt_.demo == "armorinv") openInventory();
+    }
     if (opt_.demo == "trade") {
         inventory_.clear();
         inventory_.add(ITEM_GOLD_INGOT, 5);
@@ -526,6 +537,14 @@ void Game::openChest(const glm::ivec3& pos) {
     world_->chestAt(pos.x, pos.y, pos.z);
 }
 
+bool Game::equipArmor(ItemStack& from) {
+    if (from.empty() || !isArmorItem(from.id)) return false;
+    ItemStack& slot = inventory_.armor[static_cast<size_t>(armorSlotOf(from.id))];
+    std::swap(slot, from);
+    uiSound(SoundId::Click, 0.8f);
+    return true;
+}
+
 void Game::useBed(const glm::ivec3& pos) {
     spawnPoint_ = glm::vec3(pos.x + 0.5f, pos.y + 1.0f, pos.z + 0.5f);
     if (Renderer::sunHeight(timeOfDay_) > 0.05f) {
@@ -809,9 +828,25 @@ void Game::inventoryClick(int button, int mods) {
         }
         return;
     }
+    {
+        const int as = layout.hitArmor(m);
+        if (as >= 0) {
+            ItemStack& st = inventory_.armor[static_cast<size_t>(as)];
+            if (cursor_.empty()) {
+                cursor_ = st;
+                st.clear();
+            } else if (isArmorItem(cursor_.id) && armorSlotOf(cursor_.id) == as) {
+                std::swap(st, cursor_);
+            }
+            return;
+        }
+    }
     const int slot = layout.hitSlot(m);
     if (slot >= 0) {
-        if ((mods & GLFW_MOD_SHIFT) && !right) inventory_.quickMove(slot);
+        if ((mods & GLFW_MOD_SHIFT) && !right && !inventory_.slots[static_cast<size_t>(slot)].empty() && isArmorItem(inventory_.slots[static_cast<size_t>(slot)].id) &&
+            inventory_.armor[static_cast<size_t>(armorSlotOf(inventory_.slots[static_cast<size_t>(slot)].id))].empty()) {
+            equipArmor(inventory_.slots[static_cast<size_t>(slot)]);
+        } else if ((mods & GLFW_MOD_SHIFT) && !right) inventory_.quickMove(slot);
         else Inventory::click(inventory_.slots[slot], cursor_, right);
         return;
     }
@@ -992,6 +1027,20 @@ void Game::handleResize(int w, int h) {
 void Game::damagePlayer(int amount, const glm::vec3& knockback) {
     if (creative_ || dead_ || amount <= 0) return;
     if (invulnerable_ > 0.0f && glm::length(knockback) > 0.0f) return;  // kurzer Schutz nach einem Treffer
+    // Ruestung mindert Treffer von Monstern (4 % je Punkt, hoechstens 80 %) und nutzt sich ab
+    if (glm::length(knockback) > 0.0f) {
+        const int pts = inventory_.armorPoints();
+        if (pts > 0) {
+            amount = std::max(1, static_cast<int>(std::ceil(static_cast<float>(amount) * (1.0f - std::min(0.8f, pts * 0.04f)) - 0.001f)));
+            for (ItemStack& a : inventory_.armor) {
+                if (a.empty()) continue;
+                if (++a.damage >= itemInfo(a.id).maxDurability) {
+                    a.clear();
+                    showMessage("Ruestungsteil zerbrochen");
+                }
+            }
+        }
+    }
     health_ -= amount;
     sinceDamage_ = 0.0f;
     damageFlash_ = 1.0f;
@@ -1341,6 +1390,12 @@ void Game::placeBlockOrUse() {
     }
     if (sel.empty()) return;
 
+    // Ruestung anlegen
+    if (isArmorItem(sel.id)) {
+        equipArmor(sel);
+        placeTimer_ = 0.3f;
+        return;
+    }
     // Hacke: Gras oder Erde zu Acker umgraben
     if (itemInfo(sel.id).tool == TOOL_HOE) {
         if (!target_.hit || target_.normal.y <= 0) return;
@@ -2297,7 +2352,7 @@ int Game::selfTest() {
             return false;
         };
         auto clickEditor = [&](int id) {
-            for (int scroll = 0; scroll < 80; ++scroll) {
+            for (int scroll = 0; scroll < 500; ++scroll) {
                 const EditorLayout L = buildEditorLayout(fbW_, fbH_, *editor_, editorUi_);
                 for (const Widget& w : L.widgets)
                     if (w.id == id && w.enabled) {
@@ -2892,6 +2947,38 @@ int Game::selfTest() {
         player_.yaw = -90.0f;
     }
 
+    // 23. Ruestung: anlegen per Rechtsklick, tauschen, Schaden mindern, abnutzen
+    {
+        paused_ = false;
+        creative_ = false;
+        dead_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        health_ = 20;
+        invulnerable_ = 0.0f;
+        target_ = RayHit{};
+        slot_ = 0;
+        inventory_.slots[0] = {makeArmorItem(3, 1), 1, 0};
+        placeBlockOrUse();
+        SCHECK(inventory_.armor[1].id == makeArmorItem(3, 1) && inventory_.slots[0].empty() && inventory_.armorPoints() == 8);
+        inventory_.slots[0] = {makeArmorItem(1, 1), 1, 5};  // anderer Brustpanzer: wird getauscht
+        placeBlockOrUse();
+        SCHECK(inventory_.armor[1].id == makeArmorItem(1, 1) && inventory_.armor[1].damage == 5 && inventory_.slots[0].id == makeArmorItem(3, 1));
+        for (int sl = 0; sl < 4; ++sl) inventory_.armor[static_cast<size_t>(sl)] = {makeArmorItem(3, sl), 1, 0};
+        SCHECK(inventory_.armorPoints() == 20);
+        damagePlayer(10, glm::vec3(2.0f, 1.0f, 0.0f));  // Monstertreffer: 10 * (1 - 0.8) = 2
+        SCHECK(health_ == 18 && inventory_.armor[0].damage == 1 && inventory_.armor[3].damage == 1);
+        invulnerable_ = 0.0f;
+        damagePlayer(3, glm::vec3(0.0f));  // Lava, Ertrinken usw. ignorieren die Ruestung
+        SCHECK(health_ == 15);
+        inventory_.armor[2] = {makeArmorItem(3, 2), 1, itemInfo(makeArmorItem(3, 2)).maxDurability - 1};
+        invulnerable_ = 0.0f;
+        damagePlayer(1, glm::vec3(1.0f, 1.0f, 0.0f));
+        SCHECK(inventory_.armor[2].empty());  // zerbrochen
+        inventory_.clear();
+        health_ = 20;
+    }
+
     // 11. Speichern: Inventar, Gesundheit, Modus
     const std::string path = "olicraft_selftest/world.dat";
     std::filesystem::remove_all("olicraft_selftest");
@@ -2958,6 +3045,12 @@ void Game::render() {
         pose.light = static_cast<float>(world_->lightAt(bx, static_cast<int>(std::floor(player_.pos.y + 1.0f)), bz)) / MAX_LIGHT;
         const bool hurt = damageFlash_ > 0.35f || dead_;
         appendModel(SKIN_PLAYER, pose, hurt ? entityBatches_.skinHurt[SKIN_PLAYER] : entityBatches_.skin[SKIN_PLAYER]);
+        for (int sl = 0; sl < 4; ++sl) {  // getragene Ruestung ueber dem Koerper
+            const ItemStack& as = inventory_.armor[static_cast<size_t>(sl)];
+            if (as.empty() || !isArmorItem(as.id)) continue;
+            const SkinId askin = armorSkinFor(armorMaterialOf(as.id));
+            appendArmor(askin, sl, pose, hurt ? entityBatches_.skinHurt[askin] : entityBatches_.skin[askin]);
+        }
     }
     f.entities = &entityBatches_;
 
@@ -2970,6 +3063,17 @@ void Game::render() {
     h.inventory = &inventory_;
     h.selectedSlot = slot_;
     h.inventoryOpen = inventoryOpen_;
+    h.armorPoints = inventory_.armorPoints();
+    h.armorSlots = inventory_.armor;
+    if (inventoryOpen_ && InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_, 0).figure.z > 0.0f) {
+        if (!skinPreviewEd_) {
+            skinPreviewEd_ = std::make_unique<TextureEditor>(textures_);
+            for (size_t i = 0; i < skinPreviewEd_->entries().size(); ++i)
+                if (skinPreviewEd_->entries()[i].kind == EditorEntry::Skin && skinPreviewEd_->entries()[i].skin == SKIN_PLAYER)
+                    skinPreviewEd_->select(static_cast<int>(i));
+        }
+        h.invPreview = skinPreviewEd_->preview(static_cast<float>(glfwGetTime()) * 0.7f, 0.12f);
+    }
     h.paletteOpen = paletteWindow_;
     h.furnaceOpen = furnaceWindow_;
     h.chestOpen = chestWindow_;

@@ -47,6 +47,14 @@ int Inventory::count(ItemId id) const {
 
 void Inventory::clear() {
     for (ItemStack& s : slots) s.clear();
+    for (ItemStack& s : armor) s.clear();
+}
+
+int Inventory::armorPoints() const {
+    int n = 0;
+    for (const ItemStack& s : armor)
+        if (!s.empty() && isArmorItem(s.id)) n += itemInfo(s.id).armorPoints;
+    return n;
 }
 
 bool Inventory::isEmpty() const {

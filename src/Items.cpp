@@ -33,7 +33,10 @@ static const ItemId CREATIVE_LIST[] = {
     // Material und Essen
     ITEM_STICK, ITEM_COAL, ITEM_IRON_INGOT, ITEM_GOLD_INGOT, ITEM_DIAMOND, ITEM_CLAY_BALL, ITEM_BRICK, ITEM_PAPER, ITEM_BOOK,
     ITEM_DYE_RED, ITEM_DYE_YELLOW, ITEM_DYE_BLUE, ITEM_DYE_GREEN, ITEM_DYE_BLACK,
-    ITEM_SEEDS, ITEM_WHEAT, ITEM_BREAD, ITEM_CARROT,
+    ITEM_SEEDS, ITEM_WHEAT, ITEM_BREAD, ITEM_CARROT, ITEM_LEATHER,
+    ITEM_ARMOR_BASE, ITEM_ARMOR_BASE + 1, ITEM_ARMOR_BASE + 2, ITEM_ARMOR_BASE + 3, ITEM_ARMOR_BASE + 4, ITEM_ARMOR_BASE + 5, ITEM_ARMOR_BASE + 6,
+    ITEM_ARMOR_BASE + 7, ITEM_ARMOR_BASE + 8, ITEM_ARMOR_BASE + 9, ITEM_ARMOR_BASE + 10, ITEM_ARMOR_BASE + 11, ITEM_ARMOR_BASE + 12,
+    ITEM_ARMOR_BASE + 13, ITEM_ARMOR_BASE + 14, ITEM_ARMOR_BASE + 15,
     ITEM_MEAT, ITEM_COOKED_MEAT, ITEM_BERRIES};
 
 bool itemValid(ItemId id) {
@@ -52,6 +55,13 @@ bool itemValid(ItemId id) {
     }
     return false;
 }
+
+#define ARM(name, mat, slot, dur, pts) {name, 1, false, static_cast<Tile>(TILE_ARMOR_BASE + (mat) * 4 + (slot)), static_cast<Tile>(TILE_ARMOR_BASE + (mat) * 4 + (slot)), TOOL_NONE, 0, dur, 1.0f, 2, false, slot, pts}
+#define ARMOR_ENTRIES \
+    ARM("Lederkappe", 0, 0, 55, 1), ARM("Lederjacke", 0, 1, 80, 3), ARM("Lederhose", 0, 2, 75, 2), ARM("Lederstiefel", 0, 3, 65, 1), \
+    ARM("Eisenhelm", 1, 0, 165, 2), ARM("Eisenbrustpanzer", 1, 1, 240, 6), ARM("Eisenhose", 1, 2, 225, 5), ARM("Eisenstiefel", 1, 3, 195, 2), \
+    ARM("Goldhelm", 2, 0, 77, 2), ARM("Goldbrustpanzer", 2, 1, 112, 5), ARM("Goldhose", 2, 2, 105, 3), ARM("Goldstiefel", 2, 3, 91, 1), \
+    ARM("Diamanthelm", 3, 0, 363, 3), ARM("Diamantbrustpanzer", 3, 1, 528, 8), ARM("Diamanthose", 3, 2, 495, 6), ARM("Diamantstiefel", 3, 3, 429, 3)
 
 const ItemInfo& itemInfo(ItemId id) {
     static ItemInfo cache[BLOCK_COUNT];
@@ -113,6 +123,8 @@ const ItemInfo& itemInfo(ItemId id) {
         {"Diamanthacke", 1, false, TILE_HOE_DIAMOND, TILE_HOE_DIAMOND, TOOL_HOE, 4, 1560, 8.0f, 2},
         {"Holztuer", 64, false, TILE_DOOR_WOOD_ITEM, TILE_DOOR_WOOD_ITEM, TOOL_NONE, 0, 0, 1.0f, 2},
         {"Eisentuer", 64, false, TILE_DOOR_IRON_ITEM, TILE_DOOR_IRON_ITEM, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Leder", 64, false, TILE_LEATHER, TILE_LEATHER, TOOL_NONE, 0, 0, 1.0f, 2},
+        ARMOR_ENTRIES
     };
     if (id >= ITEM_STICK && id <= ITEM_LAST) return items[id - ITEM_STICK];
     if (id > 0 && id < BLOCK_COUNT) return cache[id];
