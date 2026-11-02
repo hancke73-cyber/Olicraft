@@ -216,66 +216,6 @@ void drawMeat(TileCanvas& c) {
     for (auto& b : bone) c.set(b[0], b[1], {232, 226, 208, 255});
 }
 
-void drawPig(TileCanvas& c) { drawNoisy(c, TILE_PIG, {236, 152, 162, 255}, 10); }
-
-void drawPigFace(TileCanvas& c) {
-    drawNoisy(c, TILE_PIG_FACE, {236, 152, 162, 255}, 8);
-    for (int y = 3; y <= 7; ++y)
-        for (int x = 5; x <= 10; ++x) c.set(x, y, {246, 180, 186, 255});  // Schnauze
-    c.set(6, 5, {150, 70, 80, 255});
-    c.set(9, 5, {150, 70, 80, 255});
-    for (int ex : {3, 12})
-        for (int y = 9; y <= 10; ++y) c.set(ex, y, {30, 20, 24, 255});
-}
-
-void drawCow(TileCanvas& c) {
-    Noise n(31);
-    for (int y = 0; y < TILE_PX; ++y)
-        for (int x = 0; x < TILE_PX; ++x) {
-            float v = n.fbm2(x * 0.22f + 5.0f, y * 0.22f + 9.0f, 2);
-            int d = static_cast<int>((rnd(x, y, TILE_COW) - 0.5f) * 14);
-            if (v > 0.12f) c.set(x, y, shade({58, 44, 40, 255}, d));
-            else c.set(x, y, shade({228, 226, 222, 255}, d));
-        }
-}
-
-void drawCowFace(TileCanvas& c) {
-    drawNoisy(c, TILE_COW_FACE, {80, 56, 44, 255}, 8);
-    for (int y = 1; y <= 5; ++y)
-        for (int x = 4; x <= 11; ++x) c.set(x, y, {206, 190, 176, 255});  // Maul
-    c.set(6, 3, {110, 80, 70, 255});
-    c.set(9, 3, {110, 80, 70, 255});
-    for (int ex : {2, 13})
-        for (int y = 9; y <= 10; ++y) c.set(ex, y, {20, 16, 16, 255});
-}
-
-void drawSheepWool(TileCanvas& c) { drawNoisy(c, TILE_SHEEP_WOOL, {232, 228, 218, 255}, 16); }
-
-void drawSheepFace(TileCanvas& c) {
-    drawNoisy(c, TILE_SHEEP_FACE, {128, 108, 92, 255}, 8);
-    for (int ex : {3, 12}) {
-        c.set(ex, 9, {240, 240, 240, 255});
-        c.set(ex, 10, {20, 16, 16, 255});
-    }
-    for (int x = 6; x <= 9; ++x) c.set(x, 3, {90, 70, 62, 255});
-}
-
-void drawSheepLeg(TileCanvas& c) { drawNoisy(c, TILE_SHEEP_LEG, {178, 158, 138, 255}, 10); }
-
-void drawZombieSkin(TileCanvas& c) { drawNoisy(c, TILE_ZOMBIE_SKIN, {88, 134, 68, 255}, 12); }
-
-void drawZombieFace(TileCanvas& c) {
-    drawNoisy(c, TILE_ZOMBIE_FACE, {88, 134, 68, 255}, 10);
-    for (int y = 9; y <= 10; ++y)
-        for (int x : {3, 4, 5, 10, 11, 12}) c.set(x, y, {22, 28, 24, 255});
-    for (int x = 5; x <= 10; ++x) c.set(x, 4, {44, 66, 38, 255});
-    c.set(5, 5, {44, 66, 38, 255});
-    c.set(10, 5, {44, 66, 38, 255});
-}
-
-void drawZombieShirt(TileCanvas& c) { drawNoisy(c, TILE_ZOMBIE_SHIRT, {52, 150, 168, 255}, 12); }
-void drawZombiePants(TileCanvas& c) { drawNoisy(c, TILE_ZOMBIE_PANTS, {52, 54, 148, 255}, 10); }
-
 void drawLava(TileCanvas& c) {
     Noise n(57);
     for (int y = 0; y < TILE_PX; ++y)
@@ -535,17 +475,6 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_GLASS, drawGlass);
     make(TILE_SNOW, drawSnow);
     make(TILE_MEAT, drawMeat);
-    make(TILE_PIG, drawPig);
-    make(TILE_PIG_FACE, drawPigFace);
-    make(TILE_COW, drawCow);
-    make(TILE_COW_FACE, drawCowFace);
-    make(TILE_SHEEP_WOOL, drawSheepWool);
-    make(TILE_SHEEP_FACE, drawSheepFace);
-    make(TILE_SHEEP_LEG, drawSheepLeg);
-    make(TILE_ZOMBIE_SKIN, drawZombieSkin);
-    make(TILE_ZOMBIE_FACE, drawZombieFace);
-    make(TILE_ZOMBIE_SHIRT, drawZombieShirt);
-    make(TILE_ZOMBIE_PANTS, drawZombiePants);
     make(TILE_LAVA, drawLava);
     make(TILE_OBSIDIAN, drawObsidian);
     make(TILE_CRAFT_TOP, drawCraftTop);

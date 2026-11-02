@@ -11,6 +11,7 @@
 
 #include "Atlas.h"
 #include "GuiTexture.h"
+#include "Skins.h"
 #include "Noise.h"
 
 namespace oc {
@@ -163,6 +164,19 @@ bool Renderer::init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 3);  // Stufen bluten nicht ueber Kachelgrenzen (8px-Bloecke)
     glGenerateMipmap(GL_TEXTURE_2D);
 
+    // Skins der Figuren
+    for (int i = 0; i < SKIN_COUNT; ++i) {
+        const SkinInfo& si = skinInfo(static_cast<SkinId>(i));
+        std::vector<uint8_t> sp = generateSkinPixels(static_cast<SkinId>(i));
+        glGenTextures(1, &skinTex_[i]);
+        glBindTexture(GL_TEXTURE_2D, skinTex_[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, si.width, si.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, sp.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+
     // GUI-Textur (Schrift, Symbole)
     {
         std::vector<uint8_t> g = generateGuiPixels();
@@ -248,8 +262,12 @@ void Renderer::shutdown() {
     destroySharedQuadIndexBuffer();
     if (atlas_) glDeleteTextures(1, &atlas_);
     if (guiTex_) glDeleteTextures(1, &guiTex_);
-    entityMesh_.release();
-    entityHurtMesh_.release();
+    itemMesh_.release();
+    for (int i = 0; i < SKIN_COUNT; ++i) {
+        skinMesh_[i].release();
+        skinHurtMesh_[i].release();
+        if (skinTex_[i]) glDeleteTextures(1, &skinTex_[i]);
+    }
     GLuint vaos[] = {skyVao_, starVao_, lineVao_, hudVao_};
     GLuint vbos[] = {skyVbo_, starVbo_, lineVbo_, hudVbo_};
     glDeleteVertexArrays(4, vaos);
@@ -458,22 +476,37 @@ void Renderer::drawSelection(const FrameInfo& f) {
 
 void Renderer::drawEntities(const FrameInfo& f, const glm::mat4& projView) {
     (void)projView;
-    if (!f.entityVerts && !f.entityHurtVerts) return;
+    if (!f.entities) return;
     chunkShader_.setVec3("uOffset", glm::vec3(0.0f));
     chunkShader_.setInt("uCutout", 1);
-    if (f.entityVerts) {
-        entityMesh_.upload(*f.entityVerts);
+    glActiveTexture(GL_TEXTURE0);
+
+    // Gegenstaende am Boden: Blockatlas
+    if (!f.entities->items.empty()) {
+        itemMesh_.upload(f.entities->items);
         chunkShader_.setVec3("uTint", glm::vec3(1.0f));
-        entityMesh_.draw();
-        drawnQuads_ += entityMesh_.quadCount();
+        glBindTexture(GL_TEXTURE_2D, atlas_);
+        itemMesh_.draw();
+        drawnQuads_ += itemMesh_.quadCount();
     }
-    if (f.entityHurtVerts) {
-        entityHurtMesh_.upload(*f.entityHurtVerts);
-        chunkShader_.setVec3("uTint", glm::vec3(1.0f, 0.38f, 0.38f));
-        entityHurtMesh_.draw();
-        drawnQuads_ += entityHurtMesh_.quadCount();
+    // Figuren: je Skin eine Textur, getroffene rot getoent
+    for (int i = 0; i < SKIN_COUNT; ++i) {
+        glBindTexture(GL_TEXTURE_2D, skinTex_[i]);
+        if (!f.entities->skin[i].empty()) {
+            skinMesh_[i].upload(f.entities->skin[i]);
+            chunkShader_.setVec3("uTint", glm::vec3(1.0f));
+            skinMesh_[i].draw();
+            drawnQuads_ += skinMesh_[i].quadCount();
+        }
+        if (!f.entities->skinHurt[i].empty()) {
+            skinHurtMesh_[i].upload(f.entities->skinHurt[i]);
+            chunkShader_.setVec3("uTint", glm::vec3(1.0f, 0.38f, 0.38f));
+            skinHurtMesh_[i].draw();
+            drawnQuads_ += skinHurtMesh_[i].quadCount();
+        }
     }
     chunkShader_.setVec3("uTint", glm::vec3(1.0f));
+    glBindTexture(GL_TEXTURE_2D, atlas_);
     glBindVertexArray(0);
 }
 

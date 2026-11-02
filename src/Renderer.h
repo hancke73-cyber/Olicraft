@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 
 #include "Block.h"
+#include "Entities.h"
 #include "Hud.h"
 #include "Shader.h"
 #include "World.h"
@@ -26,8 +27,7 @@ struct FrameInfo {
     glm::ivec3 target{0};
     HudState hud;
     // Entity-Geometrie (kamerarelative Weltkoordinaten), vom Spiel mit EntityManager::buildMesh erzeugt
-    const std::vector<Vertex>* entityVerts = nullptr;
-    const std::vector<Vertex>* entityHurtVerts = nullptr;
+    const EntityBatches* entities = nullptr;
 };
 
 class Renderer {
@@ -60,7 +60,9 @@ private:
     Shader chunkShader_, colorShader_, hudShader_;
     GLuint atlas_ = 0;
     GLuint guiTex_ = 0;
-    GpuMesh entityMesh_, entityHurtMesh_;
+    GpuMesh itemMesh_;
+    GpuMesh skinMesh_[SKIN_COUNT], skinHurtMesh_[SKIN_COUNT];
+    GLuint skinTex_[SKIN_COUNT] = {};
     HudBatch hudBatch_;
 
     GLuint skyVao_ = 0, skyVbo_ = 0;      // dynamische Quads fuer Sonne/Mond

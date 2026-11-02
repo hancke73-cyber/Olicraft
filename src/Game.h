@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include "Block.h"
+#include "Camera.h"
 #include "Entities.h"
 #include "Inventory.h"
 #include "Menu.h"
@@ -47,6 +48,7 @@ struct Options {
     int benchFrames = 0;  // >0: automatisch fliegen, Zeiten messen, beenden
     std::string demo;     // "mobs", "water", "inv" (Szenen fuer Screenshots)
     int health = -1;
+    int viewMode = 0;  // 0 Ego, 1 von hinten, 2 von vorn
     bool selfTest = false;  // --selftest: Spielmechanik im echten Fenster pruefen
 };
 
@@ -153,6 +155,9 @@ private:
     float breakProgress_ = 0.0f;
     bool prevMiddle_ = false;
     bool showHud_ = true;
+    CameraMode camMode_ = CameraMode::First;
+    float walkPhase_ = 0.0f, walkAmount_ = 0.0f;
+    float deathAnim_ = 0.0f;
     bool wantScreenshot_ = false;
     bool wantSave_ = false;
     float autosaveTimer_ = 0.0f;
@@ -163,7 +168,7 @@ private:
     std::string statusMsg_;
     float statusTimer_ = 0.0f;
 
-    std::vector<Vertex> entityVerts_, entityHurtVerts_;
+    EntityBatches entityBatches_;
 
     double fpsTimer_ = 0.0;
     int fpsFrames_ = 0;

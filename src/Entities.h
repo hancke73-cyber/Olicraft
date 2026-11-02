@@ -7,11 +7,26 @@
 #include "Chunk.h"
 #include "Inventory.h"
 #include "Items.h"
+#include "Skins.h"
 
 namespace oc {
 
 class World;
 class Player;
+
+// Geometrie fuer die Darstellung (Positionen relativ zur Kamera), getrennt nach Textur
+struct EntityBatches {
+    std::vector<Vertex> items;                  // Gegenstaende am Boden (Blockatlas)
+    std::vector<Vertex> skin[SKIN_COUNT];       // Figuren je Skin
+    std::vector<Vertex> skinHurt[SKIN_COUNT];   // getroffene Figuren (rot getoent)
+    void clear() {
+        items.clear();
+        for (int i = 0; i < SKIN_COUNT; ++i) {
+            skin[i].clear();
+            skinHurt[i].clear();
+        }
+    }
+};
 
 // Einfacher, schneller Zufallsgenerator fuer Spielmechanik
 struct Rng {
@@ -105,9 +120,7 @@ public:
     // Vom Spieler erlittene Treffer (werden vom Spiel abgeholt)
     std::vector<PlayerHit>& playerHits() { return playerHits_; }
 
-    // Geometrie fuer die Darstellung (Positionen relativ zur Kamera). "hurt" = rot getoent.
-    void buildMesh(const World& world, const glm::vec3& camPos, float time, std::vector<Vertex>& normal,
-                   std::vector<Vertex>& hurt) const;
+    void buildMesh(const World& world, const glm::vec3& camPos, float time, EntityBatches& out) const;
 
     const std::vector<Mob>& mobs() const { return mobs_; }
     std::vector<Mob>& mobs() { return mobs_; }

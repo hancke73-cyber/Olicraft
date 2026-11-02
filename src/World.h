@@ -30,6 +30,7 @@ struct RayHit {
     bool hit = false;
     glm::ivec3 block{0};
     glm::ivec3 normal{0};  // zeigt aus dem getroffenen Block heraus
+    float dist = 0.0f;     // Abstand vom Strahlursprung bis zum Eintritt in den Block
 };
 
 inline int floorDiv(int a, int b) {

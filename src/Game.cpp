@@ -15,6 +15,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Crafting.h"
+#include "Models.h"
 #include "Noise.h"
 
 namespace oc {
@@ -165,6 +166,7 @@ bool Game::init() {
         player_.pitch = opt_.pitch;
     }
     if (opt_.hasTime) timeOfDay_ = opt_.timeOfDay;
+    camMode_ = opt_.viewMode == 1 ? CameraMode::ThirdBack : (opt_.viewMode == 2 ? CameraMode::ThirdFront : CameraMode::First);
     if (opt_.fly && creative_) player_.flying = true;
     if (!creative_) player_.flying = false;
     if (opt_.health > 0) health_ = std::min(20, opt_.health);
@@ -550,6 +552,9 @@ void Game::handleKey(int key, int action, int mods) {
     if (inventoryOpen_) return;
     if (key == GLFW_KEY_G) {
         setCreative(!creative_);
+    } else if (key == GLFW_KEY_V) {
+        camMode_ = nextCameraMode(camMode_);
+        showMessage(camMode_ == CameraMode::First ? "Ansicht: Ego" : (camMode_ == CameraMode::ThirdBack ? "Ansicht: von hinten" : "Ansicht: von vorn"));
     } else if (key == GLFW_KEY_F) {
         if (creative_) player_.flying = !player_.flying;
     } else if (key == GLFW_KEY_T) {
@@ -771,6 +776,13 @@ void Game::update(float dt) {
         if (!creative_) player_.flying = false;
         player_.update(dt, in, *world_);
 
+        {
+            const float hspeed = std::sqrt(player_.vel.x * player_.vel.x + player_.vel.z * player_.vel.z);
+            const float moving = (player_.onGround || player_.flying || player_.inWater) ? std::min(1.0f, hspeed / 3.0f) : 0.0f;
+            walkAmount_ += (moving - walkAmount_) * std::min(1.0f, 8.0f * dt);
+            walkPhase_ += hspeed * dt * 5.5f;
+            deathAnim_ = dead_ ? deathAnim_ + dt : 0.0f;
+        }
         updateSurvival(dt);
         if (!dead_ && !inventoryOpen_) updateInteraction(dt);
         else {
@@ -1346,6 +1358,21 @@ int Game::selfTest() {
         SCHECK(health_ == 13 && inventory_.slots[2].count == 1);
     }
 
+    // 16. Ansicht umschalten (Ego, von hinten, von vorn)
+    {
+        dead_ = false;
+        inventoryOpen_ = false;
+        paused_ = false;
+        camMode_ = CameraMode::First;
+        handleKey(GLFW_KEY_V, GLFW_PRESS, 0);
+        SCHECK(camMode_ == CameraMode::ThirdBack);
+        handleKey(GLFW_KEY_V, GLFW_PRESS, 0);
+        SCHECK(camMode_ == CameraMode::ThirdFront);
+        render();  // mit Spielermodell ohne Fehler zeichnen
+        handleKey(GLFW_KEY_V, GLFW_PRESS, 0);
+        SCHECK(camMode_ == CameraMode::First);
+    }
+
     // 9. Inventar per Mausklick
     dead_ = false;
     health_ = 20;
@@ -1498,8 +1525,9 @@ void Game::render() {
     FrameInfo f;
     f.width = fbW_;
     f.height = fbH_;
-    f.camPos = player_.eyePos();
-    f.view = glm::lookAt(f.camPos, f.camPos + player_.front(), glm::vec3(0.0f, 1.0f, 0.0f));
+    const CameraPose cam = computeCamera(*world_, player_.eyePos(), player_.front(), camMode_);
+    f.camPos = cam.pos;
+    f.view = glm::lookAt(cam.pos, cam.pos + cam.forward, glm::vec3(0.0f, 1.0f, 0.0f));
     const float farPlane = static_cast<float>(opt_.renderDistance + 3) * CHUNK_W * 1.5f;
     f.proj = glm::perspective(glm::radians(settings_.fov), static_cast<float>(fbW_) / static_cast<float>(fbH_), 0.05f, farPlane);
     f.timeOfDay = timeOfDay_;
@@ -1509,11 +1537,26 @@ void Game::render() {
     f.hasTarget = target_.hit && !inventoryOpen_ && !dead_;
     f.target = target_.block;
 
-    entityVerts_.clear();
-    entityHurtVerts_.clear();
-    entities_.buildMesh(*world_, f.camPos, gameTime_, entityVerts_, entityHurtVerts_);
-    f.entityVerts = &entityVerts_;
-    f.entityHurtVerts = &entityHurtVerts_;
+    entityBatches_.clear();
+    entities_.buildMesh(*world_, f.camPos, gameTime_, entityBatches_);
+    if (camMode_ != CameraMode::First) {  // eigenes Spielermodell in der Ansicht von hinten oder vorn
+        Pose pose;
+        pose.pos = player_.pos - f.camPos;
+        pose.yaw = glm::radians(player_.yaw);
+        pose.walkPhase = walkPhase_;
+        pose.walkAmount = walkAmount_;
+        pose.time = gameTime_;
+        pose.headPitch = glm::radians(player_.pitch);
+        pose.roll = dead_ ? std::min(1.0f, deathAnim_ / 0.4f) * 1.5708f : 0.0f;
+        const int bx = static_cast<int>(std::floor(player_.pos.x)), bz = static_cast<int>(std::floor(player_.pos.z));
+        bool sky = true;
+        for (int y = static_cast<int>(std::floor(player_.pos.y + 1.8f)); y < CHUNK_H && sky; ++y)
+            sky = !blockInfo(world_->getBlock(bx, y, bz)).blocksSky;
+        pose.sky = sky ? 1.0f : 0.0f;
+        const bool hurt = damageFlash_ > 0.35f || dead_;
+        appendModel(SKIN_PLAYER, pose, hurt ? entityBatches_.skinHurt[SKIN_PLAYER] : entityBatches_.skin[SKIN_PLAYER]);
+    }
+    f.entities = &entityBatches_;
 
     HudState& h = f.hud;
     h.show = showHud_;

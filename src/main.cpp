@@ -113,6 +113,9 @@ int main(int argc, char** argv) {
         } else if (a == "--health") {
             need(1);
             opt.health = std::atoi(argv[++i]);
+        } else if (a == "--view") {
+            need(1);
+            opt.viewMode = std::atoi(argv[++i]);
         } else if (a == "--fly") {
             opt.fly = true;
         } else {

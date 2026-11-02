@@ -9,6 +9,9 @@
 #include <vector>
 
 #include "Block.h"
+#include "Camera.h"
+#include "Models.h"
+#include "Skins.h"
 #include "Crafting.h"
 #include "Entities.h"
 #include "Hud.h"
@@ -840,12 +843,15 @@ static void testEntities() {
     em.spawnMob(MobType::Sheep, glm::vec3(2.0f, gy, 1.0f)).hurtTimer = 1.0f;
     em.spawnItem({ITEM_MEAT, 1}, glm::vec3(0.0f, gy, 0.0f), glm::vec3(0.0f));
     em.spawnItem({STONE, 1}, glm::vec3(0.5f, gy, 0.0f), glm::vec3(0.0f));
-    std::vector<Vertex> a, b2;
-    em.buildMesh(w, glm::vec3(0.0f, gy + 2.0f, -3.0f), 1.0f, a, b2);
-    CHECK(!a.empty() && !b2.empty() && a.size() % 4 == 0 && b2.size() % 4 == 0);
-    bool finite = true;
-    for (const Vertex& v : a) finite = finite && std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-    CHECK(finite);
+    EntityBatches batches;
+    em.buildMesh(w, glm::vec3(0.0f, gy + 2.0f, -3.0f), 1.0f, batches);
+    CHECK(!batches.items.empty() && !batches.skin[SKIN_ZOMBIE].empty() && !batches.skinHurt[SKIN_SHEEP].empty());
+    bool finite = true, aligned = batches.items.size() % 4 == 0;
+    for (int s = 0; s < SKIN_COUNT; ++s) {
+        aligned = aligned && batches.skin[s].size() % 4 == 0 && batches.skinHurt[s].size() % 4 == 0;
+        for (const Vertex& v : batches.skin[s]) finite = finite && std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+    }
+    CHECK(finite && aligned);
 }
 
 static void testWaterExitAndZombieDay() {
@@ -1370,6 +1376,155 @@ static void testOresAndFurnace() {
     CHECK(again.size() == 1 && again[0].furnace.input.count == 5);
 }
 
+static void testSkinsAndModels() {
+    for (int s = 0; s < SKIN_COUNT; ++s) {
+        const SkinInfo& si = skinInfo(static_cast<SkinId>(s));
+        CHECK(si.width == 64 && (si.height == 32 || si.height == 64));
+        std::vector<uint8_t> px = generateSkinPixels(static_cast<SkinId>(s));
+        CHECK(px.size() == static_cast<size_t>(si.width) * si.height * 4);
+        std::vector<int> owner(static_cast<size_t>(si.width) * si.height, -1);
+        bool inBounds = true, overlap = false, painted = true;
+        const std::vector<ModelPart>& parts = modelParts(static_cast<SkinId>(s));
+        CHECK(parts.size() >= 6);
+        for (size_t pi = 0; pi < parts.size(); ++pi) {
+            const ModelPart& p = parts[pi];
+            const glm::ivec2 ns = skinNetSize(p);
+            if (p.u < 0 || p.v < 0 || p.u + ns.x > si.width || p.v + ns.y > si.height) inBounds = false;
+            if (p.mirror) continue;  // teilt sich das Netz mit der rechten Seite
+            // Netze verschiedener Quader ueberlappen nicht (identische Netze gehoeren zu spiegelnden Paaren)
+            for (int f = 0; f < 6; ++f) {
+                const NetRect r = skinNetRect(p, f);
+                for (int y = r.y; y < r.y + r.h; ++y)
+                    for (int x = r.x; x < r.x + r.w; ++x) {
+                        if (x < 0 || y < 0 || x >= si.width || y >= si.height) {
+                            inBounds = false;
+                            continue;
+                        }
+                        const size_t i = static_cast<size_t>(y) * si.width + x;
+                        // Beine mit gleichem Netz (nicht gespiegelt) teilen sich die Pixel absichtlich
+                        if (owner[i] >= 0 && parts[static_cast<size_t>(owner[i])].u != p.u) overlap = true;
+                        if (owner[i] >= 0 && parts[static_cast<size_t>(owner[i])].v != p.v) overlap = true;
+                        owner[i] = static_cast<int>(pi);
+                        if (px[i * 4 + 3] != 255) painted = false;  // Standardtextur deckt jedes Netzpixel ab
+                    }
+            }
+        }
+        CHECK(inBounds && !overlap && painted);
+    }
+
+    // Texturkoordinaten liegen in der jeweiligen Netzflaeche
+    for (int s = 0; s < SKIN_COUNT; ++s) {
+        const SkinInfo& si = skinInfo(static_cast<SkinId>(s));
+        bool inside = true;
+        for (const ModelPart& p : modelParts(static_cast<SkinId>(s)))
+            for (int f = 0; f < 6; ++f) {
+                const NetRect r = skinNetRect(p, f);
+                for (int i = 0; i < 2; ++i)
+                    for (int j = 0; j < 2; ++j) {
+                        glm::vec2 uv = skinCornerUV(p, f, i, j, si.width, si.height);
+                        float x = uv.x * si.width, y = uv.y * si.height;
+                        if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) inside = false;
+                    }
+            }
+        CHECK(inside);
+    }
+    // Vorderseite: die obere Kante der Flaeche liegt oben im Bild, Spiegelung vertauscht links und rechts
+    {
+        const ModelPart& right = modelParts(SKIN_PLAYER)[2];
+        const ModelPart& left = modelParts(SKIN_PLAYER)[3];
+        CHECK(right.u == left.u && right.v == left.v && !right.mirror && left.mirror);
+        const NetRect r = skinNetRect(right, 0);
+        glm::vec2 bottom = skinCornerUV(right, 0, 0, 0, 64, 32), top = skinCornerUV(right, 0, 1, 0, 64, 32);
+        CHECK(top.y < bottom.y);  // i = Richtung nach oben
+        (void)r;
+        // gespiegelt: die gleiche Flaeche liest u rueckwaerts
+        glm::vec2 a = skinCornerUV(right, 0, 0, 0, 64, 32), b = skinCornerUV(left, 0, 0, 0, 64, 32);
+        glm::vec2 a2 = skinCornerUV(right, 0, 0, 1, 64, 32), b2 = skinCornerUV(left, 0, 0, 1, 64, 32);
+        CHECK((a.x < a2.x) != (b.x < b2.x));
+        // rechte Aussenseite des Spielers (+Z) und linke (-Z) tauschen beim gespiegelten Glied die Netzflaechen
+        CHECK(skinNetRect(left, 4).x == skinNetRect(right, 5).x && skinNetRect(left, 5).x == skinNetRect(right, 4).x);
+    }
+    // Standard-Spielerskin im Minecraft-Layout: Kopf (0,0), Koerper (16,16), Arm (40,16), Bein (0,16)
+    {
+        const auto& p = modelParts(SKIN_PLAYER);
+        CHECK(p[0].u == 0 && p[0].v == 0 && p[1].u == 16 && p[1].v == 16 && p[2].u == 40 && p[2].v == 16 && p[4].u == 0 &&
+              p[4].v == 16);
+    }
+    // Modellgeometrie: 24 Eckpunkte je Quader, endliche Werte, in sinnvoller Naehe des Fusspunkts
+    for (int s = 0; s < SKIN_COUNT; ++s) {
+        std::vector<Vertex> verts;
+        Pose pose;
+        pose.pos = glm::vec3(10.0f, 5.0f, -3.0f);
+        pose.yaw = 0.7f;
+        pose.walkPhase = 1.3f;
+        pose.walkAmount = 1.0f;
+        pose.headPitch = 0.4f;
+        appendModel(static_cast<SkinId>(s), pose, verts);
+        CHECK(verts.size() == modelParts(static_cast<SkinId>(s)).size() * 24);
+        bool ok = true;
+        for (const Vertex& v : verts) {
+            if (!std::isfinite(v.x) || std::isnan(v.u) || v.u < 0 || v.u > 1 || v.v < 0 || v.v > 1) ok = false;
+            if (std::fabs(v.x - 10.0f) > 3.0f || std::fabs(v.z + 3.0f) > 3.0f || v.y < 4.9f || v.y > 7.5f) ok = false;
+        }
+        CHECK(ok);
+    }
+    // Umfallen legt die Figur hin
+    {
+        std::vector<Vertex> upright, fallen;
+        Pose pose;
+        appendModel(SKIN_ZOMBIE, pose, upright);
+        pose.roll = 1.5708f;
+        appendModel(SKIN_ZOMBIE, pose, fallen);
+        float hu = 0, hf = 0;
+        for (const Vertex& v : upright) hu = std::max(hu, v.y);
+        for (const Vertex& v : fallen) hf = std::max(hf, v.y);
+        CHECK(hu > 1.9f && hf < 1.0f);
+    }
+}
+
+static void testCamera() {
+    World w(3);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z) {
+            for (int y = 100; y < 125; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, 99, z, STONE);
+        }
+    const glm::vec3 eye(0.5f, 101.62f, 0.5f);
+    const glm::vec3 look = glm::normalize(glm::vec3(1.0f, 0.0f, 0.0f));
+
+    CameraPose p1 = computeCamera(w, eye, look, CameraMode::First);
+    CHECK(p1.pos == eye && p1.forward == look);
+
+    // freie Sicht: voller Abstand, Blick wie der Spieler
+    CameraPose pb = computeCamera(w, eye, look, CameraMode::ThirdBack, 4.0f);
+    CHECK(std::fabs(glm::length(pb.pos - eye) - 4.0f) < 1e-4f && pb.pos.x < eye.x && pb.forward == look);
+    // von vorn: Kamera vor dem Spieler, blickt zurueck
+    CameraPose pf = computeCamera(w, eye, look, CameraMode::ThirdFront, 4.0f);
+    CHECK(pf.pos.x > eye.x && glm::dot(pf.forward, look) < -0.99f && std::fabs(glm::length(pf.pos - eye) - 4.0f) < 1e-4f);
+
+    // Wand 2 Bloecke hinter dem Spieler: Kamera rueckt heran und steckt nicht in der Wand
+    for (int y = 100; y < 110; ++y)
+        for (int z = -5; z <= 5; ++z) w.setBlock(-2, y, z, STONE);
+    CameraPose pw = computeCamera(w, eye, look, CameraMode::ThirdBack, 4.0f);
+    CHECK(pw.pos.x > -2.0f + 0.1f && pw.pos.x < eye.x);
+    CHECK(!w.isSolidAt(static_cast<int>(std::floor(pw.pos.x)), static_cast<int>(std::floor(pw.pos.y)),
+                       static_cast<int>(std::floor(pw.pos.z))));
+    // direkt an der Wand: Kamera bleibt am Kopf
+    CameraPose pn = computeCamera(w, glm::vec3(-1.4f, 101.62f, 0.5f), look, CameraMode::ThirdBack, 4.0f);
+    CHECK(glm::length(pn.pos - glm::vec3(-1.4f, 101.62f, 0.5f)) < 0.2f);
+    // Blick nach unten (Kamera hinter und ueber dem Spieler), Boden darf nicht durchdrungen werden
+    CameraPose pd = computeCamera(w, eye, glm::normalize(glm::vec3(0.0f, -1.0f, 0.2f)), CameraMode::ThirdFront, 4.0f);
+    CHECK(pd.pos.y > 100.0f);  // oberhalb der Plattform (Oberkante bei y = 100)
+    CHECK(nextCameraMode(CameraMode::First) == CameraMode::ThirdBack &&
+          nextCameraMode(CameraMode::ThirdBack) == CameraMode::ThirdFront &&
+          nextCameraMode(CameraMode::ThirdFront) == CameraMode::First);
+    // Raycast liefert Abstand
+    RayHit h = w.raycast(eye, glm::vec3(-1.0f, 0.0f, 0.0f), 10.0f);
+    CHECK(h.hit && std::fabs(h.dist - 1.5f) < 1e-3f);  // Block -2 beginnt bei x = -1
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -1401,6 +1556,8 @@ int main() {
     testSettingsAndMenu();
     testCraftingAndTools();
     testOresAndFurnace();
+    testSkinsAndModels();
+    testCamera();
     testSaveV2();
     testEntities();
     std::printf("%d Pruefungen, %d fehlgeschlagen\n", g_checks, g_failed);

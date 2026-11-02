@@ -5,6 +5,7 @@
 
 #include "Atlas.h"
 #include "Faces.h"
+#include "Models.h"
 #include "Physics.h"
 #include "Player.h"
 #include "World.h"
@@ -42,67 +43,12 @@ float turnToward(float cur, float target, float maxStep) {
     return cur + d;
 }
 
-// --- Modelle (Einheiten: 1/16 Block; x = vorwaerts, y = oben, z = rechts) ---------------------------------------
-
-enum Anim : uint8_t { A_NONE, A_LEG_A, A_LEG_B, A_ARM_A, A_ARM_B };
-
-struct Part {
-    glm::vec3 center, size, pivot;
-    Anim anim;
-    Tile front, base;
-};
-
-const std::vector<Part>& modelParts(MobType t) {
-    static const std::vector<Part> pig = {
-        {{0, 10, 0}, {16, 8, 10}, {0, 10, 0}, A_NONE, TILE_PIG, TILE_PIG},
-        {{11, 11, 0}, {8, 8, 8}, {7, 11, 0}, A_NONE, TILE_PIG_FACE, TILE_PIG},
-        {{5, 3, 3}, {4, 6, 4}, {5, 6, 3}, A_LEG_B, TILE_PIG, TILE_PIG},
-        {{5, 3, -3}, {4, 6, 4}, {5, 6, -3}, A_LEG_A, TILE_PIG, TILE_PIG},
-        {{-5, 3, 3}, {4, 6, 4}, {-5, 6, 3}, A_LEG_A, TILE_PIG, TILE_PIG},
-        {{-5, 3, -3}, {4, 6, 4}, {-5, 6, -3}, A_LEG_B, TILE_PIG, TILE_PIG},
-    };
-    static const std::vector<Part> cow = {
-        {{0, 16, 0}, {18, 10, 12}, {0, 16, 0}, A_NONE, TILE_COW, TILE_COW},
-        {{11, 19, 0}, {6, 8, 8}, {8, 19, 0}, A_NONE, TILE_COW_FACE, TILE_COW_FACE},
-        {{10.5f, 24.5f, 3.5f}, {1, 2, 1}, {10.5f, 24.5f, 3.5f}, A_NONE, TILE_SHEEP_LEG, TILE_SHEEP_LEG},
-        {{10.5f, 24.5f, -3.5f}, {1, 2, 1}, {10.5f, 24.5f, -3.5f}, A_NONE, TILE_SHEEP_LEG, TILE_SHEEP_LEG},
-        {{6, 5.5f, 4}, {4, 11, 4}, {6, 11, 4}, A_LEG_B, TILE_COW, TILE_COW},
-        {{6, 5.5f, -4}, {4, 11, 4}, {6, 11, -4}, A_LEG_A, TILE_COW, TILE_COW},
-        {{-6, 5.5f, 4}, {4, 11, 4}, {-6, 11, 4}, A_LEG_A, TILE_COW, TILE_COW},
-        {{-6, 5.5f, -4}, {4, 11, 4}, {-6, 11, -4}, A_LEG_B, TILE_COW, TILE_COW},
-    };
-    static const std::vector<Part> sheep = {
-        {{0, 15.5f, 0}, {16, 11, 12}, {0, 15.5f, 0}, A_NONE, TILE_SHEEP_WOOL, TILE_SHEEP_WOOL},
-        {{10, 18, 0}, {6, 6, 6}, {7, 18, 0}, A_NONE, TILE_SHEEP_FACE, TILE_SHEEP_FACE},
-        {{9, 21.5f, 0}, {5, 2, 7}, {9, 21.5f, 0}, A_NONE, TILE_SHEEP_WOOL, TILE_SHEEP_WOOL},
-        {{5.5f, 5, 3.5f}, {4, 10, 4}, {5.5f, 10, 3.5f}, A_LEG_B, TILE_SHEEP_LEG, TILE_SHEEP_LEG},
-        {{5.5f, 5, -3.5f}, {4, 10, 4}, {5.5f, 10, -3.5f}, A_LEG_A, TILE_SHEEP_LEG, TILE_SHEEP_LEG},
-        {{-5.5f, 5, 3.5f}, {4, 10, 4}, {-5.5f, 10, 3.5f}, A_LEG_A, TILE_SHEEP_LEG, TILE_SHEEP_LEG},
-        {{-5.5f, 5, -3.5f}, {4, 10, 4}, {-5.5f, 10, -3.5f}, A_LEG_B, TILE_SHEEP_LEG, TILE_SHEEP_LEG},
-    };
-    static const std::vector<Part> zombie = {
-        {{0, 18, 0}, {4, 12, 8}, {0, 18, 0}, A_NONE, TILE_ZOMBIE_SHIRT, TILE_ZOMBIE_SHIRT},
-        {{0, 28, 0}, {8, 8, 8}, {0, 24, 0}, A_NONE, TILE_ZOMBIE_FACE, TILE_ZOMBIE_SKIN},
-        {{0, 18, 6}, {4, 12, 4}, {0, 24, 6}, A_ARM_B, TILE_ZOMBIE_SKIN, TILE_ZOMBIE_SKIN},
-        {{0, 18, -6}, {4, 12, 4}, {0, 24, -6}, A_ARM_A, TILE_ZOMBIE_SKIN, TILE_ZOMBIE_SKIN},
-        {{0, 6, 2}, {4, 12, 4}, {0, 12, 2}, A_LEG_B, TILE_ZOMBIE_PANTS, TILE_ZOMBIE_PANTS},
-        {{0, 6, -2}, {4, 12, 4}, {0, 12, -2}, A_LEG_A, TILE_ZOMBIE_PANTS, TILE_ZOMBIE_PANTS},
-    };
-    switch (t) {
-        case MobType::Pig: return pig;
-        case MobType::Cow: return cow;
-        case MobType::Sheep: return sheep;
-        default: return zombie;
-    }
-}
-
-// Quader erzeugen; xf wandelt lokale Koordinaten (Bloecke) in Kamera-Weltkoordinaten
+// Quader fuer Gegenstaende am Boden (Texturen aus dem Blockatlas); xf wandelt lokale Koordinaten in Kamera-Weltkoordinaten
 template <class XF>
-void addBox(std::vector<Vertex>& out, const glm::vec3& center, const glm::vec3& size, Tile front, Tile base, float sky,
-            float tint, XF&& xf) {
+void addBox(std::vector<Vertex>& out, const glm::vec3& center, const glm::vec3& size, Tile tile, float sky, XF&& xf) {
+    const UVRect uv = tileUV(tile);
     for (int f = 0; f < 6; ++f) {
         const FaceDef& fd = faceDef(f);
-        const UVRect uv = tileUV(f == 0 ? front : base);
         for (int k = 0; k < 4; ++k) {
             const int i = FACE_CORNER_I[k], j = FACE_CORNER_J[k];
             glm::vec3 local = center;
@@ -120,10 +66,19 @@ void addBox(std::vector<Vertex>& out, const glm::vec3& center, const glm::vec3& 
             v.z = p.z;
             v.u = uv.u0 + (uv.u1 - uv.u0) * uu;
             v.v = uv.v0 + (uv.v1 - uv.v0) * vv;
-            v.shade = fd.shade * tint;
+            v.shade = fd.shade;
             v.sky = sky;
             out.push_back(v);
         }
+    }
+}
+
+SkinId skinOf(MobType t) {
+    switch (t) {
+        case MobType::Pig: return SKIN_PIG;
+        case MobType::Cow: return SKIN_COW;
+        case MobType::Sheep: return SKIN_SHEEP;
+        default: return SKIN_ZOMBIE;
     }
 }
 
@@ -539,53 +494,22 @@ void EntityManager::update(float dt, World& world, const Player& player, Invento
 // Darstellung
 // ---------------------------------------------------------------------------------------------------------------
 
-void EntityManager::buildMesh(const World& world, const glm::vec3& camPos, float time, std::vector<Vertex>& normal,
-                              std::vector<Vertex>& hurt) const {
+void EntityManager::buildMesh(const World& world, const glm::vec3& camPos, float time, EntityBatches& out) const {
     // Mobs
     for (const Mob& m : mobs_) {
         const MobSpec& sp = mobSpec(m.type);
         const bool flash = m.hurtTimer > 0.0f || m.dead();
-        std::vector<Vertex>& dst = flash ? hurt : normal;
-
+        const SkinId skin = skinOf(m.type);
         const int bx = static_cast<int>(std::floor(m.pos.x)), bz = static_cast<int>(std::floor(m.pos.z));
-        const float sky = skyExposed(world, bx, static_cast<int>(std::floor(m.pos.y + sp.height)), bz) ? 1.0f : 0.0f;
-
-        const float cy = std::cos(m.yaw), sy = std::sin(m.yaw);
-        const float roll = m.dead() ? std::min(1.0f, m.deathTimer / 0.4f) * (PI * 0.5f) : 0.0f;
-        const float cr = std::cos(roll), sr = std::sin(roll);
-        const glm::vec3 origin = m.pos - camPos;
-        const float swing = std::sin(m.walkPhase) * 0.9f * m.walkAmount;
-
-        for (const Part& p : modelParts(m.type)) {
-            float angle = 0.0f;
-            switch (p.anim) {
-                case A_LEG_A: angle = swing; break;
-                case A_LEG_B: angle = -swing; break;
-                case A_ARM_A: angle = 1.45f + 0.12f * std::sin(time * 2.0f + m.walkPhase * 0.5f) + 0.15f * swing; break;
-                case A_ARM_B: angle = 1.45f + 0.12f * std::sin(time * 2.0f + 1.5f) - 0.15f * swing; break;
-                default: break;
-            }
-            const float ca = std::cos(angle), sa = std::sin(angle);
-            const glm::vec3 pivot = p.pivot / 16.0f;
-            auto xf = [&](glm::vec3 l) {
-                // Gliedschwenken um die Querachse am Gelenk
-                if (angle != 0.0f) {
-                    float dx = l.x - pivot.x, dy = l.y - pivot.y;
-                    l.x = pivot.x + dx * ca - dy * sa;
-                    l.y = pivot.y + dx * sa + dy * ca;
-                }
-                // Umfallen beim Tod (um die Laengsachse)
-                if (roll != 0.0f) {
-                    float y = l.y * cr - l.z * sr, z = l.y * sr + l.z * cr;
-                    l.y = y;
-                    l.z = z;
-                }
-                // Blickrichtung
-                float x = l.x * cy - l.z * sy, z = l.x * sy + l.z * cy;
-                return glm::vec3(origin.x + x, origin.y + l.y, origin.z + z);
-            };
-            addBox(dst, p.center / 16.0f, p.size / 16.0f, p.front, p.base, sky, 1.0f, xf);
-        }
+        Pose pose;
+        pose.pos = m.pos - camPos;
+        pose.yaw = m.yaw;
+        pose.walkPhase = m.walkPhase;
+        pose.walkAmount = m.walkAmount;
+        pose.time = time;
+        pose.roll = m.dead() ? std::min(1.0f, m.deathTimer / 0.4f) * (PI * 0.5f) : 0.0f;
+        pose.sky = skyExposed(world, bx, static_cast<int>(std::floor(m.pos.y + sp.height)), bz) ? 1.0f : 0.0f;
+        appendModel(skin, pose, flash ? out.skinHurt[skin] : out.skin[skin]);
     }
 
     // Gegenstaende
@@ -603,10 +527,9 @@ void EntityManager::buildMesh(const World& world, const glm::vec3& camPos, float
             return glm::vec3(o.x + x, o.y + l.y, o.z + z);
         };
         if (info.isBlock) {
-            // Oberseite oben, sonst Seitentextur (vereinfachtes Wuerfelchen)
-            addBox(normal, glm::vec3(0.0f), glm::vec3(0.26f), info.iconSide, info.iconSide, sky, 1.0f, xf);
+            addBox(out.items, glm::vec3(0.0f), glm::vec3(0.26f), info.iconSide, sky, xf);
         } else {
-            addBox(normal, glm::vec3(0.0f), glm::vec3(0.42f, 0.42f, 0.04f), info.iconSide, info.iconSide, sky, 1.0f, xf);
+            addBox(out.items, glm::vec3(0.0f), glm::vec3(0.42f, 0.42f, 0.04f), info.iconSide, sky, xf);
         }
     }
 }

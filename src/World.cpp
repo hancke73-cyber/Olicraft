@@ -423,13 +423,14 @@ RayHit World::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDi
         }
     }
     glm::ivec3 normal(0);
-    float t = 0.0f;
+    float t = 0.0f, entry = 0.0f;
     for (int i = 0; i < 256; ++i) {
         BlockId b = getBlock(cell.x, cell.y, cell.z);
         if (b != AIR && !blockInfo(b).liquid) {
             result.hit = true;
             result.block = cell;
             result.normal = normal;
+            result.dist = entry;
             return result;
         }
         int a = 0;
@@ -437,6 +438,7 @@ RayHit World::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDi
         if (tMax.z < tMax[a]) a = 2;
         t = tMax[a];
         if (t > maxDist) break;
+        entry = t;
         cell[a] += step[a];
         tMax[a] += tDelta[a];
         normal = glm::ivec3(0);

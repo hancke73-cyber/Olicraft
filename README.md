@@ -16,6 +16,8 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Crafting: 2x2-Raster im Inventar, 3x3 an der Werkbank (Rechtsklick auf den Block, mit Umschalt wird er stattdessen gesetzt). Rezepte: Holz → 4 Bretter, 2 Bretter → 4 Stöcke, 4 Bretter → Werkbank, 8 Bruchstein → Ofen, Spitzhacke/Axt/Schaufel/Schwert aus Brettern, Bruchstein, Eisenbarren oder Diamanten mit Stöcken
 - Werkzeuge aus Holz, Stein, Eisen und Diamant mit Haltbarkeit (60, 132, 250, 1560 Nutzungen): passende Werkzeuge bauen schneller ab. Mindeststufe zum Ernten: Stein und Kohle Holz, Eisenerz Stein, Diamanterz Eisen, Obsidian Diamant. Ohne passendes Werkzeug dauert der Abbau länger und es fällt nichts. Schwerter und Äxte machen mehr Schaden gegen Mobs
 - Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies erscheinen nur nachts (draußen und in dunklen Höhlen), verfolgen und greifen an und verschwinden am Tag (im Freien verbrennen sie, in Höhlen lösen sie sich nach 10 s auf)
+- Ansichten (V): Ego, von hinten, von vorn. In den Außenansichten sieht man das eigene Spielermodell (Quader mit Laufanimation und Kopfneigung). Die Kamera rückt heran, wenn Blöcke im Weg sind, und steckt nie im Gelände
+- Figuren-Texturen als aufgeklappte Netze (Skins, 64x32 bzw. 64x64): Spieler im Minecraft-Layout, dazu Schwein, Kuh, Schaf und Zombie
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten) mit Sonne, Mond und Sternen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
@@ -42,6 +44,7 @@ Bewusst nicht enthalten: Hunger, Rüstung, Gold, Sound, Mehrspieler.
 | E | Inventar öffnen/schließen |
 | Q | Einen Gegenstand aus dem aktiven Slot werfen (Strg+Q: ganzer Stapel) |
 | G | Zwischen Survival und Kreativ wechseln |
+| V | Ansicht wechseln: Ego, von hinten, von vorn |
 | T | Zwischen Tag und Nacht springen |
 | F1 | HUD ein/aus |
 | F2 | Screenshot nach `screenshots/` |
@@ -115,7 +118,7 @@ cmake --build build -j
 --settings PFAD    Einstellungsdatei (Standard: settings.cfg)
 ```
 
-Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--health N`, `--demo mobs|water|inv|craft|furnace|menu|settings` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
+Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--demo mobs|water|inv|craft|furnace|menu|settings` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
 
 ## Tests
 
@@ -138,6 +141,7 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/TerrainGen.*`, `src/Noise.*` | Weltgenerierung |
 | `src/Mesher.*`, `src/Chunk.*` | Geometrie je Chunk (Face-Culling, AO, Himmelslicht), GPU-Puffer |
 | `src/Renderer.*`, `src/Shader.*`, `src/Atlas.*` | Rendering, Himmel, HUD, prozeduraler Texturatlas |
+| `src/Models.*`, `src/Skins.*`, `src/Camera.*` | Figurenmodelle und Skin-Netze, Standard-Skins, Kamera mit Geländekollision |
 | `src/Player.*`, `src/Physics.*` | Bewegung und Kollision (auch für Mobs und Gegenstände) |
 | `src/Entities.*` | Mobs (KI, Spawnen, Modelle aus Quadern) und Gegenstände am Boden |
 | `src/Items.*`, `src/Inventory.*`, `src/Crafting.*`, `src/Furnace.h` | Gegenstände und Werkzeuge, Stapel, Klicklogik, Rezepte, Schmelzen, Ofenzustand |
@@ -152,9 +156,8 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 
 1. **Sound:** Effekte und Musik. Vorher wird die Audio-Bibliothek geklärt.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
-3. **Third-Person-Ansicht:** Kamera hinter oder vor dem Charakter (z. B. umschaltbar), mit eigenem Spielermodell aus Quadern wie bei den Mobs. Die Kamera darf vom Gelände nicht blockiert werden.
-4. **Textur-Editor:** Im Spiel erreichbar über das Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Das Einstellungsmenü dafür gibt es bereits.
-5. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+3. **Textur-Editor:** Im Spiel erreichbar über das Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Das Einstellungsmenü dafür gibt es bereits.
+4. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
 
 ## Drittanbieter
 
