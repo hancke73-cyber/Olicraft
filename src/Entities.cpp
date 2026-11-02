@@ -396,8 +396,8 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
     m.onGround = false;
     bool landed = false;
     const glm::vec3 before = m.pos;
-    bool hitX = moveBodyAxis(world, m.pos, m.vel, 0, m.vel.x * dt, sp.width, sp.height, nullptr);
-    bool hitZ = moveBodyAxis(world, m.pos, m.vel, 2, m.vel.z * dt, sp.width, sp.height, nullptr);
+    bool hitX = moveBodyAxis(world, m.pos, m.vel, 0, m.vel.x * dt, sp.width, sp.height, nullptr, 0.6f);
+    bool hitZ = moveBodyAxis(world, m.pos, m.vel, 2, m.vel.z * dt, sp.width, sp.height, nullptr, 0.6f);
     moveBodyAxis(world, m.pos, m.vel, 1, m.vel.y * dt, sp.width, sp.height, &landed);
     m.onGround = landed;
 

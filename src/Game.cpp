@@ -1254,8 +1254,17 @@ void Game::update(float dt) {
     }
 }
 
-void Game::breakBlock(const glm::ivec3& p) {
-    const BlockId b = world_->getBlock(p.x, p.y, p.z);
+void Game::breakBlock(const glm::ivec3& pIn) {
+    glm::ivec3 p = pIn;
+    BlockId b = world_->getBlock(p.x, p.y, p.z);
+    if (isDoor(b) && doorUpper(b)) {  // die obere Haelfte gehoert zur unteren
+        p.y -= 1;
+        b = world_->getBlock(p.x, p.y, p.z);
+        if (!isDoor(b)) {
+            p = pIn;
+            b = world_->getBlock(p.x, p.y, p.z);
+        }
+    }
     if (!blockInfo(b).breakable) return;
     const bool harvest = creative_ ? false : canHarvest(b, inventory_.slots[slot_]);
     if (b == FURNACE || b == FURNACE_LIT) {  // Inhalt des Ofens faellt heraus
@@ -1280,6 +1289,16 @@ void Game::breakBlock(const glm::ivec3& p) {
         ItemId drop = harvest ? blockDropItem(b) : ITEM_NONE;
         // Laub gibt nur manchmal etwas her
         if (isLeaves(b) && (hash3(p.x, p.y, p.z, 99u) & 7u) >= 3u) drop = ITEM_NONE;
+        // Samen aus Gras, mehr Ertrag bei reifen Pflanzen
+        const uint32_t hv = hash3(p.x, p.y, p.z, 31u);
+        int extraSeeds = 0, extraCarrots = 0;
+        if (b == TALL_GRASS && (hv & 7u) == 0u) drop = ITEM_SEEDS;
+        if (cropFullyGrown(b) && b <= WHEAT_3) extraSeeds = 1 + static_cast<int>(hv % 3u);
+        if (cropFullyGrown(b) && b >= CARROT_0) extraCarrots = 1 + static_cast<int>(hv % 3u);
+        if (extraSeeds > 0)
+            entities_.spawnItem({ITEM_SEEDS, extraSeeds}, glm::vec3(p.x + 0.5f, p.y + 0.25f, p.z + 0.5f), glm::vec3(0.5f, 3.0f, -0.5f), 0.3f);
+        if (extraCarrots > 0)
+            entities_.spawnItem({ITEM_CARROT, extraCarrots}, glm::vec3(p.x + 0.5f, p.y + 0.25f, p.z + 0.5f), glm::vec3(-0.5f, 3.0f, 0.5f), 0.3f);
         if (drop != ITEM_NONE)
             entities_.spawnItem({drop, 1}, glm::vec3(p.x + 0.5f, p.y + 0.25f, p.z + 0.5f),
                                 glm::vec3(static_cast<float>((hash3(p.x, p.y, p.z, 5u) & 15u)) / 8.0f - 1.0f, 3.0f,
@@ -1311,16 +1330,79 @@ void Game::placeBlockOrUse() {
             useBed(target_.block);
             return;
         }
+        if (isDoor(tb) || isGate(tb)) {
+            if (world_->toggleOpenGroup(target_.block.x, target_.block.y, target_.block.z) > 0) {
+                placeTimer_ = 0.25f;
+                playSound(SoundId::BlockWood, glm::vec3(target_.block) + glm::vec3(0.5f), 0.6f, 0.75f);
+            }
+            return;
+        }
     }
     if (sel.empty()) return;
 
-    if (sel.id == ITEM_MEAT || sel.id == ITEM_COOKED_MEAT || sel.id == ITEM_BERRIES) {
+    // Hacke: Gras oder Erde zu Acker umgraben
+    if (itemInfo(sel.id).tool == TOOL_HOE) {
+        if (!target_.hit || target_.normal.y <= 0) return;
+        const BlockId tb = world_->getBlock(target_.block.x, target_.block.y, target_.block.z);
+        const BlockId above = world_->getBlock(target_.block.x, target_.block.y + 1, target_.block.z);
+        if ((tb == GRASS || tb == DIRT) && (above == AIR || isPlant(above))) {
+            if (isPlant(above)) world_->setBlock(target_.block.x, target_.block.y + 1, target_.block.z, AIR);
+            world_->setBlock(target_.block.x, target_.block.y, target_.block.z, FARMLAND);
+            placeTimer_ = 0.25f;
+            playSound(SoundId::BlockDirt, glm::vec3(target_.block) + glm::vec3(0.5f), 0.8f, 0.9f);
+            useHeldTool(1);
+        }
+        return;
+    }
+    // Samen und Karotten pflanzen (auf Acker), sonst Karotten essen
+    if (sel.id == ITEM_SEEDS || sel.id == ITEM_CARROT) {
+        if (target_.hit && target_.normal.y > 0) {
+            const glm::ivec3 tp = target_.block;
+            if (world_->getBlock(tp.x, tp.y, tp.z) == FARMLAND && world_->getBlock(tp.x, tp.y + 1, tp.z) == AIR) {
+                world_->setBlock(tp.x, tp.y + 1, tp.z, sel.id == ITEM_SEEDS ? WHEAT_0 : CARROT_0);
+                placeTimer_ = 0.2f;
+                playSound(SoundId::BlockGrass, glm::vec3(tp) + glm::vec3(0.5f, 1.0f, 0.5f), 0.7f, 1.1f);
+                if (!creative_) inventory_.take(slot_, 1);
+                return;
+            }
+        }
+        if (sel.id == ITEM_SEEDS) return;
+    }
+    if (sel.id == ITEM_MEAT || sel.id == ITEM_COOKED_MEAT || sel.id == ITEM_BERRIES || sel.id == ITEM_BREAD || sel.id == ITEM_CARROT) {
         if (!creative_ && health_ < 20 && eatTimer_ <= 0.0f) {
-            health_ = std::min(20, health_ + (sel.id == ITEM_COOKED_MEAT ? 8 : (sel.id == ITEM_BERRIES ? 2 : 4)));
+            const int heal = sel.id == ITEM_COOKED_MEAT ? 8 : (sel.id == ITEM_BREAD ? 5 : (sel.id == ITEM_CARROT ? 3 : (sel.id == ITEM_BERRIES ? 2 : 4)));
+            health_ = std::min(20, health_ + heal);
             inventory_.take(slot_, 1);
             eatTimer_ = 0.8f;
             uiSound(SoundId::Eat);
         }
+        return;
+    }
+    // Tueren sind Gegenstaende, die zwei Bloecke belegen
+    if ((sel.id == ITEM_DOOR_WOOD || sel.id == ITEM_DOOR_IRON) && target_.hit) {
+        glm::ivec3 p = target_.block + target_.normal;
+        const BlockId tb = world_->getBlock(target_.block.x, target_.block.y, target_.block.z);
+        if (tb == TALL_GRASS || tb == FERN || tb == DEAD_BUSH) p = target_.block;
+        auto freeCell = [&](int y) {
+            const BlockId c = world_->getBlock(p.x, y, p.z);
+            return c == AIR || isPlant(c);
+        };
+        const BlockId below = world_->getBlock(p.x, p.y - 1, p.z);
+        if (p.y < 1 || p.y + 1 >= CHUNK_H || !freeCell(p.y) || !freeCell(p.y + 1) || !blockInfo(below).solid || isDoor(below) ||
+            blockInfo(below).shape == SH_LANTERN)
+            return;
+        const int mat = sel.id == ITEM_DOOR_IRON ? 1 : 0;
+        const glm::vec3 f = player_.front();
+        const int facing = std::fabs(f.x) >= std::fabs(f.z) ? (f.x > 0 ? 0 : 1) : (f.z > 0 ? 2 : 3);
+        Box door[MAX_BOXES];
+        auto get = [this](int gx, int gy, int gz) { return world_->getBlock(gx, gy, gz); };
+        int nb = blockBoxes(makeDoor(mat, false, false, facing), p.x, p.y, p.z, get, false, door);
+        if (player_.intersectsBoxes(p.x, p.y, p.z, door, nb) || player_.intersectsBoxes(p.x, p.y + 1, p.z, door, nb)) return;
+        world_->setBlock(p.x, p.y, p.z, makeDoor(mat, false, false, facing));
+        world_->setBlock(p.x, p.y + 1, p.z, makeDoor(mat, true, false, facing));
+        placeTimer_ = 0.25f;
+        playSound(blockSound(Material::Wood), glm::vec3(p) + glm::vec3(0.5f), 0.8f, 0.9f);
+        if (!creative_) inventory_.take(slot_, 1);
         return;
     }
     if (!itemIsBlock(sel.id) || !target_.hit) return;
@@ -1348,7 +1430,50 @@ void Game::placeBlockOrUse() {
         else if (n.z > 0) id = TORCH_NZ;
         else id = TORCH_PZ;
     }
-    if (blockInfo(id).solid && player_.intersectsBlock(p.x, p.y, p.z)) return;
+    // Bauteile: Ausrichtung und Besonderheiten
+    {
+        const glm::vec3 f = player_.front();
+        const int lookDir = std::fabs(f.x) >= std::fabs(f.z) ? (f.x > 0 ? 0 : 1) : (f.z > 0 ? 2 : 3);
+        const glm::vec3 hitPoint = player_.eyePos() + f * (target_.dist + 0.002f);
+        if (isStairs(id)) {
+            id = makeStairs(stairMaterial(id), lookDir);
+        } else if (isSlab(id)) {
+            const int mat = slabMaterial(id);
+            const BlockId tb2 = world_->getBlock(target_.block.x, target_.block.y, target_.block.z);
+            // Gleiche Platte von der offenen Seite: ergibt einen vollen Block
+            if (isSlab(tb2) && slabMaterial(tb2) == mat &&
+                ((target_.normal.y > 0 && !slabIsTop(tb2)) || (target_.normal.y < 0 && slabIsTop(tb2)))) {
+                world_->setBlock(target_.block.x, target_.block.y, target_.block.z, stairMaterialBlock(mat));
+                placeTimer_ = 0.2f;
+                playSound(blockSound(blockMaterial(id)), glm::vec3(target_.block) + glm::vec3(0.5f), 0.8f, 0.85f);
+                if (!creative_) inventory_.take(slot_, 1);
+                return;
+            }
+            bool top;
+            if (target_.normal.y > 0) top = false;
+            else if (target_.normal.y < 0) top = true;
+            else top = hitPoint.y - static_cast<float>(p.y) > 0.5f;
+            id = makeSlab(mat, top);
+        } else if (isGate(id)) {
+            id = makeGate(gateMaterial(id), false, std::fabs(f.x) >= std::fabs(f.z) ? 1 : 0);
+        } else if (id == LANTERN) {
+            const BlockId bBelow = world_->getBlock(p.x, p.y - 1, p.z), bAbove = world_->getBlock(p.x, p.y + 1, p.z);
+            const bool canFloor = blockInfo(bBelow).solid && !isLantern(bBelow) && blockInfo(bBelow).shape != SH_DOOR;
+            const bool canHang = blockInfo(bAbove).solid && !isLantern(bAbove);
+            if (target_.normal.y < 0 && canHang) id = LANTERN_HANG;
+            else if (canFloor) id = LANTERN;
+            else if (canHang) id = LANTERN_HANG;
+            else return;
+        } else if (id == FARMLAND) {
+            // Acker nur wie ein normaler Block
+        }
+    }
+    {
+        Box boxes[MAX_BOXES];
+        auto get = [this](int gx, int gy, int gz) { return world_->getBlock(gx, gy, gz); };
+        const int nb = blockBoxes(id, p.x, p.y, p.z, get, false, boxes);
+        if (nb > 0 && player_.intersectsBoxes(p.x, p.y, p.z, boxes, nb)) return;
+    }
     if (world_->setBlock(p.x, p.y, p.z, id)) {
         placeTimer_ = 0.2f;
         playSound(blockSound(blockMaterial(id)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f), 0.8f, 0.85f);
@@ -1656,6 +1781,76 @@ void Game::applyDemo() {
         const bool alongX = std::fabs(f.x) > std::fabs(f.z);
         const int sx = alongX ? (f.x > 0 ? -1 : 1) : 0, sz = alongX ? 0 : (f.z > 0 ? -1 : 1);
         world_->setBlock(wx + sx, wy + 1, wz + sz, sx < 0 ? TORCH_PX : (sx > 0 ? TORCH_NX : (sz < 0 ? TORCH_PZ : TORCH_NZ)));
+    } else if (opt_.demo == "parts") {
+        // Flache Buehne mit allen neuen Bauteilen (Blick entlang +x)
+        const int ox = static_cast<int>(std::floor(player_.pos.x)) + 4, oz = static_cast<int>(std::floor(player_.pos.z)) - 12;
+        const int gy = static_cast<int>(groundAt(player_.pos.x, player_.pos.z)) - 1;
+        for (int z = 0; z <= 26; ++z)
+            for (int x = -2; x <= 16; ++x) {
+                for (int y = gy + 1; y <= gy + 8; ++y) world_->setBlock(ox + x, y, oz + z, AIR);
+                world_->setBlock(ox + x, gy, oz + z, GRASS);
+            }
+        auto put = [&](int x, int y, int z, BlockId b) { world_->setBlock(ox + x, gy + 1 + y, oz + z, b); };
+        // Reihe 1: Treppen und Platten (z = 0..)
+        for (int m = 0; m < STAIR_MATERIALS; ++m) {
+            put(0, 0, m * 2, makeStairs(m, 0));
+            put(1, 0, m * 2, makeStairs(m, 2));
+            put(3, 0, m * 2, makeSlab(m, false));
+            put(4, 0, m * 2, makeSlab(m, true));
+            put(4, -1 + 0, m * 2, stairMaterialBlock(m));
+        }
+        // Zaun mit Tor, Mauer mit grossem Tor
+        for (int x = 0; x <= 8; ++x) put(x, 0, 12, FENCE);
+        put(4, 0, 12, makeGate(0, false, 0));
+        put(5, 0, 12, makeGate(0, true, 0));
+        for (int x = 0; x <= 12; ++x) {
+            put(x, 0, 15, WALL_COBBLE);
+            put(x, 1, 15, x % 4 == 0 ? WALL_BRICKS : AIR);
+        }
+        for (int x = 4; x <= 7; ++x)
+            for (int y = 0; y < 3; ++y) put(x, y, 15, makeGate(0, false, 0));
+        // Haus mit Tuer, Fenster, Laterne
+        for (int z = 18; z <= 22; ++z)
+            for (int x = 0; x <= 4; ++x)
+                for (int y = 0; y < 3; ++y) {
+                    const bool edge = x == 0 || x == 4 || z == 18 || z == 22;
+                    if (edge) put(x, y, z, PLANKS);
+                }
+        put(2, 0, 18, makeDoor(0, false, false, 3));
+        put(2, 1, 18, makeDoor(0, true, false, 3));
+        put(4, 1, 20, GLASS_PANE);
+        put(0, 1, 20, GLASS_PANE);
+        put(0, 1, 19, GLASS_PANE);
+        put(0, 1, 21, GLASS_PANE);
+        put(4, 0, 21, IRON_BARS);
+        put(4, 1, 21, IRON_BARS);
+        put(2, 0, 16, LANTERN);
+        put(6, 3, 20, STONE);
+        put(6, 2, 20, LANTERN_HANG);
+        // zwei offene und geschlossene Tueren nebeneinander
+        put(8, 0, 18, makeDoor(1, false, true, 0));
+        put(8, 1, 18, makeDoor(1, true, true, 0));
+        put(10, 0, 18, makeDoor(0, false, false, 0));
+        put(10, 1, 18, makeDoor(0, true, false, 0));
+        // Acker mit Wasser und Feldfruechten
+        for (int z = 24; z <= 26; ++z)
+            for (int x = 0; x <= 8; ++x) {
+                world_->setBlock(ox + x, gy, oz + z, z == 25 && x % 4 == 0 ? WATER : FARMLAND);
+                if (z != 25) put(x, 0, z, x < 4 ? static_cast<BlockId>(WHEAT_0 + (x % 4)) : static_cast<BlockId>(CARROT_0 + (x % 4)));
+            }
+        player_.pos = glm::vec3(static_cast<float>(ox + 5), static_cast<float>(gy + 11), static_cast<float>(oz - 3));
+        player_.yaw = 90.0f;
+        player_.pitch = -42.0f;
+        player_.flying = true;
+        creative_ = true;
+        if (const char* cam = std::getenv("OLICRAFT_DEMO_CAM")) {  // Test: Kamera relativ zur Buehne "dx dy dz yaw pitch"
+            float dx, dy, dz, yaw, pitch;
+            if (std::sscanf(cam, "%f %f %f %f %f", &dx, &dy, &dz, &yaw, &pitch) == 5) {
+                player_.pos = glm::vec3(ox + dx, gy + dy, oz + dz);
+                player_.yaw = yaw;
+                player_.pitch = pitch;
+            }
+        }
     } else if (opt_.demo == "water") {
         // Quelle auf einer Anhoehe, das Wasser laeuft ueber das Gelaende
         glm::vec3 p = player_.pos + f * 6.0f;

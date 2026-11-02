@@ -92,6 +92,38 @@ enum Block : BlockId {
     DEAD_BUSH,
     SUGAR_CANE,
     BERRY_BUSH,
+    // Bauteile mit Zustand im Block-Id (siehe Hilfsfunktionen unten):
+    // Treppen: 5 Materialien x 4 Richtungen (Richtung der hohen Seite: +X, -X, +Z, -Z)
+    STAIRS_BASE,
+    STAIRS_END = STAIRS_BASE + 19,
+    // Platten: 5 Materialien x (unten, oben)
+    SLAB_BASE,
+    SLAB_END = SLAB_BASE + 9,
+    // Zaun, Mauern, Fensterscheibe, Gitter: verbinden sich mit Nachbarn
+    FENCE,
+    WALL_COBBLE,
+    WALL_BRICKS,
+    GLASS_PANE,
+    IRON_BARS,
+    // Laternen: auf dem Boden oder haengend
+    LANTERN,
+    LANTERN_HANG,
+    // Tueren: 2 Materialien x (unten/oben) x (offen/zu) x 4 Richtungen
+    DOOR_BASE,
+    DOOR_END = DOOR_BASE + 31,
+    // Tore: 2 Materialien x (offen/zu) x 2 Achsen; nebeneinander gesetzte Tore oeffnen gemeinsam
+    GATE_BASE,
+    GATE_END = GATE_BASE + 7,
+    // Acker und Pflanzen
+    FARMLAND,
+    WHEAT_0,
+    WHEAT_1,
+    WHEAT_2,
+    WHEAT_3,
+    CARROT_0,
+    CARROT_1,
+    CARROT_2,
+    CARROT_3,
     BLOCK_COUNT
 };
 
@@ -203,11 +235,42 @@ enum Tile : int {
     TILE_DYE_GREEN,
     TILE_DYE_BLACK,
     TILE_BERRIES,
+    TILE_IRON_BARS,
+    TILE_LANTERN,
+    TILE_DOOR_WOOD_LOWER,
+    TILE_DOOR_WOOD_UPPER,
+    TILE_DOOR_IRON_LOWER,
+    TILE_DOOR_IRON_UPPER,
+    TILE_GATE_WOOD,
+    TILE_GATE_IRON,
+    TILE_FARMLAND,
+    TILE_WHEAT_0,
+    TILE_WHEAT_1,
+    TILE_WHEAT_2,
+    TILE_WHEAT_3,
+    TILE_CARROT_0,
+    TILE_CARROT_1,
+    TILE_CARROT_2,
+    TILE_CARROT_3,
+    TILE_SEEDS,
+    TILE_WHEAT,
+    TILE_BREAD,
+    TILE_CARROT,
+    TILE_HOE_WOOD,
+    TILE_HOE_STONE,
+    TILE_HOE_IRON,
+    TILE_HOE_GOLD,
+    TILE_HOE_DIAMOND,
+    TILE_DOOR_WOOD_ITEM,
+    TILE_DOOR_IRON_ITEM,
     TILE_COUNT
 };
 
 // Werkzeugart: passt das Werkzeug zum Block, baut es schneller ab
-enum ToolClass : uint8_t { TOOL_NONE = 0, TOOL_PICKAXE, TOOL_AXE, TOOL_SHOVEL, TOOL_SWORD };
+enum ToolClass : uint8_t { TOOL_NONE = 0, TOOL_PICKAXE, TOOL_AXE, TOOL_SHOVEL, TOOL_SWORD, TOOL_HOE };
+
+// Form eines Blocks: Vollwuerfel oder Teilform (genaue Boxen siehe BlockShape.h)
+enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND };
 
 struct BlockInfo {
     const char* name;
@@ -223,6 +286,7 @@ struct BlockInfo {
     ToolClass tool = TOOL_NONE;  // passende Werkzeugart
     int minTier = 0;             // noetige Werkzeugstufe, damit der Block etwas fallen laesst (0 = keine)
     bool emissive = false;       // leuchtet (unabhaengig von Tageszeit und Schatten)
+    Shape shape = SH_FULL;       // Teilform (Treppe, Platte, Zaun, Tuer ...)
 };
 
 const BlockInfo& blockInfo(BlockId id);
@@ -249,8 +313,46 @@ inline float liquidHeight(BlockId id) {
     return isLava(id) ? static_cast<float>(8 - 2 * l) / 9.0f : static_cast<float>(8 - l) / 9.0f;
 }
 
+// --- Bauteile
+constexpr int STAIR_MATERIALS = 5;  // Bretter, Bruchstein, Steinziegel, Ziegel, Sandstein
+inline bool isStairs(BlockId id) { return id >= STAIRS_BASE && id <= STAIRS_END; }
+inline int stairMaterial(BlockId id) { return (id - STAIRS_BASE) / 4; }
+inline int stairFacing(BlockId id) { return (id - STAIRS_BASE) % 4; }  // Richtung der hohen Seite: 0 +X, 1 -X, 2 +Z, 3 -Z
+inline BlockId makeStairs(int material, int facing) { return static_cast<BlockId>(STAIRS_BASE + material * 4 + facing); }
+inline bool isSlab(BlockId id) { return id >= SLAB_BASE && id <= SLAB_END; }
+inline int slabMaterial(BlockId id) { return (id - SLAB_BASE) / 2; }
+inline bool slabIsTop(BlockId id) { return (id - SLAB_BASE) % 2 == 1; }
+inline BlockId makeSlab(int material, bool top) { return static_cast<BlockId>(SLAB_BASE + material * 2 + (top ? 1 : 0)); }
+// Vollblock zum Material (Bretter, Bruchstein, Steinziegel, Ziegel, Sandstein)
+inline BlockId stairMaterialBlock(int material) {
+    static const BlockId m[STAIR_MATERIALS] = {PLANKS, COBBLE, STONE_BRICKS, BRICKS, SANDSTONE};
+    return m[material < 0 || material >= STAIR_MATERIALS ? 0 : material];
+}
+inline bool isFence(BlockId id) { return id == FENCE; }
+inline bool isWall(BlockId id) { return id == WALL_COBBLE || id == WALL_BRICKS; }
+inline bool isPane(BlockId id) { return id == GLASS_PANE || id == IRON_BARS; }
+inline bool isLantern(BlockId id) { return id == LANTERN || id == LANTERN_HANG; }
+// Tueren: id = DOOR_BASE + material*16 + upper*8 + open*4 + facing
+inline bool isDoor(BlockId id) { return id >= DOOR_BASE && id <= DOOR_END; }
+inline int doorMaterial(BlockId id) { return (id - DOOR_BASE) / 16; }  // 0 Holz, 1 Eisen
+inline bool doorUpper(BlockId id) { return ((id - DOOR_BASE) / 8) % 2 == 1; }
+inline bool doorOpen(BlockId id) { return ((id - DOOR_BASE) / 4) % 2 == 1; }
+inline int doorFacing(BlockId id) { return (id - DOOR_BASE) % 4; }  // Seite der geschlossenen Platte: 0 +X, 1 -X, 2 +Z, 3 -Z
+inline BlockId makeDoor(int material, bool upper, bool open, int facing) {
+    return static_cast<BlockId>(DOOR_BASE + material * 16 + (upper ? 8 : 0) + (open ? 4 : 0) + facing);
+}
+// Tore: id = GATE_BASE + material*4 + open*2 + axis (Achse 0: Tor spannt sich entlang X, 1: entlang Z)
+inline bool isGate(BlockId id) { return id >= GATE_BASE && id <= GATE_END; }
+inline int gateMaterial(BlockId id) { return (id - GATE_BASE) / 4; }
+inline bool gateOpen(BlockId id) { return ((id - GATE_BASE) / 2) % 2 == 1; }
+inline int gateAxis(BlockId id) { return (id - GATE_BASE) % 2; }
+inline BlockId makeGate(int material, bool open, int axis) { return static_cast<BlockId>(GATE_BASE + material * 4 + (open ? 2 : 0) + axis); }
+inline bool isCrop(BlockId id) { return (id >= WHEAT_0 && id <= WHEAT_3) || (id >= CARROT_0 && id <= CARROT_3); }
+inline int cropStage(BlockId id) { return id >= CARROT_0 ? id - CARROT_0 : id - WHEAT_0; }
+inline bool cropFullyGrown(BlockId id) { return isCrop(id) && cropStage(id) == 3; }
+
 inline bool isTorch(BlockId id) { return id >= TORCH && id <= TORCH_NZ; }
-inline bool isPlant(BlockId id) { return id >= TALL_GRASS && id <= BERRY_BUSH; }
+inline bool isPlant(BlockId id) { return (id >= TALL_GRASS && id <= BERRY_BUSH) || isCrop(id); }
 inline bool isLeaves(BlockId id) { return id == LEAVES || id == BIRCH_LEAVES || id == SPRUCE_LEAVES; }
 inline bool isLogBlock(BlockId id) { return id == LOG || id == BIRCH_LOG || id == SPRUCE_LOG; }
 // Darf die Pflanze auf dem Block darunter stehen?
@@ -261,7 +363,7 @@ inline bool plantCanStandOn(BlockId plant, BlockId below) {
         case SUGAR_CANE: return below == SAND || soil || below == SUGAR_CANE;
         case MUSHROOM_RED:
         case MUSHROOM_BROWN: return soil || below == STONE || isLogBlock(below);
-        default: return soil;
+        default: return isCrop(plant) ? below == FARMLAND : soil;
     }
 }
 // Lage des Traegerblocks einer Fackel relativ zu ihr
@@ -281,6 +383,7 @@ inline int lightEmission(BlockId id) {
     if (id >= LAVA && id <= LAVA_FALL) return 15;
     if (id == FURNACE_LIT) return 13;
     if (id == LAMP) return 15;
+    if (id == LANTERN || id == LANTERN_HANG) return 15;
     return 0;
 }
 constexpr int MAX_LIGHT = 15;

@@ -1,6 +1,8 @@
 #pragma once
 #include <glm/glm.hpp>
 
+#include "BlockShape.h"
+
 namespace oc {
 
 class World;
@@ -37,6 +39,8 @@ public:
 
     // Ueberschneidet der Spieler den Block (x,y,z)?
     bool intersectsBlock(int x, int y, int z) const;
+    // ... genauer: mit den Boxen (relativ zur Zelle)
+    bool intersectsBoxes(int x, int y, int z, const Box* boxes, int n) const;
 
 private:
     float peakY_ = 0.0f;

@@ -910,6 +910,197 @@ void drawBerries(TileCanvas& c) {
     }
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------
+// Bauteile, Acker, Feldfruechte, Hacken
+// ---------------------------------------------------------------------------------------------------------------
+void drawIronBars(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const bool bar = x % 4 == 1 || x % 4 == 2;
+            const bool rail = y <= 1 || y >= 14;
+            if (!bar && !rail) continue;
+            const int d = static_cast<int>((rnd(x, y, TILE_IRON_BARS) - 0.5f) * 20);
+            c.set(x, y, shade((x % 4 == 2 && !rail) ? Rgba{88, 90, 98, 255} : Rgba{150, 152, 160, 255}, d));
+        }
+}
+
+void drawLantern(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const bool frame = x <= 1 || x >= 14 || y <= 2 || y >= 13;
+            const int d = static_cast<int>((rnd(x, y, TILE_LANTERN) - 0.5f) * 14);
+            if (frame) c.set(x, y, shade({58, 54, 52, 255}, d));
+            else {
+                const float dx = x - 7.5f, dy = y - 7.5f;
+                const int glow = static_cast<int>(60 - std::sqrt(dx * dx + dy * dy) * 6.0f);
+                c.set(x, y, {255, 214 + glow / 2 + d / 2, 110 + glow + d, 255});
+            }
+        }
+}
+
+void drawDoorWood(TileCanvas& c, int tile, bool upper) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int d = static_cast<int>((rnd(x, y, tile) - 0.5f) * 14) + ((x / 4) % 2 ? 6 : 0);
+            Rgba col = shade({150, 108, 58, 255}, d);
+            const bool border = x <= 1 || x >= 14 || y == 0 || y == 15;
+            if (border) col = shade({104, 72, 36, 255}, d);
+            if (upper) {  // obere Haelfte: Fenster aus Glas
+                const bool win = ((x >= 3 && x <= 6) || (x >= 9 && x <= 12)) && (y >= 8 && y <= 13);
+                if (win) col = shade({178, 216, 230, 255}, d / 2);
+            } else {
+                const bool panel = x >= 3 && x <= 12 && y >= 3 && y <= 12;
+                if (panel && (x == 3 || y == 12)) col = shade({112, 78, 40, 255}, d);
+                if (x == 12 && y >= 6 && y <= 7) col = shade({214, 200, 120, 255}, 0);  // Klinke
+            }
+            c.set(x, y, col);
+        }
+}
+
+void drawDoorIron(TileCanvas& c, int tile, bool upper) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int d = static_cast<int>((rnd(x, y, tile) - 0.5f) * 12);
+            Rgba col = shade({196, 198, 204, 255}, d);
+            const bool border = x <= 1 || x >= 14 || y == 0 || y == 15;
+            if (border) col = shade({140, 142, 150, 255}, d);
+            if (upper && x >= 4 && x <= 11 && y >= 9 && y <= 12) col = shade({60, 70, 80, 255}, d / 2);  // Sichtschlitz
+            if ((x == 3 || x == 12) && (y == 3 || y == 12 || y == 7)) col = shade({110, 112, 120, 255}, 0);  // Nieten
+            if (!upper && x == 12 && y >= 6 && y <= 7) col = {70, 70, 76, 255};
+            c.set(x, y, col);
+        }
+}
+
+void drawGate(TileCanvas& c, int tile, bool iron) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const bool post = x <= 2 || x >= 13;
+            const bool rail = (y >= 3 && y <= 5) || (y >= 10 && y <= 12);
+            const bool brace = iron ? (x % 4 == 1 && y >= 5 && y <= 10) : false;
+            if (!(post || rail || brace)) continue;
+            const int d = static_cast<int>((rnd(x, y, tile) - 0.5f) * 14);
+            c.set(x, y, shade(iron ? Rgba{120, 122, 130, 255} : Rgba{138, 98, 52, 255}, d));
+        }
+}
+
+void drawFarmland(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int d = static_cast<int>((rnd(x, y, TILE_FARMLAND) - 0.5f) * 14);
+            const bool furrow = y % 4 == 1 || y % 4 == 2;
+            c.set(x, y, shade(furrow ? Rgba{84, 54, 34, 255} : Rgba{112, 76, 48, 255}, d));
+        }
+}
+
+void drawWheat(TileCanvas& c, int tile, int stage) {
+    clearTile(c);
+    static const int heights[4] = {4, 8, 12, 15};
+    const int hgt = heights[stage];
+    for (int x = 1; x < 16; x += 2) {
+        const uint32_t h = hash3(x, stage, tile, 55u);
+        const int hh = std::max(2, hgt - static_cast<int>(h % 3u));
+        for (int y = 0; y < hh; ++y) {
+            Rgba col = stage == 3 ? Rgba{196 - y * 2, 164 - y, 52, 255} : Rgba{70 + stage * 22 + y * 3, 150 - stage * 6, 50, 255};
+            if (stage == 3 && y >= hh - 4) col = {226, 196, 84, 255};  // Aehre
+            put(c, x, y, col);
+            if (stage >= 1 && y > hh / 2 && (x + y) % 3 == 0) put(c, x + 1, y, col);
+        }
+    }
+}
+
+void drawCarrotCrop(TileCanvas& c, int tile, int stage) {
+    clearTile(c);
+    static const int heights[4] = {3, 5, 8, 10};
+    const int hgt = heights[stage];
+    for (int x = 2; x < 15; x += 3) {
+        const uint32_t h = hash3(x, stage, tile, 66u);
+        const int hh = std::max(2, hgt - static_cast<int>(h % 2u));
+        for (int y = 0; y < hh; ++y) {
+            const int spread = y > hh / 2 ? (y - hh / 2) : 0;
+            put(c, x - spread / 2, y + 2, {52, 140 + y * 3, 46, 255});
+            put(c, x + 1 + spread / 2, y + 2, {64, 156 + y * 2, 52, 255});
+        }
+        if (stage == 3) {  // orange Spitze schaut aus dem Boden
+            put(c, x, 0, {232, 130, 32, 255});
+            put(c, x + 1, 0, {214, 112, 24, 255});
+            put(c, x, 1, {240, 146, 40, 255});
+        }
+    }
+}
+
+void drawSeeds(TileCanvas& c) {
+    clearTile(c);
+    static const int pts[][2] = {{4, 5}, {5, 5}, {8, 6}, {9, 6}, {6, 9}, {7, 9}, {10, 10}, {4, 11}, {5, 11}, {11, 7}, {8, 11}};
+    for (auto& p : pts) {
+        put(c, p[0], p[1], {120, 150, 60, 255});
+        put(c, p[0], p[1] + 1, {88, 120, 44, 255});
+    }
+}
+
+void drawWheatItem(TileCanvas& c) {
+    clearTile(c);
+    for (int k = 0; k < 3; ++k) {
+        const int bx = 4 + k * 3;
+        for (int y = 1; y < 14; ++y) put(c, bx + (y > 7 ? 0 : 0), y, y > 8 ? Rgba{226, 196, 84, 255} : Rgba{166, 140, 56, 255});
+        for (int y = 9; y < 14; y += 2) {
+            put(c, bx - 1, y, {226, 196, 84, 255});
+            put(c, bx + 1, y, {214, 184, 70, 255});
+        }
+    }
+}
+
+void drawBread(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 4; y < 12; ++y)
+        for (int x = 2; x < 14; ++x) {
+            const float dx = (x - 7.5f) / 6.0f, dy = (y - 7.5f) / 4.0f;
+            if (dx * dx + dy * dy > 1.0f) continue;
+            int d = static_cast<int>((rnd(x, y, TILE_BREAD) - 0.5f) * 16);
+            Rgba col = shade({196, 140, 70, 255}, d - (y < 6 ? 0 : 14));
+            if (y >= 9) col = shade({150, 100, 48, 255}, d);
+            if ((x + y) % 5 == 0 && y > 5 && y < 9) col = shade({226, 176, 100, 255}, 0);
+            put(c, x, y, col);
+        }
+}
+
+void drawCarrotItem(TileCanvas& c) {
+    clearTile(c);
+    for (int i = 0; i < 10; ++i) {
+        const int x = 3 + i, y = 12 - i;
+        const int w = i < 7 ? 2 : 1;
+        for (int k = 0; k < w; ++k) put(c, x, y - k, {i % 2 ? Rgba{232, 128, 30, 255} : Rgba{248, 150, 44, 255}});
+    }
+    put(c, 11, 4, {60, 150, 52, 255});
+    put(c, 12, 5, {52, 130, 46, 255});
+    put(c, 12, 3, {70, 164, 56, 255});
+    put(c, 13, 4, {52, 130, 46, 255});
+}
+
+void drawHoe(TileCanvas& c, Rgba m) {
+    drawToolBase(c);
+    const Rgba dark = {m.r * 7 / 10, m.g * 7 / 10, m.b * 7 / 10, 255};
+    handle(c, 2, 11);
+    for (const auto& p : {std::pair<int, int>{8, 13}, {9, 13}, {10, 13}, {11, 13}, {11, 12}, {8, 12}, {10, 12}}) put(c, p.first, p.second, m);
+    put(c, 12, 12, dark);
+    put(c, 11, 11, dark);
+}
+
+void drawDoorItem(TileCanvas& c, bool iron) {
+    clearTile(c);
+    for (int y = 1; y < 15; ++y)
+        for (int x = 4; x < 12; ++x) {
+            const int d = static_cast<int>((rnd(x, y, iron ? TILE_DOOR_IRON_ITEM : TILE_DOOR_WOOD_ITEM) - 0.5f) * 12);
+            Rgba col = iron ? shade({196, 198, 204, 255}, d) : shade({150, 108, 58, 255}, d);
+            if (x == 4 || y == 1 || y == 14) col = iron ? shade({140, 142, 150, 255}, d) : shade({104, 72, 36, 255}, d);
+            if (y == 8 && x > 4) col = iron ? shade({150, 152, 160, 255}, d) : shade({120, 84, 44, 255}, d);
+            if (x == 10 && y == 7) col = {214, 200, 120, 255};
+            put(c, x, y, col);
+        }
+}
+
 }  // namespace
 
 std::vector<uint8_t> generateAtlasPixels() {
@@ -1025,6 +1216,37 @@ std::vector<uint8_t> generateAtlasPixels() {
         }
     }
     make(TILE_BERRIES, drawBerries);
+    make(TILE_IRON_BARS, drawIronBars);
+    make(TILE_LANTERN, drawLantern);
+    {
+        TileCanvas c1(px, TILE_DOOR_WOOD_LOWER), c2(px, TILE_DOOR_WOOD_UPPER), c3(px, TILE_DOOR_IRON_LOWER), c4(px, TILE_DOOR_IRON_UPPER);
+        drawDoorWood(c1, TILE_DOOR_WOOD_LOWER, false);
+        drawDoorWood(c2, TILE_DOOR_WOOD_UPPER, true);
+        drawDoorIron(c3, TILE_DOOR_IRON_LOWER, false);
+        drawDoorIron(c4, TILE_DOOR_IRON_UPPER, true);
+        TileCanvas g1(px, TILE_GATE_WOOD), g2(px, TILE_GATE_IRON);
+        drawGate(g1, TILE_GATE_WOOD, false);
+        drawGate(g2, TILE_GATE_IRON, true);
+        for (int s2 = 0; s2 < 4; ++s2) {
+            TileCanvas w(px, TILE_WHEAT_0 + s2), cr(px, TILE_CARROT_0 + s2);
+            drawWheat(w, TILE_WHEAT_0 + s2, s2);
+            drawCarrotCrop(cr, TILE_CARROT_0 + s2, s2);
+        }
+        const Rgba mats[5] = {{214, 176, 102, 255}, {150, 150, 158, 255}, {226, 226, 232, 255}, {250, 214, 60, 255}, {90, 232, 238, 255}};
+        const int hoes[5] = {TILE_HOE_WOOD, TILE_HOE_STONE, TILE_HOE_IRON, TILE_HOE_GOLD, TILE_HOE_DIAMOND};
+        for (int i = 0; i < 5; ++i) {
+            TileCanvas h(px, hoes[i]);
+            drawHoe(h, mats[i]);
+        }
+        TileCanvas di1(px, TILE_DOOR_WOOD_ITEM), di2(px, TILE_DOOR_IRON_ITEM);
+        drawDoorItem(di1, false);
+        drawDoorItem(di2, true);
+    }
+    make(TILE_FARMLAND, drawFarmland);
+    make(TILE_SEEDS, drawSeeds);
+    make(TILE_WHEAT, drawWheatItem);
+    make(TILE_BREAD, drawBread);
+    make(TILE_CARROT, drawCarrotItem);
     return px;
 }
 

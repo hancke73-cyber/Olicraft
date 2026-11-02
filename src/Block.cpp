@@ -2,7 +2,7 @@
 
 namespace oc {
 
-static const BlockInfo INFOS[BLOCK_COUNT] = {
+static const BlockInfo BASE_INFOS[BERRY_BUSH + 1] = {
     //  name       solid  opaque liquid sky    same   brk    top            bottom         side            hard  drop
     {"Luft",       false, false, false, false, false, false, TILE_STONE,     TILE_STONE,     TILE_STONE,     0.0f, AIR},
     {"Gras",       true,  true,  false, true,  false, true,  TILE_GRASS_TOP, TILE_DIRT,      TILE_GRASS_SIDE, 0.35f, DIRT, TOOL_SHOVEL, 0},
@@ -84,8 +84,76 @@ static const BlockInfo INFOS[BLOCK_COUNT] = {
     {"Beerenstrauch",  false, false, false, false, false, true,  TILE_BERRY_BUSH,     TILE_BERRY_BUSH,     TILE_BERRY_BUSH,      0.0f, 236},
 };
 
+namespace {
+
+struct InfoTable {
+    BlockInfo infos[BLOCK_COUNT];
+    InfoTable() {
+        for (int i = 0; i <= BERRY_BUSH; ++i) infos[i] = BASE_INFOS[i];
+        // Treppen und Platten
+        static const char* STAIR_NAMES[STAIR_MATERIALS] = {"Brettertreppe", "Bruchsteintreppe", "Steinziegeltreppe", "Ziegeltreppe", "Sandsteintreppe"};
+        static const char* SLAB_NAMES[STAIR_MATERIALS] = {"Brettplatte", "Bruchsteinplatte", "Steinziegelplatte", "Ziegelplatte", "Sandsteinplatte"};
+        for (int m = 0; m < STAIR_MATERIALS; ++m) {
+            const BlockInfo& mb = BASE_INFOS[stairMaterialBlock(m)];
+            for (int f = 0; f < 4; ++f) {
+                BlockInfo& i = infos[makeStairs(m, f)];
+                i = mb;
+                i.name = STAIR_NAMES[m];
+                i.opaque = false;
+                i.shape = SH_STAIRS;
+                i.drop = makeStairs(m, 0);
+            }
+            for (int t = 0; t < 2; ++t) {
+                BlockInfo& i = infos[makeSlab(m, t == 1)];
+                i = mb;
+                i.name = SLAB_NAMES[m];
+                i.opaque = false;
+                i.shape = SH_SLAB;
+                i.hardness = mb.hardness * 0.6f;
+                i.drop = makeSlab(m, false);
+            }
+        }
+        auto thin = [&](BlockId id, const char* name, Tile tile, float hardness, BlockId drop, ToolClass tool, int tier, Shape shape, bool solid = true) {
+            BlockInfo& i = infos[id];
+            i = {name, solid, false, false, false, false, true, tile, tile, tile, hardness, drop, tool, tier, false, shape};
+        };
+        thin(FENCE, "Zaun", TILE_PLANKS, 1.0f, FENCE, TOOL_AXE, 0, SH_FENCE);
+        thin(WALL_COBBLE, "Bruchsteinmauer", TILE_COBBLE, 1.5f, WALL_COBBLE, TOOL_PICKAXE, 1, SH_WALL);
+        thin(WALL_BRICKS, "Ziegelmauer", TILE_BRICKS, 2.0f, WALL_BRICKS, TOOL_PICKAXE, 1, SH_WALL);
+        thin(GLASS_PANE, "Glasscheibe", TILE_GLASS, 0.2f, AIR, TOOL_NONE, 0, SH_PANE);
+        thin(IRON_BARS, "Eisengitter", TILE_IRON_BARS, 3.0f, IRON_BARS, TOOL_PICKAXE, 1, SH_PANE);
+        thin(LANTERN, "Laterne", TILE_LANTERN, 0.5f, LANTERN, TOOL_NONE, 0, SH_LANTERN, false);
+        thin(LANTERN_HANG, "Laterne", TILE_LANTERN, 0.5f, LANTERN, TOOL_NONE, 0, SH_LANTERN, false);
+        infos[LANTERN].emissive = infos[LANTERN_HANG].emissive = true;
+        // Tueren
+        for (int mat = 0; mat < 2; ++mat)
+            for (int up = 0; up < 2; ++up)
+                for (int open = 0; open < 2; ++open)
+                    for (int f = 0; f < 4; ++f) {
+                        const Tile tile = mat == 0 ? (up ? TILE_DOOR_WOOD_UPPER : TILE_DOOR_WOOD_LOWER) : (up ? TILE_DOOR_IRON_UPPER : TILE_DOOR_IRON_LOWER);
+                        thin(makeDoor(mat, up == 1, open == 1, f), mat == 0 ? "Holztuer" : "Eisentuer", tile, mat == 0 ? 1.5f : 4.0f,
+                             static_cast<BlockId>(up ? AIR : (mat == 0 ? 246 : 247)), mat == 0 ? TOOL_AXE : TOOL_PICKAXE, mat == 0 ? 0 : 1, SH_DOOR, open == 0);
+                    }
+        // Tore
+        for (int mat = 0; mat < 2; ++mat)
+            for (int open = 0; open < 2; ++open)
+                for (int axis = 0; axis < 2; ++axis)
+                    thin(makeGate(mat, open == 1, axis), mat == 0 ? "Holztor" : "Eisentor", mat == 0 ? TILE_GATE_WOOD : TILE_GATE_IRON,
+                         mat == 0 ? 1.5f : 4.0f, makeGate(mat, false, 0), mat == 0 ? TOOL_AXE : TOOL_PICKAXE, mat == 0 ? 0 : 1, SH_GATE, open == 0);
+        // Acker und Feldfruechte
+        infos[FARMLAND] = {"Acker", true, false, false, true, false, true, TILE_FARMLAND, TILE_DIRT, TILE_DIRT, 0.3f, DIRT, TOOL_SHOVEL, 0, false, SH_FARMLAND};
+        for (int s = 0; s < 4; ++s) {
+            thin(static_cast<BlockId>(WHEAT_0 + s), "Weizen", static_cast<Tile>(TILE_WHEAT_0 + s), 0.0f, static_cast<BlockId>(s == 3 ? 238 : 237), TOOL_NONE, 0, SH_FULL, false);
+            thin(static_cast<BlockId>(CARROT_0 + s), "Karotten", static_cast<Tile>(TILE_CARROT_0 + s), 0.0f, static_cast<BlockId>(240), TOOL_NONE, 0, SH_FULL, false);
+        }
+    }
+};
+
+}  // namespace
+
 const BlockInfo& blockInfo(BlockId id) {
-    return INFOS[id < BLOCK_COUNT ? id : 0];
+    static const InfoTable table;
+    return table.infos[id < BLOCK_COUNT ? id : 0];
 }
 
 const BlockId DEFAULT_HOTBAR[HOTBAR_SIZE] = {GRASS, DIRT, STONE, COBBLE, PLANKS, LOG, LEAVES, SAND, GLASS};

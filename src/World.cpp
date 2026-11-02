@@ -1,5 +1,7 @@
 #include "World.h"
 
+#include "BlockShape.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -33,6 +35,30 @@ BlockId World::getBlock(int x, int y, int z) const {
     return c->get(x - cx * CHUNK_W, y, z - cz * CHUNK_W);
 }
 
+int World::collisionBoxes(int x, int y, int z, Box* out) const {
+    if (y < 0) {
+        out[0] = Box{0, 0, 0, 1, 1, 1};
+        return 1;
+    }
+    if (y >= CHUNK_H) return 0;
+    const int cx = floorDiv(x, CHUNK_W), cz = floorDiv(z, CHUNK_W);
+    const Chunk* c = find(cx, cz);
+    if (!c) {
+        out[0] = Box{0, 0, 0, 1, 1, 1};
+        return 1;
+    }
+    const BlockId b = c->get(x - cx * CHUNK_W, y, z - cz * CHUNK_W);
+    if (b == AIR) return 0;
+    const BlockInfo& bi = blockInfo(b);
+    if (bi.shape == SH_FULL) {
+        if (!bi.solid) return 0;
+        out[0] = Box{0, 0, 0, 1, 1, 1};
+        return 1;
+    }
+    auto get = [this](int gx, int gy, int gz) { return getBlock(gx, gy, gz); };
+    return blockBoxes(b, x, y, z, get, false, out);
+}
+
 bool World::isSolidAt(int x, int y, int z) const {
     if (y < 0) return true;
     if (y >= CHUNK_H) return false;
@@ -59,6 +85,11 @@ bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
     if (oldB == b) return false;
     c->set(lx, y, lz, b);
     c->modified = true;
+    if (isCrop(oldB) || isCrop(b)) {
+        const int32_t idx = Chunk::index(lx, y, lz);
+        if (isCrop(oldB) && !isCrop(b)) c->crops.erase(std::remove(c->crops.begin(), c->crops.end(), idx), c->crops.end());
+        else if (!isCrop(oldB) && isCrop(b)) c->crops.push_back(idx);
+    }
     lightUrgent_ = urgent;
     relightAfterChange(x, y, z, oldB, b);
 
@@ -228,6 +259,31 @@ void World::checkTorchSupports(int x, int y, int z) {
             torchDrops_.emplace_back(nx, ny, nz);
         }
     }
+    // Laternen, Tueren
+    for (const auto& d : DIRS6) {
+        const int nx = x + d[0], ny = y + d[1], nz = z + d[2];
+        const BlockId b = getBlock(nx, ny, nz);
+        if (isLantern(b)) {
+            const BlockId sup = getBlock(nx, ny + (b == LANTERN ? -1 : 1), nz);
+            if (!blockInfo(sup).solid || isLantern(sup)) {
+                setBlockImpl(nx, ny, nz, AIR, true);
+                plantDrops_.push_back({glm::ivec3(nx, ny, nz), b});
+            }
+        } else if (isDoor(b)) {
+            const bool upper = doorUpper(b);
+            const BlockId other = getBlock(nx, ny + (upper ? -1 : 1), nz);
+            const bool pairOk = isDoor(other) && doorUpper(other) != upper && doorMaterial(other) == doorMaterial(b);
+            const BlockId below = getBlock(nx, ny - 1, nz);
+            const bool floorOk = upper || (blockInfo(below).solid && !isDoor(below) && blockInfo(below).shape != SH_LANTERN);
+            if (!pairOk || !floorOk) {
+                setBlockImpl(nx, ny, nz, AIR, true);
+                if (!upper) {
+                    plantDrops_.push_back({glm::ivec3(nx, ny, nz), b});
+                    if (isDoor(other) && doorUpper(other)) setBlockImpl(nx, ny + 1, nz, AIR, true);  // obere Haelfte mit entfernen
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -335,8 +391,76 @@ void World::updateFluidCell(int kind, int x, int y, int z) {
     reactFluids(x, y, z);
 }
 
+// Tuer oder Tor samt allen verbundenen Nachbarn (gleiche Art, gleicher Zustand) umschalten. Rueckgabe: Anzahl umgeschalteter Bloecke.
+int World::toggleOpenGroup(int x, int y, int z) {
+    const BlockId start = getBlock(x, y, z);
+    if (!isDoor(start) && !isGate(start)) return 0;
+    auto same = [&](BlockId a, BlockId b) {
+        if (isDoor(a) && isDoor(b))
+            return doorMaterial(a) == doorMaterial(b) && doorFacing(a) == doorFacing(b) && doorOpen(a) == doorOpen(b);
+        if (isGate(a) && isGate(b)) return gateMaterial(a) == gateMaterial(b) && gateAxis(a) == gateAxis(b) && gateOpen(a) == gateOpen(b);
+        return false;
+    };
+    std::vector<glm::ivec3> todo{{x, y, z}}, done;
+    auto contains = [&](const glm::ivec3& p) {
+        for (const glm::ivec3& q : done)
+            if (q == p) return true;
+        for (const glm::ivec3& q : todo)
+            if (q == p) return true;
+        return false;
+    };
+    for (size_t i = 0; i < todo.size() && done.size() + todo.size() < 160; ++i) {
+        const glm::ivec3 p = todo[i];
+        done.push_back(p);
+        for (const auto& d : DIRS6) {
+            const glm::ivec3 q(p.x + d[0], p.y + d[1], p.z + d[2]);
+            if (contains(q)) continue;
+            if (same(start, getBlock(q.x, q.y, q.z))) todo.push_back(q);
+        }
+    }
+    // todo enthaelt alles (done wird parallel gefuellt); gemeinsam umschalten
+    int n = 0;
+    for (const glm::ivec3& p : todo) {
+        const BlockId b = getBlock(p.x, p.y, p.z);
+        BlockId nb = b;
+        if (isDoor(b)) nb = makeDoor(doorMaterial(b), doorUpper(b), !doorOpen(b), doorFacing(b));
+        else if (isGate(b)) nb = makeGate(gateMaterial(b), !gateOpen(b), gateAxis(b));
+        if (nb != b && setBlock(p.x, p.y, p.z, nb)) ++n;
+    }
+    return n;
+}
+
+void World::tickCrops(float dt) {
+    cropTimer_ += dt;
+    if (cropTimer_ < 1.0f) return;
+    cropTimer_ -= 1.0f;
+    for (auto& kv : chunks_) {
+        Chunk& c = *kv.second;
+        if (c.crops.empty()) continue;
+        const std::vector<int32_t> list = c.crops;  // Kopie, weil das Wachsen die Liste nicht aendert, setBlock aber koennte
+        for (int32_t idx : list) {
+            cropRng_ ^= cropRng_ << 13;
+            cropRng_ ^= cropRng_ >> 17;
+            cropRng_ ^= cropRng_ << 5;
+            if (cropRng_ % 45u != 0u) continue;
+            const int lx = idx % CHUNK_W, lz = (idx / CHUNK_W) % CHUNK_W, y = idx / (CHUNK_W * CHUNK_W);
+            const BlockId b = c.get(lx, y, lz);
+            if (!isCrop(b) || cropFullyGrown(b)) continue;
+            const int x = c.cx * CHUNK_W + lx, z = c.cz * CHUNK_W + lz;
+            // Ohne Wasser in der Naehe waechst es nur halb so oft
+            bool wet = false;
+            for (int dz = -4; dz <= 4 && !wet; ++dz)
+                for (int dx = -4; dx <= 4 && !wet; ++dx)
+                    for (int dy = -1; dy <= 0 && !wet; ++dy) wet = isWater(getBlock(x + dx, y - 1 + dy, z + dz));
+            if (!wet && (cropRng_ >> 8) % 2u == 0u) continue;
+            setBlockImpl(x, y, z, static_cast<BlockId>(b + 1), false);
+        }
+    }
+}
+
 void World::tick(float dt) {
     tickFurnaces(dt);
+    tickCrops(dt);
     for (int kind = 0; kind < 2; ++kind) {
         FluidQueue& q = fluid_[kind];
         q.accum += dt;
@@ -383,6 +507,8 @@ Chunk& World::ensureChunk(int cx, int cz) {
         terrain_.generate(*chunk);
     }
     Chunk& ref = *chunk;
+    for (int i = 0; i < Chunk::VOLUME; ++i)
+        if (isCrop(ref.blocks[static_cast<size_t>(i)])) ref.crops.push_back(i);
     const bool restored = ref.modified;
     chunks_.emplace(ChunkKey{cx, cz}, std::move(chunk));
     lightChunkInit(ref, restored);
@@ -583,11 +709,59 @@ RayHit World::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDi
     for (int i = 0; i < 256; ++i) {
         BlockId b = getBlock(cell.x, cell.y, cell.z);
         if (b != AIR && !blockInfo(b).liquid) {
-            result.hit = true;
-            result.block = cell;
-            result.normal = normal;
-            result.dist = entry;
-            return result;
+            if (blockInfo(b).shape == SH_FULL) {
+                result.hit = true;
+                result.block = cell;
+                result.normal = normal;
+                result.dist = entry;
+                return result;
+            }
+            // Teilform: nur treffen, wenn der Strahl eine ihrer Boxen schneidet
+            Box boxes[MAX_BOXES];
+            auto get = [this](int gx, int gy, int gz) { return getBlock(gx, gy, gz); };
+            const int nb = blockBoxes(b, cell.x, cell.y, cell.z, get, true, boxes);
+            float bestT = 1e30f;
+            glm::ivec3 bestN(0);
+            for (int i = 0; i < nb; ++i) {
+                const float lo[3] = {cell.x + boxes[i].x0, cell.y + boxes[i].y0, cell.z + boxes[i].z0};
+                const float hi[3] = {cell.x + boxes[i].x1, cell.y + boxes[i].y1, cell.z + boxes[i].z1};
+                float t0 = 0.0f, t1 = maxDist;
+                int axisIn = -1, signIn = 0;
+                bool miss = false;
+                for (int a = 0; a < 3 && !miss; ++a) {
+                    if (std::fabs(d[a]) < 1e-9f) {
+                        if (origin[a] < lo[a] || origin[a] > hi[a]) miss = true;
+                        continue;
+                    }
+                    float ta = (lo[a] - origin[a]) / d[a], tb = (hi[a] - origin[a]) / d[a];
+                    int sgn = -1;  // Eintritt durch die Seite lo (Normale -)
+                    if (ta > tb) {
+                        std::swap(ta, tb);
+                        sgn = 1;
+                    }
+                    if (ta > t0) {
+                        t0 = ta;
+                        axisIn = a;
+                        signIn = sgn;
+                    }
+                    t1 = std::min(t1, tb);
+                    if (t0 > t1) miss = true;
+                }
+                if (miss || t0 > maxDist) continue;
+                if (t0 < bestT) {
+                    bestT = t0;
+                    bestN = glm::ivec3(0);
+                    if (axisIn >= 0) bestN[axisIn] = signIn;
+                    else bestN = normal;  // Start im Inneren
+                }
+            }
+            if (bestT < 1e29f) {
+                result.hit = true;
+                result.block = cell;
+                result.normal = bestN;
+                result.dist = bestT;
+                return result;
+            }
         }
         int a = 0;
         if (tMax.y < tMax.x) a = 1;

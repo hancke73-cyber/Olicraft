@@ -78,6 +78,26 @@ std::vector<Recipe> buildRecipes() {
     v.push_back(makeList({WOOL_WHITE, ITEM_DYE_GREEN}, {WOOL_GREEN, 1}));
     v.push_back(makeList({WOOL_WHITE, ITEM_DYE_BLACK}, {WOOL_BLACK, 1}));
 
+    // Bauteile
+    for (int m = 0; m < STAIR_MATERIALS; ++m) {
+        const ItemId mat = stairMaterialBlock(m);
+        v.push_back(make({"M  ", "MM ", "MMM"}, {{'M', mat}}, {makeStairs(m, 0), 4}));
+        v.push_back(make({"MMM"}, {{'M', mat}}, {makeSlab(m, false), 6}));
+    }
+    v.push_back(make({"PSP", "PSP"}, {{'P', PLANKS}, {'S', ITEM_STICK}}, {FENCE, 3}));
+    v.push_back(make({"SPS", "SPS"}, {{'P', PLANKS}, {'S', ITEM_STICK}}, {makeGate(0, false, 0), 2}));
+    v.push_back(make({"CCC", "CCC"}, {{'C', COBBLE}}, {WALL_COBBLE, 6}));
+    v.push_back(make({"BBB", "BBB"}, {{'B', BRICKS}}, {WALL_BRICKS, 6}));
+    v.push_back(make({"GGG", "GGG"}, {{'G', GLASS}}, {GLASS_PANE, 16}));
+    v.push_back(make({"III", "III"}, {{'I', ITEM_IRON_INGOT}}, {IRON_BARS, 16}));
+    v.push_back(make({"IBI", "ISI"}, {{'I', ITEM_IRON_INGOT}, {'B', IRON_BARS}, {'S', ITEM_STICK}}, {makeGate(1, false, 0), 2}));
+    v.push_back(make({" I ", "GTG", " I "}, {{'I', ITEM_IRON_INGOT}, {'G', GLASS}, {'T', TORCH}}, {LANTERN, 1}));
+    v.push_back(make({"PP", "PP", "PP"}, {{'P', PLANKS}}, {ITEM_DOOR_WOOD, 3}));
+    v.push_back(make({"II", "II", "II"}, {{'I', ITEM_IRON_INGOT}}, {ITEM_DOOR_IRON, 3}));
+    // Landwirtschaft
+    v.push_back(make({"WWW"}, {{'W', ITEM_WHEAT}}, {ITEM_BREAD, 1}));
+    v.push_back(make({"W"}, {{'W', ITEM_WHEAT}}, {ITEM_SEEDS, 1}));
+
     struct Mat {
         ItemId material;
         ItemId pick, axe, shovel, sword;
@@ -93,6 +113,9 @@ std::vector<Recipe> buildRecipes() {
         v.push_back(make({"M", "S", "S"}, {{'M', m.material}, {'S', ITEM_STICK}}, {m.shovel, 1}));
         v.push_back(make({"M", "M", "S"}, {{'M', m.material}, {'S', ITEM_STICK}}, {m.sword, 1}));
     }
+    const ItemId hoes[5] = {ITEM_HOE_WOOD, ITEM_HOE_STONE, ITEM_HOE_IRON, ITEM_HOE_DIAMOND, ITEM_HOE_GOLD};
+    for (int i = 0; i < 5; ++i)
+        v.push_back(make({"MM", " S", " S"}, {{'M', mats[i].material}, {'S', ITEM_STICK}}, {hoes[i], 1}));
     return v;
 }
 
@@ -211,6 +234,8 @@ float fuelSeconds(ItemId item) {
     switch (item) {
         case ITEM_COAL: return 80.0f;
         case COAL_BLOCK: return 800.0f;
+        case FENCE:
+        case ITEM_DOOR_WOOD: return 10.0f;
         case LOG:
         case BIRCH_LOG:
         case SPRUCE_LOG:

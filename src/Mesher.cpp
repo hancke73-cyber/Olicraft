@@ -1,8 +1,10 @@
 #include "Mesher.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "Atlas.h"
+#include "BlockShape.h"
 #include "Faces.h"
 #include "Noise.h"
 
@@ -254,6 +256,60 @@ void emitPlant(const Ctx& c, int x, int y, int z, BlockId b, std::vector<Vertex>
     }
 }
 
+// Bauteile mit Teilform: Treppen, Platten, Zaeune, Tueren, Tore, Laternen, Acker ...
+void emitShaped(const Ctx& c, int x, int y, int z, BlockId b, std::vector<Vertex>& out) {
+    const BlockInfo& bi = blockInfo(b);
+    Box boxes[MAX_BOXES];
+    auto get = [&](int gx, int gy, int gz) { return c.at(gx, gy, gz); };
+    const int n = blockBoxes(b, x, y, z, get, true, boxes);
+    // Teilbloecke, die selbst Himmelslicht blockieren (Treppen, Platten), nehmen das Licht der Zelle darueber
+    const float sky = bi.emissive ? 2.0f : std::max(c.skyAt(x, y, z), c.skyAt(x, y + 1, z));
+    const float light = bi.emissive ? 1.0f : std::max(c.lightAt(x, y, z), c.lightAt(x, y + 1, z)) / static_cast<float>(MAX_LIGHT);
+    for (int bx = 0; bx < n; ++bx) {
+        const Box& bb = boxes[bx];
+        const float lo[3] = {bb.x0, bb.y0, bb.z0}, hi[3] = {bb.x1, bb.y1, bb.z1};
+        for (int f = 0; f < 6; ++f) {
+            const FaceDef& fd = faceDef(f);
+            // Flaeche auf der Zellgrenze, vom Nachbarn verdeckt?
+            int na = 0;
+            for (int a = 0; a < 3; ++a)
+                if (fd.n[a] != 0) na = a;
+            const bool onEdge = fd.n[na] > 0 ? hi[na] >= 1.0f - 1e-4f : lo[na] <= 1e-4f;
+            if (onEdge && c.opaqueAt(x + fd.n[0], y + fd.n[1], z + fd.n[2])) continue;
+            const Tile tile = f == 2 ? bi.top : (f == 3 ? bi.bottom : bi.side);
+            const UVRect uv = tileUV(tile);
+            Vertex v[4];
+            for (int k = 0; k < 4; ++k) {
+                const int i = FACE_CORNER_I[k], j = FACE_CORNER_J[k];
+                float p[3];
+                for (int a = 0; a < 3; ++a) {
+                    if (fd.n[a] != 0) p[a] = fd.n[a] > 0 ? hi[a] : lo[a];
+                    else if (fd.t1[a] != 0) p[a] = i ? hi[a] : lo[a];
+                    else p[a] = j ? hi[a] : lo[a];
+                }
+                float uu, vv;
+                switch (f) {
+                    case 0: uu = 1.0f - p[2]; vv = p[1]; break;
+                    case 1: uu = p[2]; vv = p[1]; break;
+                    case 2: uu = p[0]; vv = p[2]; break;
+                    case 3: uu = p[0]; vv = p[2]; break;
+                    case 4: uu = p[0]; vv = p[1]; break;
+                    default: uu = 1.0f - p[0]; vv = p[1]; break;
+                }
+                v[k].x = static_cast<float>(x) + p[0];
+                v[k].y = static_cast<float>(y) + p[1];
+                v[k].z = static_cast<float>(z) + p[2];
+                v[k].u = uv.u0 + (uv.u1 - uv.u0) * uu;
+                v[k].v = uv.v0 + (uv.v1 - uv.v0) * vv;
+                v[k].shade = bi.emissive ? 1.0f : fd.shade;
+                v[k].sky = sky;
+                v[k].light = light;
+            }
+            for (int k = 0; k < 4; ++k) out.push_back(v[k]);
+        }
+    }
+}
+
 }  // namespace
 
 void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out) {
@@ -274,6 +330,10 @@ void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out
                 }
                 if (isPlant(b)) {
                     emitPlant(c, x, y, z, b, out.opaque);
+                    continue;
+                }
+                if (blockInfo(b).shape != SH_FULL) {
+                    emitShaped(c, x, y, z, b, out.opaque);
                     continue;
                 }
                 const bool liquid = blockInfo(b).liquid;

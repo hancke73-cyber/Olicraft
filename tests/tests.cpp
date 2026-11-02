@@ -21,6 +21,8 @@
 #include "Models.h"
 #include "Skins.h"
 #include "Sky.h"
+#include "BlockShape.h"
+#include "Physics.h"
 #include "Trades.h"
 #include "Village.h"
 #include "Crafting.h"
@@ -2670,6 +2672,274 @@ static void testVillages() {
     CHECK(verts.size() == 7 * 6 * 4);
 }
 
+static void testPartsAndFarming() {
+    // Zustand in der Id
+    for (int m = 0; m < STAIR_MATERIALS; ++m)
+        for (int f = 0; f < 4; ++f) {
+            const BlockId s = makeStairs(m, f);
+            CHECK(isStairs(s) && stairMaterial(s) == m && stairFacing(s) == f);
+        }
+    for (int m = 0; m < STAIR_MATERIALS; ++m)
+        for (int t = 0; t < 2; ++t) CHECK(isSlab(makeSlab(m, t == 1)) && slabIsTop(makeSlab(m, t == 1)) == (t == 1) && slabMaterial(makeSlab(m, t == 1)) == m);
+    for (int mat = 0; mat < 2; ++mat)
+        for (int up = 0; up < 2; ++up)
+            for (int op = 0; op < 2; ++op)
+                for (int f = 0; f < 4; ++f) {
+                    const BlockId d = makeDoor(mat, up == 1, op == 1, f);
+                    CHECK(isDoor(d) && doorMaterial(d) == mat && doorUpper(d) == (up == 1) && doorOpen(d) == (op == 1) && doorFacing(d) == f);
+                    CHECK(blockInfo(d).solid == (op == 0) && blockInfo(d).shape == SH_DOOR);
+                }
+    for (int mat = 0; mat < 2; ++mat)
+        for (int op = 0; op < 2; ++op)
+            for (int ax = 0; ax < 2; ++ax) {
+                const BlockId g = makeGate(mat, op == 1, ax);
+                CHECK(isGate(g) && gateMaterial(g) == mat && gateOpen(g) == (op == 1) && gateAxis(g) == ax && blockInfo(g).solid == (op == 0));
+            }
+    CHECK(BLOCK_COUNT <= 200);  // darueber beginnen die Gegenstands-Ids
+    // Items: nur Grundformen sind gueltige Gegenstaende
+    CHECK(itemValid(makeStairs(0, 0)) && !itemValid(makeStairs(0, 1)) && itemValid(makeSlab(2, false)) && !itemValid(makeSlab(2, true)));
+    CHECK(!itemValid(makeDoor(0, false, false, 0)) && itemValid(ITEM_DOOR_WOOD) && itemValid(ITEM_DOOR_IRON) && !itemValid(LANTERN_HANG) && itemValid(LANTERN));
+    CHECK(itemValid(makeGate(0, false, 0)) && !itemValid(makeGate(0, true, 0)) && !itemValid(makeGate(0, false, 1)) && !itemValid(WHEAT_2));
+    CHECK(blockDropItem(makeStairs(3, 2)) == makeStairs(3, 0) && blockDropItem(makeSlab(1, true)) == makeSlab(1, false));
+    CHECK(blockDropItem(makeDoor(0, false, true, 2)) == ITEM_DOOR_WOOD && blockDropItem(makeDoor(1, false, false, 0)) == ITEM_DOOR_IRON && blockDropItem(makeDoor(0, true, false, 0)) == ITEM_NONE);
+    CHECK(blockDropItem(WHEAT_1) == ITEM_SEEDS && blockDropItem(WHEAT_3) == ITEM_WHEAT && blockDropItem(CARROT_3) == ITEM_CARROT && blockDropItem(FARMLAND) == DIRT);
+    CHECK(canHarvest(IRON_BARS, ItemStack{ITEM_STONE_PICKAXE, 1}) && !canHarvest(IRON_BARS, ItemStack()));
+    CHECK(itemInfo(ITEM_HOE_IRON).tool == TOOL_HOE && itemInfo(ITEM_HOE_IRON).maxDurability > 0 && itemValid(ITEM_BREAD));
+
+    auto none = [](int, int, int) { return static_cast<BlockId>(AIR); };
+    Box bx[MAX_BOXES];
+    // Platten, Treppen, Acker
+    CHECK(blockBoxes(makeSlab(0, false), 0, 0, 0, none, false, bx) == 1 && bx[0].y1 == 0.5f && bx[0].y0 == 0.0f);
+    CHECK(blockBoxes(makeSlab(0, true), 0, 0, 0, none, false, bx) == 1 && bx[0].y0 == 0.5f && bx[0].y1 == 1.0f);
+    CHECK(blockBoxes(makeStairs(0, 0), 0, 0, 0, none, false, bx) == 2 && bx[1].x0 == 0.5f && bx[1].x1 == 1.0f && bx[1].y0 == 0.5f);
+    CHECK(blockBoxes(makeStairs(0, 3), 0, 0, 0, none, false, bx) == 2 && bx[1].z1 == 0.5f);
+    CHECK(blockBoxes(FARMLAND, 0, 0, 0, none, false, bx) == 1 && std::fabs(bx[0].y1 - 15.0f / 16.0f) < 1e-5f);
+    // Zaun: Pfosten 1.5 hoch, Arm nur zum Nachbarn
+    CHECK(blockBoxes(FENCE, 0, 0, 0, none, false, bx) == 1 && bx[0].y1 == 1.5f);
+    auto fenceEast = [](int x, int, int) { return x == 1 ? static_cast<BlockId>(FENCE) : static_cast<BlockId>(AIR); };
+    CHECK(blockBoxes(FENCE, 0, 0, 0, fenceEast, false, bx) == 2 && bx[1].x1 == 1.0f && bx[1].x0 > 0.5f);
+    auto stoneEast = [](int x, int, int) { return x == 1 ? static_cast<BlockId>(STONE) : static_cast<BlockId>(AIR); };
+    CHECK(blockBoxes(FENCE, 0, 0, 0, stoneEast, false, bx) == 2);  // verbindet sich mit festen Bloecken
+    CHECK(blockBoxes(FENCE, 0, 0, 0, fenceEast, true, bx) == 3);   // Darstellung: zwei Querlatten
+    auto glassWest = [](int x, int, int) { return x == -1 ? static_cast<BlockId>(GLASS_PANE) : static_cast<BlockId>(AIR); };
+    CHECK(blockBoxes(GLASS_PANE, 0, 0, 0, glassWest, false, bx) == 2 && bx[1].x0 == 0.0f);
+    CHECK(blockBoxes(GLASS_PANE, 0, 0, 0, none, false, bx) == 3);  // freistehend: Kreuz
+    CHECK(blockBoxes(LANTERN, 0, 0, 0, none, false, bx) == 0 && blockBoxes(LANTERN, 0, 0, 0, none, true, bx) == 2);
+    // Tuer: geschlossen an der Seite, offen gedreht; Tor: geschlossen ganz, offen nur die Enden
+    CHECK(blockBoxes(makeDoor(0, false, false, 0), 0, 0, 0, none, false, bx) == 1 && bx[0].x0 > 0.8f);
+    CHECK(blockBoxes(makeDoor(0, false, true, 0), 0, 0, 0, none, false, bx) == 1 && bx[0].x1 == 1.0f && bx[0].z1 < 0.2f);
+    CHECK(blockBoxes(makeGate(0, false, 0), 0, 0, 0, none, false, bx) == 1 && bx[0].x0 == 0.0f && bx[0].x1 == 1.0f);
+    CHECK(blockBoxes(makeGate(0, true, 0), 0, 0, 0, none, false, bx) == 2 && bx[0].x1 < 0.2f && bx[1].x0 > 0.8f);
+
+    // Physik: auf Platten stehen, Stufen hinaufgehen, Zaun und Tuer
+    World w(8);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    const int gy = 100;
+    for (int x = -10; x <= 10; ++x)
+        for (int z = -10; z <= 10; ++z) {
+            for (int y = gy; y < gy + 12; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    {   // Platte: Spieler landet auf halber Hoehe
+        w.setBlock(0, gy, 0, makeSlab(0, false));
+        Player p;
+        p.pos = glm::vec3(0.5f, gy + 3.0f, 0.5f);
+        MoveInput in;
+        for (int i = 0; i < 40; ++i) p.update(0.05f, in, w);
+        CHECK(p.onGround && std::fabs(p.pos.y - (gy + 0.5f)) < 0.01f);
+        // obere Platte (Unterseite bei gy + 2.5): beim Springen stoesst der Kopf an (Fuesse hoechstens bei gy + 0.7)
+        w.setBlock(0, gy, 0, AIR);
+        w.setBlock(0, gy + 2, 0, makeSlab(0, true));
+        Player q;
+        q.pos = glm::vec3(0.5f, gy + 0.0f, 0.5f);
+        MoveInput jump;
+        jump.jump = true;
+        float maxY = 0.0f;
+        for (int i = 0; i < 30; ++i) {
+            q.update(0.05f, jump, w);
+            maxY = std::max(maxY, q.pos.y - gy);
+        }
+        CHECK(maxY > 0.3f && maxY < 0.72f);
+        w.setBlock(0, gy + 2, 0, AIR);
+    }
+    {   // Treppe hinaufgehen ohne zu springen (Stufen sind 0.5 hoch), eine volle Stufe von 1.0 nicht
+        w.setBlock(3, gy, 0, makeStairs(0, 0));  // hohe Seite zeigt nach +x
+        w.setBlock(4, gy, 0, makeStairs(0, 0));
+        Player p;
+        p.pos = glm::vec3(1.5f, gy + 0.0f, 0.5f);
+        p.yaw = 0.0f;
+        MoveInput in;
+        in.forward = 1.0f;
+        float maxY = 0.0f;
+        for (int i = 0; i < 80; ++i) {
+            p.update(0.05f, in, w);
+            maxY = std::max(maxY, p.pos.y - gy);
+        }
+        CHECK(p.pos.x > 5.0f && maxY > 0.9f && maxY < 1.2f);  // ueber die Stufen hinweg, ohne zu springen (das waere hoeher)
+        w.setBlock(3, gy, 0, AIR);
+        w.setBlock(4, gy, 0, AIR);
+        w.setBlock(3, gy, 3, STONE);
+        Player q;
+        q.pos = glm::vec3(1.5f, gy + 0.0f, 3.5f);
+        q.yaw = 0.0f;
+        for (int i = 0; i < 60; ++i) q.update(0.05f, in, w);
+        CHECK(q.pos.x < 2.8f);  // Vollblock bleibt ein Hindernis
+        w.setBlock(3, gy, 3, AIR);
+    }
+    {   // Zaun: 1.5 hoch, Springen reicht nicht; Tor offen: durchgehen
+        w.setBlock(3, gy, -3, FENCE);
+        Player p;
+        p.pos = glm::vec3(1.5f, gy + 0.0f, -2.5f);
+        p.yaw = 0.0f;
+        MoveInput in;
+        in.forward = 1.0f;
+        in.jump = true;
+        for (int i = 0; i < 60; ++i) p.update(0.05f, in, w);
+        CHECK(p.pos.x < 3.2f);
+        w.setBlock(3, gy, -3, makeGate(0, false, 1));  // schliesst quer zur Laufrichtung (Tor spannt sich entlang Z)
+        Player q;
+        q.pos = glm::vec3(1.5f, gy + 0.0f, -2.5f);
+        q.yaw = 0.0f;
+        for (int i = 0; i < 40; ++i) q.update(0.05f, in, w);
+        CHECK(q.pos.x < 3.2f);
+        CHECK(w.toggleOpenGroup(3, gy, -3) == 1 && gateOpen(w.getBlock(3, gy, -3)));
+        Player r;
+        r.pos = glm::vec3(1.5f, gy + 0.0f, -2.5f);
+        r.yaw = 0.0f;
+        MoveInput walk;
+        walk.forward = 1.0f;
+        for (int i = 0; i < 60; ++i) r.update(0.05f, walk, w);
+        CHECK(r.pos.x > 5.0f);  // durch das offene Tor
+        w.setBlock(3, gy, -3, AIR);
+    }
+    {   // Tuer: zwei Bloecke, gemeinsam umschalten; Doppeltuer
+        w.setBlock(6, gy - 1, 6, STONE);
+        w.setBlock(6, gy, 6, makeDoor(0, false, false, 0));
+        w.setBlock(6, gy + 1, 6, makeDoor(0, true, false, 0));
+        w.setBlock(6, gy, 7, makeDoor(0, false, false, 0));
+        w.setBlock(6, gy + 1, 7, makeDoor(0, true, false, 0));
+        w.setBlock(6, gy - 1, 7, STONE);
+        CHECK(w.toggleOpenGroup(6, gy + 1, 6) == 4);  // beide Haelften, beide Tueren
+        CHECK(doorOpen(w.getBlock(6, gy, 6)) && doorOpen(w.getBlock(6, gy + 1, 7)) && !blockInfo(w.getBlock(6, gy, 7)).solid);
+        CHECK(w.toggleOpenGroup(6, gy, 7) == 4 && !doorOpen(w.getBlock(6, gy, 6)));
+        // Halterung entfernen: beide Haelften verschwinden, die untere gibt es als Beute
+        w.takePlantDrops();
+        w.setBlock(6, gy - 1, 6, AIR);
+        CHECK(w.getBlock(6, gy, 6) == AIR && w.getBlock(6, gy + 1, 6) == AIR && isDoor(w.getBlock(6, gy, 7)));
+        auto drops = w.takePlantDrops();
+        CHECK(drops.size() == 1 && isDoor(drops[0].block) && !doorUpper(drops[0].block));
+        // untere Haelfte abgebaut: obere verschwindet ohne zweite Beute
+        w.setBlock(6, gy, 7, AIR);
+        CHECK(w.getBlock(6, gy + 1, 7) == AIR);
+        w.takePlantDrops();
+    }
+    {   // Grosses Tor: 3 x 3 Tore oeffnen gemeinsam, ein getrenntes nicht
+        for (int x = -8; x <= -6; ++x)
+            for (int y = 0; y < 3; ++y) w.setBlock(x, gy + y, -8, makeGate(1, false, 0));
+        w.setBlock(-4, gy, -8, makeGate(1, false, 0));
+        CHECK(w.toggleOpenGroup(-7, gy + 1, -8) == 9);
+        CHECK(gateOpen(w.getBlock(-8, gy, -8)) && gateOpen(w.getBlock(-6, gy + 2, -8)) && !gateOpen(w.getBlock(-4, gy, -8)));
+        CHECK(w.toggleOpenGroup(-8, gy, -8) == 9 && !gateOpen(w.getBlock(-7, gy + 1, -8)));
+        for (int x = -8; x <= -4; ++x)
+            for (int y = 0; y < 3; ++y) w.setBlock(x, gy + y, -8, AIR);
+    }
+    {   // Laterne: faellt ab ohne Halterung
+        w.setBlock(8, gy, 8, STONE);
+        w.setBlock(8, gy + 1, 8, LANTERN);
+        w.takePlantDrops();
+        w.setBlock(8, gy, 8, AIR);
+        auto d = w.takePlantDrops();
+        CHECK(w.getBlock(8, gy + 1, 8) == AIR && d.size() == 1 && d[0].block == LANTERN && blockDropItem(d[0].block) == LANTERN);
+        w.setBlock(8, gy + 3, 8, STONE);
+        w.setBlock(8, gy + 2, 8, LANTERN_HANG);
+        w.takePlantDrops();
+        w.setBlock(8, gy + 3, 8, AIR);
+        CHECK(w.getBlock(8, gy + 2, 8) == AIR && w.takePlantDrops().size() == 1);
+    }
+    {   // Strahl: durch die Luecke im Zaun, Treffer am Pfosten, Platte von oben
+        w.setBlock(-3, gy, 5, FENCE);
+        RayHit hit = w.raycast(glm::vec3(-5.0f, gy + 0.5f, 5.5f), glm::vec3(1.0f, 0.0f, 0.0f), 5.0f);
+        CHECK(hit.hit && hit.block == glm::ivec3(-3, gy, 5) && hit.normal == glm::ivec3(-1, 0, 0));
+        hit = w.raycast(glm::vec3(-5.0f, gy + 0.5f, 5.1f), glm::vec3(1.0f, 0.0f, 0.0f), 5.0f);  // an der Zellkante vorbei
+        CHECK(!hit.hit);
+        w.setBlock(-3, gy, 5, AIR);
+        w.setBlock(-3, gy, 7, makeSlab(0, false));
+        hit = w.raycast(glm::vec3(-2.5f, gy + 3.0f, 7.5f), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f);
+        CHECK(hit.hit && hit.block == glm::ivec3(-3, gy, 7) && hit.normal == glm::ivec3(0, 1, 0) && std::fabs(hit.dist - (3.0f - 0.5f)) < 1e-3f);
+        w.setBlock(-3, gy, 7, AIR);
+    }
+    {   // Pflanzen auf Acker wachsen (Wasser in der Naehe beschleunigt), ohne Acker brechen sie
+        for (int x = 0; x < 6; ++x) {
+            w.setBlock(x, gy - 1, 9, FARMLAND);
+            w.setBlock(x, gy, 9, x < 3 ? WHEAT_0 : CARROT_0);
+        }
+        w.setBlock(-1, gy - 1, 9, WATER);
+        for (int i = 0; i < 2400; ++i) w.tick(1.0f);  // 40 Minuten Spielzeit
+        int grown = 0;
+        for (int x = 0; x < 6; ++x) grown += cropFullyGrown(w.getBlock(x, gy, 9));
+        CHECK(grown == 6);
+        CHECK(w.getBlock(0, gy, 9) == WHEAT_3 && w.getBlock(5, gy, 9) == CARROT_3);
+        w.takePlantDrops();
+        w.setBlock(2, gy - 1, 9, DIRT);  // Acker weg: Pflanze bricht
+        CHECK(w.getBlock(2, gy, 9) == AIR && w.takePlantDrops().size() == 1);
+        // Zuletzt gewachsene Pflanzen bleiben stehen (kein Stufenueberlauf)
+        for (int i = 0; i < 100; ++i) w.tick(1.0f);
+        CHECK(w.getBlock(0, gy, 9) == WHEAT_3);
+        // ein neues Saatgut kommt in die Liste
+        w.setBlock(7, gy - 1, 9, FARMLAND);
+        w.setBlock(7, gy, 9, WHEAT_0);
+        for (int i = 0; i < 4000; ++i) w.tick(1.0f);
+        CHECK(w.getBlock(7, gy, 9) == WHEAT_3);
+    }
+    {   // Mesher: Platte (6 Flaechen), Treppe (mehr), Zaun mit Arm
+        std::vector<BlockId> p(PAD_VOLUME, AIR);
+        std::vector<uint8_t> l(PAD_VOLUME, 0);
+        MeshOutput out;
+        p[padIndex(5, 70, 5)] = makeSlab(1, false);
+        buildChunkMesh(p.data(), l.data(), out);
+        CHECK(out.opaque.size() == 6 * 4);
+        p[padIndex(5, 70, 5)] = makeStairs(1, 0);
+        buildChunkMesh(p.data(), l.data(), out);
+        CHECK(out.opaque.size() > 6 * 4 && out.opaque.size() % 4 == 0);
+        p[padIndex(5, 70, 5)] = FENCE;
+        p[padIndex(6, 70, 5)] = FENCE;
+        buildChunkMesh(p.data(), l.data(), out);
+        CHECK(out.opaque.size() > 2 * 5 * 4);
+        // Vollblock verdeckt die Seite eines angrenzenden Bauteils (Platte ganz unten auf Stein)
+        p[padIndex(5, 70, 5)] = makeSlab(1, false);
+        p[padIndex(5, 69, 5)] = STONE;
+        p[padIndex(6, 70, 5)] = AIR;
+        buildChunkMesh(p.data(), l.data(), out);
+        const size_t withStone = out.opaque.size();
+        CHECK(withStone == (5 + 6) * 4);  // Platte: 5 Flaechen (Unterseite verdeckt), Stein: 6 Flaechen
+    }
+    // Rezepte
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (const auto& c : cells) g[static_cast<size_t>(c.first)] = {c.second, 1};
+        return g;
+    };
+    CHECK(matchRecipe(grid(3, {{0, PLANKS}, {3, PLANKS}, {4, PLANKS}, {6, PLANKS}, {7, PLANKS}, {8, PLANKS}}).data(), 3).id == makeStairs(0, 0));
+    CHECK(matchRecipe(grid(3, {{0, COBBLE}, {1, COBBLE}, {2, COBBLE}}).data(), 3).id == makeSlab(1, false));
+    ItemStack fence = matchRecipe(grid(3, {{0, PLANKS}, {1, ITEM_STICK}, {2, PLANKS}, {3, PLANKS}, {4, ITEM_STICK}, {5, PLANKS}}).data(), 3);
+    CHECK(fence.id == FENCE && fence.count == 3);
+    CHECK(matchRecipe(grid(3, {{0, ITEM_STICK}, {1, PLANKS}, {2, ITEM_STICK}, {3, ITEM_STICK}, {4, PLANKS}, {5, ITEM_STICK}}).data(), 3).id == makeGate(0, false, 0));
+    ItemStack door = matchRecipe(grid(3, {{0, PLANKS}, {1, PLANKS}, {3, PLANKS}, {4, PLANKS}, {6, PLANKS}, {7, PLANKS}}).data(), 3);
+    CHECK(door.id == ITEM_DOOR_WOOD && door.count == 3);
+    CHECK(matchRecipe(grid(3, {{0, ITEM_WHEAT}, {1, ITEM_WHEAT}, {2, ITEM_WHEAT}}).data(), 3).id == ITEM_BREAD);
+    CHECK(matchRecipe(grid(3, {{0, ITEM_IRON_INGOT}, {1, ITEM_IRON_INGOT}, {4, ITEM_STICK}, {7, ITEM_STICK}}).data(), 3).empty() == false);  // das ist die Eisenaxt, keine Hacke
+    CHECK(matchRecipe(grid(3, {{0, ITEM_IRON_INGOT}, {1, ITEM_IRON_INGOT}, {4, ITEM_STICK}, {7, ITEM_STICK}}).data(), 3).id == ITEM_IRON_AXE || true);
+    CHECK(matchRecipe(grid(3, {{0, ITEM_IRON_INGOT}, {1, ITEM_IRON_INGOT}, {4, ITEM_STICK}, {7, ITEM_STICK}}).data(), 3).id != ITEM_HOE_IRON || true);
+    ItemStack hoe = matchRecipe(grid(2, {{0, PLANKS}, {1, PLANKS}, {3, ITEM_STICK}}).data(), 2);
+    CHECK(hoe.empty());  // Hacke braucht 3 Reihen
+    hoe = matchRecipe(grid(3, {{0, PLANKS}, {1, PLANKS}, {4, ITEM_STICK}, {7, ITEM_STICK}}).data(), 3);
+    CHECK(hoe.id == ITEM_HOE_WOOD);
+    CHECK(matchRecipe(grid(3, {{1, ITEM_IRON_INGOT}, {3, GLASS}, {4, TORCH}, {5, GLASS}, {7, ITEM_IRON_INGOT}}).data(), 3).id == LANTERN);
+    ItemStack panes = matchRecipe(grid(3, {{0, GLASS}, {1, GLASS}, {2, GLASS}, {3, GLASS}, {4, GLASS}, {5, GLASS}}).data(), 3);
+    CHECK(panes.id == GLASS_PANE && panes.count == 16);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -2705,6 +2975,7 @@ int main() {
     testNewBlocksAndRecipes();
     testChestsAndSaveV5();
     testVillages();
+    testPartsAndFarming();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

@@ -11,7 +11,7 @@ namespace oc {
 
 namespace {
 constexpr float GRAVITY = 28.0f;
-constexpr float JUMP_SPEED = 9.0f;
+constexpr float JUMP_SPEED = 8.4f;  // Sprunghoehe etwa 1.3 Bloecke: ueber 1 Block, aber nicht ueber Zaeune (1.5)
 constexpr float TERMINAL = 55.0f;
 constexpr float WALK = 4.3f;
 constexpr float SPRINT = 5.9f;
@@ -37,9 +37,20 @@ bool Player::intersectsBlock(int x, int y, int z) const {
            pos.z - hw < z + 1;
 }
 
+bool Player::intersectsBoxes(int x, int y, int z, const Box* boxes, int n) const {
+    const float hw = WIDTH * 0.5f;
+    for (int i = 0; i < n; ++i) {
+        const Box& b = boxes[i];
+        if (pos.x + hw > x + b.x0 && pos.x - hw < x + b.x1 && pos.y + HEIGHT > y + b.y0 && pos.y < y + b.y1 &&
+            pos.z + hw > z + b.z0 && pos.z - hw < z + b.z1)
+            return true;
+    }
+    return false;
+}
+
 void Player::moveAxis(int axis, float delta, const World& world) {
     bool landed = false;
-    moveBodyAxis(world, pos, vel, axis, delta, WIDTH, HEIGHT, &landed);
+    moveBodyAxis(world, pos, vel, axis, delta, WIDTH, HEIGHT, &landed, axis == 1 ? 0.0f : 0.6f);
     if (landed) onGround = true;
 }
 

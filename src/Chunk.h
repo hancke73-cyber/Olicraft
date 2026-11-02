@@ -54,6 +54,8 @@ struct Chunk {
     std::vector<BlockId> blocks;
     std::vector<uint8_t> light;  // Blocklicht 0..15 je Zelle (wird nicht gespeichert, beim Laden neu berechnet)
 
+    std::vector<int32_t> crops;  // Zellindizes der Feldfruechte (zum Wachsen)
+
     bool modified = false;  // vom Spieler veraendert -> wird gespeichert
     bool dirty = true;      // Mesh muss neu gebaut werden
     bool urgent = false;    // sofort neu bauen (Spieleraktion)

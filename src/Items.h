@@ -45,7 +45,18 @@ constexpr ItemId ITEM_DYE_BLUE = 233;
 constexpr ItemId ITEM_DYE_GREEN = 234;
 constexpr ItemId ITEM_DYE_BLACK = 235;
 constexpr ItemId ITEM_BERRIES = 236;  // Beeren (heilen etwas)
-constexpr ItemId ITEM_LAST = 236;
+constexpr ItemId ITEM_SEEDS = 237;
+constexpr ItemId ITEM_WHEAT = 238;
+constexpr ItemId ITEM_BREAD = 239;  // heilt 5
+constexpr ItemId ITEM_CARROT = 240;  // heilt 3, laesst sich pflanzen
+constexpr ItemId ITEM_HOE_WOOD = 241;
+constexpr ItemId ITEM_HOE_STONE = 242;
+constexpr ItemId ITEM_HOE_IRON = 243;
+constexpr ItemId ITEM_HOE_GOLD = 244;
+constexpr ItemId ITEM_HOE_DIAMOND = 245;
+constexpr ItemId ITEM_DOOR_WOOD = 246;
+constexpr ItemId ITEM_DOOR_IRON = 247;
+constexpr ItemId ITEM_LAST = 247;
 
 struct ItemStack {
     ItemId id = ITEM_NONE;

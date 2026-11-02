@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 
 #include "Block.h"
+#include "BlockShape.h"
 #include "Chunk.h"
 #include "Chest.h"
 #include "Furnace.h"
@@ -52,6 +53,8 @@ public:
 
     // Zugriff
     BlockId getBlock(int x, int y, int z) const;  // AIR ausserhalb / ungeladen
+    // Kollisionsboxen der Zelle (0..1 relativ zur Zelle); ungeladene Chunks und y < 0 zaehlen als fest
+    int collisionBoxes(int x, int y, int z, Box* out) const;
     bool isSolidAt(int x, int y, int z) const;    // ungeladene Chunks gelten als fest (Spieler faellt nicht durch)
     bool isChunkLoaded(int cx, int cz) const { return find(cx, cz) != nullptr; }
     bool setBlock(int x, int y, int z, BlockId b);
@@ -64,6 +67,9 @@ public:
         out.swap(torchDrops_);
         return out;
     }
+
+    // Tuer/Tor und alle gleichartigen Nachbarn oeffnen bzw. schliessen (grosse Tore). Rueckgabe: Anzahl.
+    int toggleOpenGroup(int x, int y, int z);
 
     // Pflanzen, deren Boden entfernt wurde (die Pflanze ist schon weg; Ort und Blockart zum Abholen der Beute)
     struct PlantDrop {
@@ -139,6 +145,9 @@ private:
     void updateFluidCell(int kind, int x, int y, int z);
     BlockId computeFluid(int kind, int x, int y, int z) const;
     void reactFluids(int x, int y, int z);
+    void tickCrops(float dt);
+    float cropTimer_ = 0.0f;
+    uint32_t cropRng_ = 0x2545F491u;
     void tickFurnaces(float dt);  // Wasser trifft Lava: Obsidian bzw. Bruchstein
     bool inFluidAt(const glm::vec3& p, bool lava) const;
     BlockId blockOrSolid(int x, int y, int z) const;  // ungeladen/unten = Stein

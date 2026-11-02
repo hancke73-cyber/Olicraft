@@ -6,11 +6,16 @@ static const ItemInfo BLOCK_ITEM_NONE = {"", 0, false, TILE_STONE, TILE_STONE, T
 
 static const ItemId CREATIVE_LIST[] = {
     // Bloecke
-    GRASS, DIRT, STONE, COBBLE, SAND, GRAVEL, CLAY, SNOW, SANDSTONE, BRICKS, STONE_BRICKS, OBSIDIAN, BEDROCK,
+    GRASS, DIRT, FARMLAND, STONE, COBBLE, SAND, GRAVEL, CLAY, SNOW, SANDSTONE, BRICKS, STONE_BRICKS, OBSIDIAN, BEDROCK,
     LOG, BIRCH_LOG, SPRUCE_LOG, PLANKS, LEAVES, BIRCH_LEAVES, SPRUCE_LEAVES, GLASS,
     WOOL_WHITE, WOOL_RED, WOOL_BLUE, WOOL_GREEN, WOOL_YELLOW, WOOL_BLACK,
     IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, COAL_BLOCK, BOOKSHELF, LAMP, PUMPKIN, CACTUS,
     WATER, LAVA, TORCH,
+    // Bauteile
+    STAIRS_BASE, STAIRS_BASE + 4, STAIRS_BASE + 8, STAIRS_BASE + 12, STAIRS_BASE + 16,
+    SLAB_BASE, SLAB_BASE + 2, SLAB_BASE + 4, SLAB_BASE + 6, SLAB_BASE + 8,
+    FENCE, WALL_COBBLE, WALL_BRICKS, GLASS_PANE, IRON_BARS, LANTERN, GATE_BASE, GATE_BASE + 4,
+    ITEM_DOOR_WOOD, ITEM_DOOR_IRON,
     // Stationen
     CRAFTING_TABLE, FURNACE, CHEST, BED,
     // Pflanzen
@@ -24,17 +29,25 @@ static const ItemId CREATIVE_LIST[] = {
     ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD,
     ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD,
     ITEM_GOLD_PICKAXE, ITEM_GOLD_AXE, ITEM_GOLD_SHOVEL, ITEM_GOLD_SWORD,
+    ITEM_HOE_WOOD, ITEM_HOE_STONE, ITEM_HOE_IRON, ITEM_HOE_GOLD, ITEM_HOE_DIAMOND,
     // Material und Essen
     ITEM_STICK, ITEM_COAL, ITEM_IRON_INGOT, ITEM_GOLD_INGOT, ITEM_DIAMOND, ITEM_CLAY_BALL, ITEM_BRICK, ITEM_PAPER, ITEM_BOOK,
     ITEM_DYE_RED, ITEM_DYE_YELLOW, ITEM_DYE_BLUE, ITEM_DYE_GREEN, ITEM_DYE_BLACK,
+    ITEM_SEEDS, ITEM_WHEAT, ITEM_BREAD, ITEM_CARROT,
     ITEM_MEAT, ITEM_COOKED_MEAT, ITEM_BERRIES};
 
 bool itemValid(ItemId id) {
     if (id == ITEM_MEAT || (id >= ITEM_STICK && id <= ITEM_LAST)) return true;
     if (id > 0 && id < BLOCK_COUNT) {
-        // Fliessendes Wasser gibt es nicht als Gegenstand
-        return !((id >= WATER_1 && id <= WATER_FALL) || (id >= LAVA_1 && id <= LAVA_FALL) || id == FURNACE_LIT ||
-                 (id > TORCH && id <= TORCH_NZ));
+        // Fliessendes Wasser gibt es nicht als Gegenstand, ebenso keine Zustandsvarianten (nur die Grundform)
+        if ((id >= WATER_1 && id <= WATER_FALL) || (id >= LAVA_1 && id <= LAVA_FALL) || id == FURNACE_LIT || (id > TORCH && id <= TORCH_NZ))
+            return false;
+        const BlockId b = static_cast<BlockId>(id);
+        if (isStairs(b)) return stairFacing(b) == 0;
+        if (isSlab(b)) return !slabIsTop(b);
+        if (isDoor(b) || b == LANTERN_HANG || isCrop(b)) return false;
+        if (isGate(b)) return b == makeGate(0, false, 0) || b == makeGate(1, false, 0);
+        return true;
     }
     return false;
 }
@@ -46,7 +59,7 @@ const ItemInfo& itemInfo(ItemId id) {
     if (!init) {
         for (int i = 1; i < BLOCK_COUNT; ++i) {
             const BlockInfo& bi = blockInfo(static_cast<BlockId>(i));
-            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i))};
+            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i))};
         }
         init = true;
     }
@@ -88,6 +101,17 @@ const ItemInfo& itemInfo(ItemId id) {
         {"Gruene Farbe", 64, false, TILE_DYE_GREEN, TILE_DYE_GREEN, TOOL_NONE, 0, 0, 1.0f, 2},
         {"Schwarze Farbe", 64, false, TILE_DYE_BLACK, TILE_DYE_BLACK, TOOL_NONE, 0, 0, 1.0f, 2},
         {"Beeren", 64, false, TILE_BERRIES, TILE_BERRIES, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Samen", 64, false, TILE_SEEDS, TILE_SEEDS, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Weizen", 64, false, TILE_WHEAT, TILE_WHEAT, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Brot", 64, false, TILE_BREAD, TILE_BREAD, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Karotte", 64, false, TILE_CARROT, TILE_CARROT, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Holzhacke", 1, false, TILE_HOE_WOOD, TILE_HOE_WOOD, TOOL_HOE, 1, 60, 2.0f, 2},
+        {"Steinhacke", 1, false, TILE_HOE_STONE, TILE_HOE_STONE, TOOL_HOE, 2, 132, 3.5f, 2},
+        {"Eisenhacke", 1, false, TILE_HOE_IRON, TILE_HOE_IRON, TOOL_HOE, 3, 250, 5.5f, 2},
+        {"Goldhacke", 1, false, TILE_HOE_GOLD, TILE_HOE_GOLD, TOOL_HOE, 1, 33, 7.0f, 2},
+        {"Diamanthacke", 1, false, TILE_HOE_DIAMOND, TILE_HOE_DIAMOND, TOOL_HOE, 4, 1560, 8.0f, 2},
+        {"Holztuer", 64, false, TILE_DOOR_WOOD_ITEM, TILE_DOOR_WOOD_ITEM, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Eisentuer", 64, false, TILE_DOOR_IRON_ITEM, TILE_DOOR_IRON_ITEM, TOOL_NONE, 0, 0, 1.0f, 2},
     };
     if (id >= ITEM_STICK && id <= ITEM_LAST) return items[id - ITEM_STICK];
     if (id > 0 && id < BLOCK_COUNT) return cache[id];

@@ -55,6 +55,15 @@ static const SoundDef DEFS[SOUND_COUNT] = {
 const SoundDef& soundDef(SoundId id) { return DEFS[static_cast<int>(id)]; }
 
 Material blockMaterial(BlockId b) {
+    if (isStairs(b)) return blockMaterial(stairMaterialBlock(stairMaterial(b)));
+    if (isSlab(b)) return blockMaterial(stairMaterialBlock(slabMaterial(b)));
+    if (isDoor(b)) return doorMaterial(b) == 0 ? Material::Wood : Material::Stone;
+    if (isGate(b)) return gateMaterial(b) == 0 ? Material::Wood : Material::Stone;
+    if (b == FENCE) return Material::Wood;
+    if (isWall(b) || b == IRON_BARS) return Material::Stone;
+    if (b == GLASS_PANE || isLantern(b)) return Material::Glass;
+    if (b == FARMLAND) return Material::Dirt;
+    if (isCrop(b)) return Material::Grass;
     switch (b) {
         case GRASS:
         case LEAVES:
