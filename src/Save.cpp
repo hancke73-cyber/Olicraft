@@ -11,7 +11,7 @@ namespace oc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x52434C4Fu;  // "OLCR" (little endian)
-constexpr uint32_t VERSION = 2;
+constexpr uint32_t VERSION = 3;
 
 class Writer {
 public:
@@ -134,6 +134,7 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
             for (const ItemStack& st : save.player.inventory.slots) {
                 w.u16(st.empty() ? 0 : st.id);
                 w.u8(static_cast<uint8_t>(st.empty() ? 0 : st.count));
+                w.u16(static_cast<uint16_t>(st.empty() ? 0 : std::min(st.damage, 65535)));
             }
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
@@ -168,7 +169,7 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
         return false;
     }
     const uint32_t version = r.u32();
-    if (version != 1 && version != VERSION) {
+    if (version < 1 || version > VERSION) {
         if (error) *error = "Unbekannte Version der Speicherdatei";
         return false;
     }
@@ -182,16 +183,18 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
     save.player.timeOfDay = r.f32();
     save.player.slot = r.i32();
     save.player.flying = r.u8() != 0;
-    if (version >= 2) {
+    if (version >= 2) {  // Version 2: Gesundheit, Modus, Inventar; ab Version 3 mit Abnutzung
         save.player.health = r.i32();
         save.player.creative = r.u8() != 0;
         const int invCount = r.u8();
         for (int i = 0; i < invCount; ++i) {
             ItemId id = r.u16();
             int cnt = r.u8();
+            int dmg = version >= 3 ? r.u16() : 0;
             if (i < Inventory::SIZE && itemValid(id) && cnt > 0) {
                 save.player.inventory.slots[i].id = id;
                 save.player.inventory.slots[i].count = std::min(cnt, itemInfo(id).maxStack);
+                save.player.inventory.slots[i].damage = std::min(dmg, std::max(0, itemInfo(id).maxDurability));
             }
         }
         save.player.hasInventory = true;

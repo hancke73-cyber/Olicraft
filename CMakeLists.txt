@@ -60,6 +60,7 @@ add_executable(OliCraft
   src/Physics.cpp
   src/Entities.cpp
   src/Items.cpp
+  src/Crafting.cpp
   src/Inventory.cpp
   src/Renderer.cpp
   src/Hud.cpp
@@ -93,7 +94,7 @@ if(OLICRAFT_BUILD_TESTS)
   add_executable(olicraft_tests
     tests/tests.cpp
     src/Block.cpp src/Noise.cpp src/Chunk.cpp src/Mesher.cpp src/TerrainGen.cpp
-    src/World.cpp src/Player.cpp src/Physics.cpp src/Entities.cpp src/Items.cpp src/Inventory.cpp src/Save.cpp src/Atlas.cpp src/Hud.cpp src/GuiTexture.cpp src/Settings.cpp src/Menu.cpp)
+    src/World.cpp src/Player.cpp src/Physics.cpp src/Entities.cpp src/Items.cpp src/Crafting.cpp src/Inventory.cpp src/Save.cpp src/Atlas.cpp src/Hud.cpp src/GuiTexture.cpp src/Settings.cpp src/Menu.cpp)
   target_include_directories(olicraft_tests PRIVATE src)
   target_link_libraries(olicraft_tests PRIVATE glad glm::glm)
   add_test(NAME olicraft_tests COMMAND olicraft_tests)

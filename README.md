@@ -11,7 +11,9 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Abbauen und Setzen von Blöcken per Raycast
 - Survival- und Kreativmodus (Umschalten mit G): Abbauzeit je Block, Drops als Gegenstände am Boden, Gesundheit mit Herzen, Fallschaden, Ertrinken (Luftblasen), Regeneration, Tod und Wiedergeburt
 - Inventar (E): 27 Rucksack-Slots plus 9 Hotbar-Slots, Stapel bis 64, Mausbedienung wie in Minecraft (links ganzen Stapel, rechts Hälfte oder eines, Umschalt-Klick verschiebt). Im Kreativmodus zusätzlich eine Auswahl aller Blöcke
-- Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies spawnen nachts und in dunklen Höhlen, verfolgen und greifen an und erscheinen nur nachts und verschwinden am Tag (im Freien verbrennen sie, in Höhlen lösen sie sich nach 10 s auf)
+- Crafting: 2x2-Raster im Inventar, 3x3 an der Werkbank (Rechtsklick auf den Block, mit Umschalt wird er stattdessen gesetzt). Rezepte: Holz → 4 Bretter, 2 Bretter → 4 Stöcke, 4 Bretter → Werkbank, Spitzhacke/Axt/Schaufel/Schwert aus Brettern oder Bruchstein mit Stöcken, 1 Bruchstein → Stein und 4 Sand → 2 Glas (die letzten beiden vereinfacht, es gibt noch keinen Ofen)
+- Werkzeuge (Holz und Stein) mit Haltbarkeit: passende Werkzeuge bauen schneller ab, Stein und Bruchstein brauchen mindestens eine Holzspitzhacke, Obsidian eine Steinspitzhacke. Ohne passendes Werkzeug dauert der Abbau länger und es fällt nichts. Schwerter und Äxte machen mehr Schaden gegen Mobs
+- Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies erscheinen nur nachts (draußen und in dunklen Höhlen), verfolgen und greifen an und verschwinden am Tag (im Freien verbrennen sie, in Höhlen lösen sie sich nach 10 s auf)
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten) mit Sonne, Mond und Sternen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
@@ -19,7 +21,7 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
 
-Bewusst nicht enthalten: Crafting, Werkzeuge, Hunger, Sound, Mehrspieler.
+Bewusst nicht enthalten: Hunger, Ofen und Erze, Sound, Mehrspieler.
 
 ## Steuerung
 
@@ -32,7 +34,7 @@ Bewusst nicht enthalten: Crafting, Werkzeuge, Hunger, Sound, Mehrspieler.
 | Umschalt | Beim Fliegen sinken |
 | F oder Leertaste doppelt | Fliegen an/aus (nur Kreativ) |
 | Linksklick (halten) | Block abbauen, Mob angreifen |
-| Rechtsklick (halten) | Block setzen, mit rohem Fleisch in der Hand essen |
+| Rechtsklick (halten) | Block setzen, mit rohem Fleisch in der Hand essen, Werkbank öffnen |
 | Mittelklick | Block unter dem Fadenkreuz übernehmen (Kreativ: in den aktiven Slot, sonst Slot wählen) |
 | 1 bis 9, Mausrad | Hotbar-Slot wählen |
 | E | Inventar öffnen/schließen |
@@ -111,7 +113,7 @@ cmake --build build -j
 --settings PFAD    Einstellungsdatei (Standard: settings.cfg)
 ```
 
-Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--health N`, `--demo mobs|water|inv` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
+Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--health N`, `--demo mobs|water|inv|craft|menu|settings` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
 
 ## Tests
 
@@ -136,9 +138,10 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Renderer.*`, `src/Shader.*`, `src/Atlas.*` | Rendering, Himmel, HUD, prozeduraler Texturatlas |
 | `src/Player.*`, `src/Physics.*` | Bewegung und Kollision (auch für Mobs und Gegenstände) |
 | `src/Entities.*` | Mobs (KI, Spawnen, Modelle aus Quadern) und Gegenstände am Boden |
-| `src/Items.*`, `src/Inventory.*` | Gegenstände, Stapel, Klicklogik |
+| `src/Items.*`, `src/Inventory.*`, `src/Crafting.*` | Gegenstände und Werkzeuge, Stapel, Klicklogik, Rezepte |
+| `src/Menu.*`, `src/Settings.*` | Pause- und Einstellungsmenü, `settings.cfg` |
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
-| `src/Save.*` | Speicherformat Version 2 (RLE je veränderter Chunk, Inventar, Gesundheit, Modus; Version 1 bleibt lesbar) |
+| `src/Save.*` | Speicherformat Version 3 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Gesundheit, Modus; Versionen 1 und 2 bleiben lesbar) |
 | `tests/` | Tests |
 
 ## Geplant
@@ -148,9 +151,8 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 1. **Sound:** Effekte und Musik. Vorher wird die Audio-Bibliothek geklärt.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
 3. **Third-Person-Ansicht:** Kamera hinter oder vor dem Charakter (z. B. umschaltbar), mit eigenem Spielermodell aus Quadern wie bei den Mobs. Die Kamera darf vom Gelände nicht blockiert werden.
-4. **Textur-Editor:** Im Spiel erreichbar über ein Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Das Einstellungsmenü dafür gibt es bereits.
-5. **Crafting und Werkzeuge.**
-6. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+4. **Textur-Editor:** Im Spiel erreichbar über das Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Das Einstellungsmenü dafür gibt es bereits.
+5. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
 
 ## Drittanbieter
 

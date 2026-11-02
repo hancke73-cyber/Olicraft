@@ -7,3 +7,4 @@ out/
 saves/
 screenshots/
 CMakeUserPresets.json
+settings.cfg

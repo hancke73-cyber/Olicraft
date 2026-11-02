@@ -13,7 +13,7 @@ public:
     std::array<ItemStack, SIZE> slots;
 
     // Legt Gegenstaende ab (erst bestehende Stapel, dann leere Plaetze). Rueckgabe: Rest, der nicht passte.
-    int add(ItemId id, int count);
+    int add(ItemId id, int count, int damage = 0);
     // Entfernt n Stueck aus dem Slot; false, wenn nicht genug da ist.
     bool take(int slot, int n = 1);
     int count(ItemId id) const;

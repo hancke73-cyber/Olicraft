@@ -9,17 +9,30 @@ namespace oc {
 using ItemId = uint16_t;
 constexpr ItemId ITEM_NONE = 0;
 constexpr ItemId ITEM_MEAT = 200;  // Rohes Fleisch (heilt)
+constexpr ItemId ITEM_STICK = 201;
+constexpr ItemId ITEM_WOODEN_PICKAXE = 202;
+constexpr ItemId ITEM_WOODEN_AXE = 203;
+constexpr ItemId ITEM_WOODEN_SHOVEL = 204;
+constexpr ItemId ITEM_WOODEN_SWORD = 205;
+constexpr ItemId ITEM_STONE_PICKAXE = 206;
+constexpr ItemId ITEM_STONE_AXE = 207;
+constexpr ItemId ITEM_STONE_SHOVEL = 208;
+constexpr ItemId ITEM_STONE_SWORD = 209;
 
 struct ItemStack {
     ItemId id = ITEM_NONE;
     int count = 0;
+    int damage = 0;  // Abnutzung bei Werkzeugen (0 = neu)
 
     bool empty() const { return id == ITEM_NONE || count <= 0; }
     void clear() {
         id = ITEM_NONE;
         count = 0;
+        damage = 0;
     }
-    bool operator==(const ItemStack& o) const { return id == o.id && count == o.count; }
+    bool operator==(const ItemStack& o) const { return id == o.id && count == o.count && damage == o.damage; }
+    // Gehoeren beide Stapel zusammen (gleiche Art, gleiche Abnutzung)?
+    bool sameKind(const ItemStack& o) const { return id == o.id && damage == o.damage; }
 };
 
 struct ItemInfo {
@@ -28,12 +41,22 @@ struct ItemInfo {
     bool isBlock;
     Tile iconTop;   // Symbol: Oberseite (Bloecke) bzw. Flachsymbol
     Tile iconSide;  // Symbol: Seite (Bloecke)
+    ToolClass tool = TOOL_NONE;
+    int tier = 0;            // 1 = Holz, 2 = Stein
+    int maxDurability = 0;   // 0 = kein Werkzeug
+    float speed = 1.0f;      // Abbaugeschwindigkeit bei passendem Block
+    int attack = 2;          // Schaden gegen Mobs
 };
 
 bool itemValid(ItemId id);
 const ItemInfo& itemInfo(ItemId id);
 inline bool itemIsBlock(ItemId id) { return id > 0 && id < BLOCK_COUNT; }
 inline BlockId itemBlock(ItemId id) { return static_cast<BlockId>(id); }
+
+// Abbau mit einem gehaltenen Gegenstand (leer = Hand)
+bool canHarvest(BlockId b, const ItemStack& held);   // faellt etwas, wenn der Block so abgebaut wird?
+float miningSeconds(BlockId b, const ItemStack& held);
+int attackDamage(const ItemStack& held);
 
 // Gegenstand, der beim Abbauen eines Blocks faellt (ITEM_NONE = nichts)
 ItemId blockDropItem(BlockId b);

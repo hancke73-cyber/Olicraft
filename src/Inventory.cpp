@@ -4,7 +4,7 @@
 
 namespace oc {
 
-int Inventory::add(ItemId id, int count) {
+int Inventory::add(ItemId id, int count, int damage) {
     if (!itemValid(id) || count <= 0) return count;
     const int maxStack = itemInfo(id).maxStack;
     // Reihenfolge: Hotbar zuerst, dann Rucksack
@@ -12,7 +12,7 @@ int Inventory::add(ItemId id, int count) {
         for (int i = 0; i < SIZE && count > 0; ++i) {
             ItemStack& s = slots[i];
             if (pass == 0) {
-                if (s.id != id || s.count >= maxStack) continue;
+                if (s.id != id || s.damage != damage || s.count >= maxStack) continue;
                 int n = std::min(count, maxStack - s.count);
                 s.count += n;
                 count -= n;
@@ -21,6 +21,7 @@ int Inventory::add(ItemId id, int count) {
                 int n = std::min(count, maxStack);
                 s.id = id;
                 s.count = n;
+                s.damage = damage;
                 count -= n;
             }
         }
@@ -64,8 +65,12 @@ void Inventory::click(ItemStack& slot, ItemStack& cursor, bool right) {
         } else if (slot.empty()) {
             slot = cursor;
             cursor.clear();
-        } else if (slot.id == cursor.id) {
+        } else if (slot.sameKind(cursor)) {
             int space = itemInfo(slot.id).maxStack - slot.count;
+            if (space <= 0) {
+                std::swap(slot, cursor);  // voller Stapel: tauschen statt nichts zu tun
+                return;
+            }
             int n = std::min(space, cursor.count);
             slot.count += n;
             cursor.count -= n;
@@ -78,11 +83,15 @@ void Inventory::click(ItemStack& slot, ItemStack& cursor, bool right) {
             if (slot.empty()) return;
             int take = (slot.count + 1) / 2;
             cursor.id = slot.id;
+            cursor.damage = slot.damage;
             cursor.count = take;
             slot.count -= take;
             if (slot.count <= 0) slot.clear();
-        } else if (slot.empty() || (slot.id == cursor.id && slot.count < itemInfo(slot.id).maxStack)) {
-            if (slot.empty()) slot.id = cursor.id;
+        } else if (slot.empty() || (slot.sameKind(cursor) && slot.count < itemInfo(slot.id).maxStack)) {
+            if (slot.empty()) {
+                slot.id = cursor.id;
+                slot.damage = cursor.damage;
+            }
             slot.count += 1;
             cursor.count -= 1;
             if (cursor.count <= 0) cursor.clear();
@@ -103,7 +112,7 @@ void Inventory::quickMove(int slot) {
         for (int i = begin; i < end && moving.count > 0; ++i) {
             ItemStack& s = slots[i];
             if (pass == 0) {
-                if (s.id != moving.id || s.count >= maxStack) continue;
+                if (!s.sameKind(moving) || s.count >= maxStack) continue;
                 int n = std::min(moving.count, maxStack - s.count);
                 s.count += n;
                 moving.count -= n;

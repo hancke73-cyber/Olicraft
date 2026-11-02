@@ -14,6 +14,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "Crafting.h"
 #include "Noise.h"
 
 namespace oc {
@@ -174,6 +175,19 @@ bool Game::init() {
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     if (opt_.demo == "inv") openInventory();
+    if (opt_.demo == "craft") {
+        inventory_.clear();
+        const ItemId tools[] = {ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD,
+                                ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD, ITEM_STICK};
+        for (int i = 0; i < 9; ++i) inventory_.slots[i] = {tools[i], i == 8 ? 12 : 1, i == 4 ? 40 : (i == 0 ? 15 : 0)};
+        inventory_.add(PLANKS, 20);
+        inventory_.add(COBBLE, 9);
+        inventory_.add(CRAFTING_TABLE, 1);
+        inventory_.add(LOG, 5);
+        openInventory(true);
+        craft_[0] = craft_[1] = craft_[2] = {COBBLE, 1};
+        craft_[4] = craft_[7] = {ITEM_STICK, 1};
+    }
     if (opt_.demo == "menu" || opt_.demo == "settings") {
         setPaused(true);
         if (opt_.demo == "settings") screen_ = MenuScreen::Settings;
@@ -298,9 +312,12 @@ void Game::toggleFullscreen() {
     firstMouse_ = true;
 }
 
-void Game::openInventory() {
+void Game::openInventory(bool table) {
     if (dead_) return;
     inventoryOpen_ = true;
+    craftSize_ = table ? 3 : (creative_ ? 0 : 2);
+    paletteWindow_ = creative_ && !table;
+    for (ItemStack& c : craft_) c.clear();
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     glfwGetWindowSize(window_, &winW_cur_, &winH_cur_);
     curX_ = winW_cur_ * 0.5;
@@ -310,15 +327,28 @@ void Game::openInventory() {
 
 void Game::closeInventory() {
     if (!inventoryOpen_) return;
+    // Gehaltener Stapel und Handwerksraster gehen zurueck in den Rucksack, was nicht passt, wird geworfen
     if (!cursor_.empty()) {
-        int left = creative_ ? 0 : inventory_.add(cursor_.id, cursor_.count);
+        int left = creative_ ? 0 : inventory_.add(cursor_.id, cursor_.count, cursor_.damage);
         if (left > 0) {
             cursor_.count = left;
             dropFromCursor(true);
         }
         cursor_.clear();
     }
+    for (ItemStack& c : craft_) {
+        if (c.empty()) continue;
+        int left = inventory_.add(c.id, c.count, c.damage);
+        if (left > 0) {
+            cursor_ = c;
+            cursor_.count = left;
+            dropFromCursor(true);
+        }
+        c.clear();
+    }
     inventoryOpen_ = false;
+    craftSize_ = 0;
+    paletteWindow_ = false;
     firstMouse_ = true;
     breakTimer_ = placeTimer_ = attackTimer_ = 0.3f;
     if (!paused_) glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -348,7 +378,7 @@ void Game::dropSelected(bool all) {
 
 void Game::inventoryClick(int button, int mods) {
     const bool right = button == GLFW_MOUSE_BUTTON_RIGHT;
-    const InvLayout layout = InvLayout::make(fbW_, fbH_, creative_);
+    const InvLayout layout = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_);
     const glm::vec2 m = mousePx();
 
     const int pal = layout.hitPalette(m);
@@ -358,6 +388,33 @@ void Game::inventoryClick(int button, int mods) {
         else cursor_ = {id, right ? 1 : itemInfo(id).maxStack};
         return;
     }
+    const int cell = layout.hitCraft(m);
+    if (cell >= 0) {
+        Inventory::click(craft_[cell], cursor_, right);
+        return;
+    }
+    if (layout.hitResult(m)) {
+        ItemStack res = matchRecipe(craft_, craftSize_);
+        if (res.empty()) return;
+        if ((mods & GLFW_MOD_SHIFT) && !right) {
+            // so oft herstellen, wie Zutaten und Platz reichen
+            for (int i = 0; i < 64; ++i) {
+                res = matchRecipe(craft_, craftSize_);
+                if (res.empty()) break;
+                Inventory trial = inventory_;
+                if (trial.add(res.id, res.count, res.damage) > 0) break;
+                inventory_ = trial;
+                consumeIngredients(craft_, craftSize_);
+            }
+        } else if (cursor_.empty()) {
+            cursor_ = res;
+            consumeIngredients(craft_, craftSize_);
+        } else if (cursor_.sameKind(res) && cursor_.count + res.count <= itemInfo(res.id).maxStack) {
+            cursor_.count += res.count;
+            consumeIngredients(craft_, craftSize_);
+        }
+        return;
+    }
     const int slot = layout.hitSlot(m);
     if (slot >= 0) {
         if ((mods & GLFW_MOD_SHIFT) && !right) inventory_.quickMove(slot);
@@ -365,6 +422,19 @@ void Game::inventoryClick(int button, int mods) {
         return;
     }
     if (!layout.inside(m)) dropFromCursor(!right);
+}
+
+void Game::useHeldTool(int amount) {
+    if (creative_) return;
+    ItemStack& s = inventory_.slots[slot_];
+    if (s.empty()) return;
+    const ItemInfo& info = itemInfo(s.id);
+    if (info.maxDurability <= 0) return;
+    s.damage += amount;
+    if (s.damage >= info.maxDurability) {
+        s.clear();
+        showMessage("Werkzeug zerbrochen");
+    }
 }
 
 void Game::setCreative(bool on) {
@@ -690,9 +760,10 @@ void Game::update(float dt) {
 void Game::breakBlock(const glm::ivec3& p) {
     const BlockId b = world_->getBlock(p.x, p.y, p.z);
     if (!blockInfo(b).breakable) return;
+    const bool harvest = creative_ ? false : canHarvest(b, inventory_.slots[slot_]);
     world_->setBlock(p.x, p.y, p.z, AIR);
     if (!creative_) {
-        ItemId drop = blockDropItem(b);
+        ItemId drop = harvest ? blockDropItem(b) : ITEM_NONE;
         // Laub gibt nur manchmal etwas her
         if (b == LEAVES && (hash3(p.x, p.y, p.z, 99u) & 7u) >= 3u) drop = ITEM_NONE;
         if (drop != ITEM_NONE)
@@ -700,11 +771,18 @@ void Game::breakBlock(const glm::ivec3& p) {
                                 glm::vec3(static_cast<float>((hash3(p.x, p.y, p.z, 5u) & 15u)) / 8.0f - 1.0f, 3.0f,
                                           static_cast<float>((hash3(p.x, p.y, p.z, 6u) & 15u)) / 8.0f - 1.0f),
                                 0.3f);
+        useHeldTool(1);
     }
 }
 
 void Game::placeBlockOrUse() {
     ItemStack& sel = inventory_.slots[slot_];
+    // Rechtsklick auf eine Werkbank oeffnet sie (mit Umschalt wird stattdessen gesetzt)
+    if (target_.hit && world_->getBlock(target_.block.x, target_.block.y, target_.block.z) == CRAFTING_TABLE &&
+        glfwGetKey(window_, GLFW_KEY_LEFT_SHIFT) != GLFW_PRESS && glfwGetKey(window_, GLFW_KEY_RIGHT_SHIFT) != GLFW_PRESS) {
+        openInventory(true);
+        return;
+    }
     if (sel.empty()) return;
 
     if (sel.id == ITEM_MEAT) {
@@ -756,7 +834,9 @@ void Game::updateInteraction(float dt) {
     if (left && mobFirst) {
         breaking_ = false;
         if (attackTimer_ <= 0.0f) {
-            entities_.hurtMob(*mob, creative_ ? 20 : 2, player_.pos);
+            entities_.hurtMob(*mob, creative_ ? 20 : attackDamage(inventory_.slots[slot_]), player_.pos);
+            const ItemInfo& hi = itemInfo(inventory_.slots[slot_].id);
+            useHeldTool(hi.tool == TOOL_SWORD ? 1 : 2);
             attackTimer_ = 0.4f;
         }
     } else if (left && target_.hit) {
@@ -775,12 +855,13 @@ void Game::updateInteraction(float dt) {
                     breakTime_ = 0.0f;
                 }
                 breakTime_ += dt;
-                if (breakTime_ >= bi.hardness) {
+                const float need = miningSeconds(b, inventory_.slots[slot_]);
+                if (breakTime_ >= need) {
                     breakBlock(target_.block);
                     breaking_ = false;
                     breakTimer_ = 0.15f;
                 } else {
-                    breakProgress_ = breakTime_ / bi.hardness;
+                    breakProgress_ = breakTime_ / need;
                 }
             }
         }
@@ -909,7 +990,13 @@ int Game::selfTest() {
     SCHECK(entities_.items().size() == 1 && entities_.items()[0].stack.id == DIRT);
     world_->setBlock(3, gy - 1, 0, STONE);
     breakBlock(glm::ivec3(3, gy - 1, 0));
-    SCHECK(entities_.items().size() == 2);
+    SCHECK(world_->getBlock(3, gy - 1, 0) == AIR && entities_.items().size() == 1);  // Stein von Hand: keine Beute
+    inventory_.slots[5] = {ITEM_WOODEN_PICKAXE, 1};
+    slot_ = 5;
+    world_->setBlock(3, gy - 1, 0, STONE);
+    breakBlock(glm::ivec3(3, gy - 1, 0));
+    SCHECK(entities_.items().size() == 2 && inventory_.slots[5].damage == 1);  // mit Spitzhacke: Bruchstein, Werkzeug nutzt ab
+    slot_ = 0;
     world_->setBlock(4, gy - 1, 0, BEDROCK);
     breakBlock(glm::ivec3(4, gy - 1, 0));
     SCHECK(world_->getBlock(4, gy - 1, 0) == BEDROCK);  // unzerstoerbar
@@ -1049,6 +1136,83 @@ int Game::selfTest() {
     SCHECK(health_ == 20 && burnTimer_ == 0.0f);  // Kreativ: unverwundbar
     creative_ = false;
 
+    // 14. Handwerk: Inventar-Raster, Werkbank, Werkzeuge
+    {
+        dead_ = false;
+        creative_ = false;
+        inventory_.clear();
+        entities_.clear();
+        cursor_.clear();
+        openInventory();
+        SCHECK(inventoryOpen_ && craftSize_ == 2 && !paletteWindow_);
+        auto clickAtPos = [&](glm::vec2 fbPos, int button, int mods) {
+            curX_ = fbPos.x * static_cast<double>(winW_cur_) / fbW_;
+            curY_ = fbPos.y * static_cast<double>(winH_cur_) / fbH_;
+            inventoryClick(button, mods);
+        };
+        auto layout = [&]() { return InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_); };
+        auto center = [&](glm::vec2 p, const InvLayout& L) { return p + glm::vec2(L.pitch() * 0.5f); };
+
+        inventory_.slots[9] = {LOG, 2};
+        InvLayout L = layout();
+        clickAtPos(center(L.slotPos(9), L), GLFW_MOUSE_BUTTON_LEFT, 0);               // Stapel aufnehmen
+        clickAtPos(center(L.craftPos(0), L), GLFW_MOUSE_BUTTON_RIGHT, 0);             // ein Holz ins Raster
+        SCHECK(craft_[0].id == LOG && craft_[0].count == 1 && cursor_.count == 1);
+        clickAtPos(center(L.slotPos(10), L), GLFW_MOUSE_BUTTON_LEFT, 0);              // Rest ablegen
+        SCHECK(matchRecipe(craft_, craftSize_).id == PLANKS);
+        clickAtPos(center(L.resultPos, L), GLFW_MOUSE_BUTTON_LEFT, 0);                // Ergebnis nehmen
+        SCHECK(cursor_.id == PLANKS && cursor_.count == 4 && craft_[0].empty());
+        clickAtPos(center(L.slotPos(11), L), GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(inventory_.slots[11].id == PLANKS && inventory_.slots[11].count == 4);
+
+        // Umschalt-Klick auf das Ergebnis stellt alles auf einmal her
+        craft_[1] = {LOG, 1};
+        clickAtPos(center(L.resultPos, L), GLFW_MOUSE_BUTTON_LEFT, GLFW_MOD_SHIFT);
+        SCHECK(craft_[1].empty() && inventory_.count(PLANKS) == 8);
+
+        // Schliessen gibt Zutaten zurueck
+        craft_[3] = {DIRT, 2};
+        closeInventory();
+        SCHECK(!inventoryOpen_ && inventory_.count(DIRT) == 2 && craft_[3].empty());
+
+        // Werkbank: Spitzhacke herstellen
+        inventory_.clear();
+        openInventory(true);
+        SCHECK(craftSize_ == 3);
+        L = layout();
+        craft_[0] = craft_[1] = craft_[2] = {PLANKS, 1};
+        craft_[4] = craft_[7] = {ITEM_STICK, 1};
+        clickAtPos(center(L.resultPos, L), GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.id == ITEM_WOODEN_PICKAXE && cursor_.count == 1 && matchRecipe(craft_, 3).empty());
+        clickAtPos(center(L.slotPos(0), L), GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(inventory_.slots[0].id == ITEM_WOODEN_PICKAXE && cursor_.empty());
+        closeInventory();
+
+        // Rechtsklick auf die Werkbank oeffnet sie, mit gehaltenem Block nicht setzen
+        world_->setBlock(2, gy, 4, CRAFTING_TABLE);
+        slot_ = 1;
+        inventory_.slots[1] = {DIRT, 5};
+        target_ = world_->raycast(glm::vec3(2.5f, gy + 1.5f, 2.5f), glm::vec3(0.0f, -0.5f, 1.0f), 5.0f);
+        SCHECK(target_.hit && target_.block == glm::ivec3(2, gy, 4));
+        placeTimer_ = 0.0f;
+        placeBlockOrUse();
+        SCHECK(inventoryOpen_ && craftSize_ == 3 && inventory_.slots[1].count == 5);
+        closeInventory();
+
+        // Werkzeug nutzt ab und zerbricht
+        inventory_.clear();
+        inventory_.slots[0] = {ITEM_WOODEN_AXE, 1, 58};
+        slot_ = 0;
+        world_->setBlock(1, gy - 1, 3, LOG);
+        world_->setBlock(1, gy - 1, 4, LOG);
+        breakBlock(glm::ivec3(1, gy - 1, 3));
+        SCHECK(inventory_.slots[0].damage == 59);
+        breakBlock(glm::ivec3(1, gy - 1, 4));
+        SCHECK(inventory_.slots[0].empty());
+        world_->setBlock(1, gy - 1, 3, STONE);
+        world_->setBlock(1, gy - 1, 4, STONE);
+    }
+
     // 9. Inventar per Mausklick
     dead_ = false;
     health_ = 20;
@@ -1057,7 +1221,7 @@ int Game::selfTest() {
     openInventory();
     SCHECK(inventoryOpen_);
     {
-        InvLayout L = InvLayout::make(fbW_, fbH_, false);
+        InvLayout L = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_);
         auto clickAt = [&](glm::vec2 fbPos, int button, int mods) {
             const double sx = static_cast<double>(winW_cur_) / fbW_, sy = static_cast<double>(winH_cur_) / fbH_;
             curX_ = fbPos.x * sx;
@@ -1227,6 +1391,10 @@ void Game::render() {
     h.inventory = &inventory_;
     h.selectedSlot = slot_;
     h.inventoryOpen = inventoryOpen_;
+    h.paletteOpen = paletteWindow_;
+    h.craftSize = craftSize_;
+    for (int i = 0; i < 9; ++i) h.craftCells[i] = craft_[i];
+    h.craftResult = craftSize_ > 0 ? matchRecipe(craft_, craftSize_) : ItemStack();
     h.cursor = cursor_;
     h.mouse = mousePx();
     h.breakProgress = breakProgress_;

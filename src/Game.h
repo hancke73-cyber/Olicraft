@@ -73,7 +73,8 @@ private:
     void persistSettings();
     MenuState menuState() const;
     void toggleFullscreen();
-    void openInventory();
+    void openInventory(bool table = false);
+    void useHeldTool(int amount);
     void closeInventory();
     void inventoryClick(int button, int mods);
     void dropFromCursor(bool all);
@@ -109,6 +110,9 @@ private:
     EntityManager entities_;
     Inventory inventory_;
     ItemStack cursor_;
+    ItemStack craft_[9];
+    int craftSize_ = 0;          // 0, 2 (Inventar) oder 3 (Werkbank)
+    bool paletteWindow_ = false;  // Kreativ-Auswahl im Inventarfenster
 
     bool creative_ = false;
     int health_ = 20;

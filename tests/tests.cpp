@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Block.h"
+#include "Crafting.h"
 #include "Entities.h"
 #include "Hud.h"
 #include "Inventory.h"
@@ -1087,6 +1088,146 @@ static void testSettingsAndMenu() {
     CHECK(!batch.verts.empty());
 }
 
+static void testCraftingAndTools() {
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (auto& c : cells) g[c.first] = {c.second, 1};
+        return g;
+    };
+    // Holz -> Bretter, an beliebiger Stelle im Raster
+    for (int pos = 0; pos < 4; ++pos) {
+        auto g = grid(2, {{pos, LOG}});
+        ItemStack r = matchRecipe(g.data(), 2);
+        CHECK(r.id == PLANKS && r.count == 4);
+    }
+    for (int pos = 0; pos < 9; ++pos) {
+        auto g = grid(3, {{pos, LOG}});
+        CHECK(matchRecipe(g.data(), 3).id == PLANKS);
+    }
+    // Stoecke: zwei Bretter uebereinander, auch seitlich verschoben
+    {
+        auto g = grid(2, {{0, PLANKS}, {2, PLANKS}});
+        CHECK(matchRecipe(g.data(), 2).id == ITEM_STICK);
+        g = grid(2, {{1, PLANKS}, {3, PLANKS}});
+        CHECK(matchRecipe(g.data(), 2).id == ITEM_STICK && matchRecipe(g.data(), 2).count == 4);
+        g = grid(2, {{0, PLANKS}, {1, PLANKS}});  // nebeneinander: kein Rezept
+        CHECK(matchRecipe(g.data(), 2).empty());
+    }
+    // Werkbank: 2x2 Bretter; im 3x3-Raster ebenfalls
+    {
+        auto g = grid(2, {{0, PLANKS}, {1, PLANKS}, {2, PLANKS}, {3, PLANKS}});
+        CHECK(matchRecipe(g.data(), 2).id == CRAFTING_TABLE);
+        auto g3 = grid(3, {{4, PLANKS}, {5, PLANKS}, {7, PLANKS}, {8, PLANKS}});
+        CHECK(matchRecipe(g3.data(), 3).id == CRAFTING_TABLE);
+        auto g3b = grid(3, {{4, PLANKS}, {5, PLANKS}, {7, PLANKS}});  // eines fehlt
+        CHECK(matchRecipe(g3b.data(), 3).empty());
+    }
+    // Werkzeuge nur im 3x3-Raster (Spitzhacke ist 3 breit)
+    {
+        auto g3 = grid(3, {{0, PLANKS}, {1, PLANKS}, {2, PLANKS}, {4, ITEM_STICK}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(g3.data(), 3).id == ITEM_WOODEN_PICKAXE);
+        auto s3 = grid(3, {{3, COBBLE}, {4, COBBLE}, {5, COBBLE}, {7, ITEM_STICK}, {8 - 0, ITEM_STICK}});  // Stiele nicht mittig
+        CHECK(matchRecipe(s3.data(), 3).empty());
+        auto s4 = grid(3, {{0, COBBLE}, {1, COBBLE}, {2, COBBLE}, {4, ITEM_STICK}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(s4.data(), 3).id == ITEM_STONE_PICKAXE);
+        // Axt, auch gespiegelt
+        auto a1 = grid(3, {{0, PLANKS}, {1, PLANKS}, {3, PLANKS}, {4, ITEM_STICK}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(a1.data(), 3).id == ITEM_WOODEN_AXE);
+        auto a2 = grid(3, {{1, PLANKS}, {2, PLANKS}, {4, PLANKS}, {5, ITEM_STICK}, {8, ITEM_STICK}});  // nach rechts verschoben
+        CHECK(matchRecipe(a2.data(), 3).id == ITEM_WOODEN_AXE);
+        // gespiegelte Axt (Stiel links)
+        auto a3 = grid(3, {{0, COBBLE}, {1, COBBLE}, {3, ITEM_STICK}, {4, COBBLE}, {6, ITEM_STICK}});
+        auto a4 = grid(3, {{1, COBBLE}, {2, COBBLE}, {4, ITEM_STICK}, {5, COBBLE}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(a3.data(), 3).id == ITEM_STONE_AXE);
+        CHECK(matchRecipe(a4.data(), 3).id == ITEM_STONE_AXE);
+        auto sh = grid(3, {{1, PLANKS}, {4, ITEM_STICK}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(sh.data(), 3).id == ITEM_WOODEN_SHOVEL);
+        auto sw = grid(3, {{1, COBBLE}, {4, COBBLE}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(sw.data(), 3).id == ITEM_STONE_SWORD);
+        // gemischtes Material gibt es nicht
+        auto mix = grid(3, {{1, PLANKS}, {4, COBBLE}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(mix.data(), 3).empty());
+        // zusaetzlicher Gegenstand verhindert das Rezept
+        auto extra = grid(3, {{1, PLANKS}, {4, ITEM_STICK}, {7, ITEM_STICK}, {0, DIRT}});
+        CHECK(matchRecipe(extra.data(), 3).empty());
+    }
+    // Sand 2x2 -> Glas, Bruchstein -> Stein
+    {
+        auto g = grid(2, {{0, SAND}, {1, SAND}, {2, SAND}, {3, SAND}});
+        CHECK(matchRecipe(g.data(), 2).id == GLASS);
+        auto c = grid(2, {{3, COBBLE}});
+        CHECK(matchRecipe(c.data(), 2).id == STONE);
+    }
+    // Leeres Raster und Zutaten verbrauchen
+    {
+        std::vector<ItemStack> empty(9);
+        CHECK(matchRecipe(empty.data(), 3).empty());
+        std::vector<ItemStack> g(4);
+        g[0] = {LOG, 3};
+        consumeIngredients(g.data(), 2);
+        CHECK(g[0].count == 2 && g[1].empty());
+        g[0].count = 1;
+        consumeIngredients(g.data(), 2);
+        CHECK(g[0].empty());
+    }
+    // Jedes Rezept liefert gueltige Gegenstaende
+    for (const Recipe& r : recipes()) {
+        CHECK(itemValid(r.result.id) && r.result.count > 0);
+        for (int i = 0; i < r.symbolCount; ++i) CHECK(itemValid(r.items[i]));
+    }
+
+    // Werkzeugeigenschaften
+    for (ItemId id = ITEM_WOODEN_PICKAXE; id <= ITEM_STONE_SWORD; ++id) {
+        CHECK(itemValid(id));
+        const ItemInfo& ii = itemInfo(id);
+        CHECK(ii.maxStack == 1 && ii.maxDurability > 0 && ii.tool != TOOL_NONE && ii.tier >= 1);
+    }
+    CHECK(itemInfo(ITEM_STONE_PICKAXE).maxDurability > itemInfo(ITEM_WOODEN_PICKAXE).maxDurability);
+
+    // Abbau: Stein braucht eine Spitzhacke, Obsidian eine Steinspitzhacke
+    const ItemStack hand, wp{ITEM_WOODEN_PICKAXE, 1}, sp{ITEM_STONE_PICKAXE, 1}, wa{ITEM_WOODEN_AXE, 1};
+    CHECK(!canHarvest(STONE, hand) && canHarvest(STONE, wp) && canHarvest(STONE, sp));
+    CHECK(!canHarvest(OBSIDIAN, hand) && !canHarvest(OBSIDIAN, wp) && canHarvest(OBSIDIAN, sp));
+    CHECK(!canHarvest(STONE, wa));  // falsche Werkzeugart
+    CHECK(canHarvest(DIRT, hand) && canHarvest(LOG, hand) && canHarvest(LEAVES, hand));
+    CHECK(miningSeconds(STONE, sp) < miningSeconds(STONE, wp));
+    CHECK(miningSeconds(STONE, wp) < miningSeconds(STONE, hand));
+    CHECK(miningSeconds(STONE, hand) >= 3.0f);                    // von Hand muehsam
+    CHECK(miningSeconds(LOG, wa) < miningSeconds(LOG, hand));     // Axt hilft bei Holz
+    CHECK(miningSeconds(LOG, wp) == miningSeconds(LOG, hand));    // Spitzhacke nicht
+    CHECK(miningSeconds(DIRT, ItemStack{ITEM_WOODEN_SHOVEL, 1}) < miningSeconds(DIRT, hand));
+    CHECK(attackDamage(hand) == 2 && attackDamage(ItemStack{ITEM_STONE_SWORD, 1}) > attackDamage(ItemStack{ITEM_WOODEN_SWORD, 1}));
+    CHECK(attackDamage(ItemStack{ITEM_WOODEN_SWORD, 1}) > attackDamage(hand));
+
+    // Werkzeuge stapeln nicht, gleiche Abnutzung schon beim Verschieben/Ablegen im Raster nicht
+    Inventory inv;
+    CHECK(inv.add(ITEM_WOODEN_PICKAXE, 1, 10) == 0);
+    CHECK(inv.add(ITEM_WOODEN_PICKAXE, 1, 10) == 0);
+    CHECK(inv.slots[0].damage == 10 && inv.slots[1].id == ITEM_WOODEN_PICKAXE);
+    ItemStack a{ITEM_WOODEN_PICKAXE, 1, 5}, b{ITEM_WOODEN_PICKAXE, 1, 7};
+    Inventory::click(a, b, false);  // verschiedene Abnutzung: tauschen
+    CHECK(a.damage == 7 && b.damage == 5);
+    Inventory::click(a, b, false);
+    ItemStack s1{STONE, 3}, s2{STONE, 4};
+    Inventory::click(s1, s2, false);
+    CHECK(s1.count == 7 && s2.empty());
+    // Haltbarkeit im Speicherstand
+    SaveFile sf;
+    sf.player.inventory.slots[2] = {ITEM_STONE_AXE, 1, 40};
+    std::filesystem::create_directories("olicraft_test_save3");
+    std::string err;
+    CHECK(writeSaveFile("olicraft_test_save3/w.dat", sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile("olicraft_test_save3/w.dat", back, &err));
+    CHECK(back.player.inventory.slots[2] == ItemStack({ITEM_STONE_AXE, 1, 40}));
+    std::filesystem::remove_all("olicraft_test_save3");
+
+    // Werkbank-Block
+    CHECK(blockInfo(CRAFTING_TABLE).solid && blockInfo(CRAFTING_TABLE).opaque);
+    CHECK(blockDropItem(CRAFTING_TABLE) == CRAFTING_TABLE && blockDropItem(OBSIDIAN) == OBSIDIAN);
+    CHECK(blockDropItem(STONE) == COBBLE);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -1116,6 +1257,7 @@ int main() {
     testSpawn();
     testItemsAndInventory();
     testSettingsAndMenu();
+    testCraftingAndTools();
     testSaveV2();
     testEntities();
     std::printf("%d Pruefungen, %d fehlgeschlagen\n", g_checks, g_failed);

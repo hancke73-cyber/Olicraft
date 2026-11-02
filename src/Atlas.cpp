@@ -304,6 +304,88 @@ void drawObsidian(TileCanvas& c) {
         }
 }
 
+void drawCraftTop(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_CRAFT_TOP) - 0.5f) * 14);
+            Rgba col = shade({160, 128, 76, 255}, d);
+            if (x == 0 || y == 0 || x == TILE_PX - 1 || y == TILE_PX - 1) col = shade({96, 70, 40, 255}, d);
+            else if (x % 5 == 0 || y % 5 == 0) col = shade({96, 70, 40, 255}, d);  // Raster
+            c.set(x, y, col);
+        }
+}
+
+void drawCraftSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_CRAFT_SIDE) - 0.5f) * 14);
+            Rgba col = shade({150, 118, 70, 255}, d);
+            if (y >= 12) col = shade({92, 66, 38, 255}, d);                 // Tischplatte (oben)
+            if (y < 2) col = shade({110, 80, 46, 255}, d);
+            // Werkzeuge an der Seite: Saege und Hammer als Farbflaechen
+            if (x >= 3 && x <= 6 && y >= 4 && y <= 9) col = {190, 190, 195, 255};
+            if (x >= 9 && x <= 12 && y >= 5 && y <= 8) col = {95, 95, 100, 255};
+            if (x >= 10 && x <= 11 && y >= 2 && y <= 4) col = {110, 70, 40, 255};
+            c.set(x, y, col);
+        }
+}
+
+// Werkzeuge: Griff als Diagonale, Kopf je nach Art, in Materialfarbe
+void drawToolBase(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) c.set(x, y, {0, 0, 0, 0});
+}
+void put(TileCanvas& c, int x, int y, Rgba col) {
+    if (x >= 0 && x < TILE_PX && y >= 0 && y < TILE_PX) c.set(x, y, col);
+}
+void handle(TileCanvas& c, int from, int to) {
+    for (int i = from; i <= to; ++i) {
+        put(c, i, i, {120, 84, 44, 255});
+        put(c, i + 1, i, {86, 58, 30, 255});
+    }
+}
+
+void drawStick(TileCanvas& c) {
+    drawToolBase(c);
+    handle(c, 2, 13);
+}
+
+void drawTool(TileCanvas& c, int kind, Rgba m) {  // kind: 0 Spitzhacke, 1 Axt, 2 Schaufel, 3 Schwert
+    drawToolBase(c);
+    const Rgba dark = {m.r * 7 / 10, m.g * 7 / 10, m.b * 7 / 10, 255};
+    if (kind == 0) {
+        handle(c, 2, 11);
+        const int pts[][2] = {{5, 13}, {6, 13}, {7, 13}, {8, 13}, {9, 13}, {10, 13}, {11, 12}, {12, 11}, {13, 10},
+                              {13, 9},  {4, 12}, {3, 11}, {10, 12}, {11, 11}, {12, 10}};
+        for (auto& p : pts) put(c, p[0], p[1], m);
+        for (auto& p : {std::pair<int, int>{4, 11}, {12, 9}}) put(c, p.first, p.second, dark);
+    } else if (kind == 1) {
+        handle(c, 2, 11);
+        const int pts[][2] = {{9, 13}, {10, 13}, {11, 13}, {12, 13}, {9, 12}, {10, 12}, {11, 12}, {12, 12}, {13, 12},
+                              {10, 11}, {11, 11}, {12, 11}, {11, 10}};
+        for (auto& p : pts) put(c, p[0], p[1], m);
+        for (auto& p : {std::pair<int, int>{13, 12}, {12, 13}}) put(c, p.first, p.second, dark);
+    } else if (kind == 2) {
+        handle(c, 2, 10);
+        const int pts[][2] = {{11, 13}, {12, 13}, {10, 12}, {11, 12}, {12, 12}, {13, 12}, {10, 11}, {11, 11},
+                              {12, 11}, {13, 11}, {11, 10}, {12, 10}};
+        for (auto& p : pts) put(c, p[0], p[1], m);
+        for (auto& p : {std::pair<int, int>{13, 11}, {12, 10}}) put(c, p.first, p.second, dark);
+    } else {
+        handle(c, 2, 4);
+        for (int i = 6; i <= 13; ++i) {
+            put(c, i, i, m);
+            put(c, i + 1, i, dark);
+            put(c, i, i + 1, m);
+        }
+        put(c, 5, 7, {120, 84, 44, 255});  // Parierstange
+        put(c, 6, 6, {120, 84, 44, 255});
+        put(c, 7, 5, {120, 84, 44, 255});
+        put(c, 4, 8, {120, 84, 44, 255});
+        put(c, 8, 4, {120, 84, 44, 255});
+    }
+}
+
 }  // namespace
 
 std::vector<uint8_t> generateAtlasPixels() {
@@ -343,6 +425,19 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_ZOMBIE_PANTS, drawZombiePants);
     make(TILE_LAVA, drawLava);
     make(TILE_OBSIDIAN, drawObsidian);
+    make(TILE_CRAFT_TOP, drawCraftTop);
+    make(TILE_CRAFT_SIDE, drawCraftSide);
+    make(TILE_STICK, drawStick);
+    {
+        const Rgba wood = {214, 176, 102, 255}, stone = {150, 150, 158, 255};
+        const int tiles[2][4] = {{TILE_PICKAXE_WOOD, TILE_AXE_WOOD, TILE_SHOVEL_WOOD, TILE_SWORD_WOOD},
+                                 {TILE_PICKAXE_STONE, TILE_AXE_STONE, TILE_SHOVEL_STONE, TILE_SWORD_STONE}};
+        for (int mat = 0; mat < 2; ++mat)
+            for (int kind = 0; kind < 4; ++kind) {
+                TileCanvas cv(px, tiles[mat][kind]);
+                drawTool(cv, kind, mat == 0 ? wood : stone);
+            }
+    }
     return px;
 }
 

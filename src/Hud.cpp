@@ -80,21 +80,29 @@ float guiScale(int windowHeight) { return std::max(1.0f, std::floor(static_cast<
 // Layout des Inventarfensters
 // ---------------------------------------------------------------------------------------------------------------
 
-InvLayout InvLayout::make(int w, int h, bool creative) {
+InvLayout InvLayout::make(int w, int h, bool creative, int craftSize) {
     InvLayout l;
     l.s = guiScale(h);
     l.creative = creative;
+    l.craftSize = craftSize;
     const float s = l.s, pad = 7.0f * s, title = 12.0f * s;
     const float width = 9.0f * 18.0f * s + 2.0f * pad;
     const int paletteRows = (creativeItemCount() + PALETTE_COLS - 1) / PALETTE_COLS;
     float height = pad + title;
+    float craftOffset = 0.0f;
     if (creative) height += paletteRows * 18.0f * s + 8.0f * s;
+    if (craftSize > 0) {
+        craftOffset = height;
+        height += craftSize * 18.0f * s + 8.0f * s;
+    }
     const float storageOffset = height;
     height += 3.0f * 18.0f * s + 4.0f * s + 18.0f * s + pad;
 
     l.panelSize = glm::vec2(width, height);
     l.panelPos = glm::vec2(std::floor((w - width) * 0.5f), std::floor((h - height) * 0.5f));
     l.paletteTop = l.panelPos + glm::vec2(pad, pad + title);
+    l.craftTop = l.panelPos + glm::vec2(pad + 18.0f * s, craftOffset);
+    l.resultPos = l.panelPos + glm::vec2(pad + 6.0f * 18.0f * s, craftOffset + (craftSize - 1) * 9.0f * s);
     l.storageTop = l.panelPos + glm::vec2(pad, storageOffset);
     l.hotbarTop = l.storageTop + glm::vec2(0.0f, 3.0f * 18.0f * s + 4.0f * s);
     return l;
@@ -127,11 +135,33 @@ int InvLayout::hitPalette(glm::vec2 m) const {
     return -1;
 }
 
+glm::vec2 InvLayout::craftPos(int index) const {
+    return craftTop + glm::vec2((index % craftSize) * pitch(), (index / craftSize) * pitch());
+}
+
+int InvLayout::hitCraft(glm::vec2 m) const {
+    for (int i = 0; i < craftSize * craftSize; ++i)
+        if (inRect(m, craftPos(i), pitch(), pitch())) return i;
+    return -1;
+}
+
+bool InvLayout::hitResult(glm::vec2 m) const { return craftSize > 0 && inRect(m, resultPos, pitch(), pitch()); }
+
 bool InvLayout::inside(glm::vec2 m) const { return inRect(m, panelPos, panelSize.x, panelSize.y); }
 
 // ---------------------------------------------------------------------------------------------------------------
 // HUD
 // ---------------------------------------------------------------------------------------------------------------
+
+static void drawDurability(HudBatch& b, const ItemStack& st, float x, float y, float pitch, float s) {
+    if (st.empty()) return;
+    const ItemInfo& info = itemInfo(st.id);
+    if (info.maxDurability <= 0 || st.damage <= 0) return;
+    const float frac = std::max(0.0f, 1.0f - static_cast<float>(st.damage) / info.maxDurability);
+    const float bw = pitch - 6.0f * s, bx = x + 3.0f * s, by = y + pitch - 4.5f * s;
+    b.rect(bx, by, bx + bw, by + 1.5f * s, glm::vec4(0.0f, 0.0f, 0.0f, 0.9f));
+    b.rect(bx, by, bx + bw * frac, by + 1.5f * s, glm::vec4(1.0f - frac, 0.2f + 0.8f * frac, 0.1f, 1.0f));
+}
 
 static void drawSlotCount(HudBatch& b, const ItemStack& st, float x, float y, float pitch, float s) {
     if (st.count <= 1) return;
@@ -141,7 +171,7 @@ static void drawSlotCount(HudBatch& b, const ItemStack& st, float x, float y, fl
 }
 
 static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
-    const InvLayout L = InvLayout::make(w, h, st.creative);
+    const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize);
     const float s = L.s, pt = L.pitch();
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.55f));
 
@@ -150,46 +180,80 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
            L.panelPos.y + L.panelSize.y + 2 * s, glm::vec4(0.05f, 0.05f, 0.07f, 0.95f));
     b.rect(L.panelPos.x, L.panelPos.y, L.panelPos.x + L.panelSize.x, L.panelPos.y + L.panelSize.y,
            glm::vec4(0.30f, 0.31f, 0.35f, 0.97f));
-    b.text(L.panelPos.x + 7 * s, L.panelPos.y + 6 * s, s, st.creative ? "Kreativ-Inventar" : "Inventar",
-           glm::vec4(1.0f));
+    std::string title = st.windowTitle;
+    if (title.empty()) title = st.paletteOpen ? "Kreativ-Inventar" : (st.craftSize == 3 ? "Werkbank" : "Inventar");
+    b.text(L.panelPos.x + 7 * s, L.panelPos.y + 6 * s, s, title, glm::vec4(1.0f));
 
     const glm::vec4 slotBg(0.12f, 0.12f, 0.15f, 1.0f);
+    const glm::vec4 hoverFx(1, 1, 1, 0.3f);
     const int hoverSlot = L.hitSlot(st.mouse), hoverPal = L.hitPalette(st.mouse);
+    const int hoverCraft = L.hitCraft(st.mouse);
+    const bool hoverResult = L.hitResult(st.mouse);
+    auto slotRect = [&](glm::vec2 p, bool hover) {
+        b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, slotBg);
+        if (hover) b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, hoverFx);
+    };
 
     // Auswahlfeld (Kreativ)
-    std::vector<std::pair<glm::vec2, ItemId>> icons;
-    if (st.creative) {
+    if (st.paletteOpen) {
         for (int i = 0; i < creativeItemCount(); ++i) {
             glm::vec2 p = L.palettePos(i);
-            b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, slotBg);
-            if (i == hoverPal) b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, glm::vec4(1, 1, 1, 0.3f));
+            slotRect(p, i == hoverPal);
             b.itemIcon(creativeItem(i), p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
         }
         float sepY = L.storageTop.y - 5.0f * s;
         b.rect(L.panelPos.x + 7 * s, sepY, L.panelPos.x + L.panelSize.x - 7 * s, sepY + s, glm::vec4(0, 0, 0, 0.5f));
     }
 
+    // Handwerk: Raster, Pfeil, Ergebnis
+    if (st.craftSize > 0) {
+        for (int i = 0; i < st.craftSize * st.craftSize; ++i) {
+            glm::vec2 p = L.craftPos(i);
+            slotRect(p, i == hoverCraft);
+            const ItemStack& cs = st.craftCells[i];
+            if (!cs.empty()) {
+                b.itemIcon(cs.id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+            }
+        }
+        const float ay = L.resultPos.y + pt * 0.5f - 4.0f * s;
+        b.text(L.craftTop.x + st.craftSize * pt + 0.7f * pt, ay, s * 1.5f, "=>", glm::vec4(0.9f));
+        slotRect(L.resultPos, hoverResult);
+        if (!st.craftResult.empty())
+            b.itemIcon(st.craftResult.id, L.resultPos.x + pt * 0.5f, L.resultPos.y + pt * 0.5f, 6.3f * s);
+    }
+
     // Rucksack + Hotbar
     const Inventory* inv = st.inventory;
     for (int i = 0; i < Inventory::SIZE; ++i) {
         glm::vec2 p = L.slotPos(i);
-        b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, slotBg);
+        slotRect(p, i == hoverSlot);
         if (i < Inventory::HOTBAR && i == st.selectedSlot)
             b.rect(p.x, p.y, p.x + pt, p.y + s, glm::vec4(1, 1, 1, 0.9f));  // Markierung der aktiven Hotbar
-        if (i == hoverSlot) b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, glm::vec4(1, 1, 1, 0.3f));
         if (inv && !inv->slots[i].empty()) b.itemIcon(inv->slots[i].id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
     }
-    if (inv && !st.creative) {
+    // Zaehler und Haltbarkeit liegen ueber den Symbolen
+    if (inv) {
         for (int i = 0; i < Inventory::SIZE; ++i) {
             glm::vec2 p = L.slotPos(i);
-            drawSlotCount(b, inv->slots[i], p.x, p.y, pt, s);
+            if (!st.creative) drawSlotCount(b, inv->slots[i], p.x, p.y, pt, s);
+            drawDurability(b, inv->slots[i], p.x, p.y, pt, s);
         }
+    }
+    if (st.craftSize > 0) {
+        for (int i = 0; i < st.craftSize * st.craftSize; ++i) {
+            glm::vec2 p = L.craftPos(i);
+            drawSlotCount(b, st.craftCells[i], p.x, p.y, pt, s);
+            drawDurability(b, st.craftCells[i], p.x, p.y, pt, s);
+        }
+        drawSlotCount(b, st.craftResult, L.resultPos.x, L.resultPos.y, pt, s);
     }
 
     // Tooltip
     ItemId hoverItem = ITEM_NONE;
     if (hoverPal >= 0) hoverItem = creativeItem(hoverPal);
     else if (hoverSlot >= 0 && inv && !inv->slots[hoverSlot].empty()) hoverItem = inv->slots[hoverSlot].id;
+    else if (hoverCraft >= 0 && !st.craftCells[hoverCraft].empty()) hoverItem = st.craftCells[hoverCraft].id;
+    else if (hoverResult && !st.craftResult.empty()) hoverItem = st.craftResult.id;
     if (hoverItem != ITEM_NONE && st.cursor.empty()) {
         std::string name = itemInfo(hoverItem).name;
         float tw = textWidthPx(name) * s;
@@ -201,7 +265,9 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     // Gehaltener Stapel
     if (!st.cursor.empty()) {
         b.itemIcon(st.cursor.id, st.mouse.x, st.mouse.y, 6.3f * s);
-        if (!st.creative) drawSlotCount(b, st.cursor, st.mouse.x - pt * 0.5f, st.mouse.y - pt * 0.5f, pt, s);
+        if (!st.creative || st.craftSize > 0)
+            drawSlotCount(b, st.cursor, st.mouse.x - pt * 0.5f, st.mouse.y - pt * 0.5f, pt, s);
+        drawDurability(b, st.cursor, st.mouse.x - pt * 0.5f, st.mouse.y - pt * 0.5f, pt, s);
     }
 }
 
@@ -280,6 +346,7 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
             if (stack.empty()) continue;
             b.itemIcon(stack.id, x0 + i * slot + slot * 0.5f, y0 + slot * 0.5f, 7.0f * s);
             if (!st.creative) drawSlotCount(b, stack, x0 + i * slot, y0, slot, s);
+            drawDurability(b, stack, x0 + i * slot, y0, slot, s);
         }
 
         // Herzen

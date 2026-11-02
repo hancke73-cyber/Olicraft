@@ -41,6 +41,7 @@ enum Block : BlockId {
     LAVA_3,
     LAVA_FALL,
     OBSIDIAN,
+    CRAFTING_TABLE,
     BLOCK_COUNT
 };
 
@@ -74,8 +75,22 @@ enum Tile : int {
     TILE_ZOMBIE_PANTS,
     TILE_LAVA,
     TILE_OBSIDIAN,
+    TILE_CRAFT_TOP,
+    TILE_CRAFT_SIDE,
+    TILE_STICK,
+    TILE_PICKAXE_WOOD,
+    TILE_AXE_WOOD,
+    TILE_SHOVEL_WOOD,
+    TILE_SWORD_WOOD,
+    TILE_PICKAXE_STONE,
+    TILE_AXE_STONE,
+    TILE_SHOVEL_STONE,
+    TILE_SWORD_STONE,
     TILE_COUNT
 };
+
+// Werkzeugart: passt das Werkzeug zum Block, baut es schneller ab
+enum ToolClass : uint8_t { TOOL_NONE = 0, TOOL_PICKAXE, TOOL_AXE, TOOL_SHOVEL, TOOL_SWORD };
 
 struct BlockInfo {
     const char* name;
@@ -88,6 +103,8 @@ struct BlockInfo {
     Tile top, bottom, side;
     float hardness;  // Abbauzeit in Sekunden (Survival, mit blossen Haenden)
     BlockId drop;    // Block, der beim Abbauen faellt (AIR = nichts)
+    ToolClass tool = TOOL_NONE;  // passende Werkzeugart
+    int minTier = 0;             // noetige Werkzeugstufe, damit der Block etwas fallen laesst (0 = keine)
 };
 
 const BlockInfo& blockInfo(BlockId id);
