@@ -42,6 +42,8 @@ TerrainGenerator::Column TerrainGenerator::column(int wx, int wz) const {
     col.desert = temp > 0.20f && col.height < 95;
     col.snow = col.height >= 100;
     col.forest = moist > 0.0f;
+    col.temp = temp;
+    col.moist = moist;
     return col;
 }
 
@@ -65,10 +67,12 @@ void TerrainGenerator::generate(Chunk& chunk) const {
     const int ox = chunk.cx * CHUNK_W, oz = chunk.cz * CHUNK_W;
     std::fill(chunk.blocks.begin(), chunk.blocks.end(), static_cast<BlockId>(AIR));
 
+    Column cols[CHUNK_W * CHUNK_W];
     for (int z = 0; z < CHUNK_W; ++z) {
         for (int x = 0; x < CHUNK_W; ++x) {
             const int wx = ox + x, wz = oz + z;
             const Column col = column(wx, wz);
+            cols[z * CHUNK_W + x] = col;
             const int h = col.height;
             const bool beach = h <= SEA_LEVEL + 1 && h >= SEA_LEVEL - 10;
 
@@ -109,6 +113,7 @@ void TerrainGenerator::generate(Chunk& chunk) const {
 
     placeOres(chunk);
     placeTrees(chunk);
+    placePlants(chunk, cols);
 }
 
 // Erzadern: kleine Zufallsklumpen im Stein, je Chunk aus dem Seed abgeleitet (ueber Chunkgrenzen abgeschnitten)
@@ -173,10 +178,35 @@ void TerrainGenerator::placeTrees(Chunk& chunk) const {
             if (((hsh >> 8) & 0xFFu) >= chance) continue;
 
             const int top = col.height;
-            const int trunk = 4 + static_cast<int>((hsh >> 16) % 3);
+            const uint32_t pick = (hsh >> 24) & 0xFFu;
+            const bool spruce = col.height >= 84 || col.temp < -0.2f;
+            const bool birch = !spruce && col.forest && col.moist > 0.15f && pick < 110;
+
+            if (spruce) {
+                const int trunk = 6 + static_cast<int>((hsh >> 16) % 3);
+                const int topY = top + trunk;
+                for (int y = top + 1; y <= topY; ++y) put(wx, y, wz, SPRUCE_LOG, false);
+                for (int k = 0; k <= trunk; ++k) {  // Kegel von oben nach unten
+                    const int y = topY + 1 - k;
+                    if (y <= top + 1) break;
+                    const int rad = k == 0 ? 0 : std::min(3, 1 + (k - 1) / 2);
+                    for (int dz = -rad; dz <= rad; ++dz)
+                        for (int dx = -rad; dx <= rad; ++dx) {
+                            if (dx == 0 && dz == 0 && k > 0) continue;  // Stamm
+                            if (rad >= 2 && std::abs(dx) == rad && std::abs(dz) == rad &&
+                                (hash3(wx + dx, y, wz + dz, static_cast<uint32_t>(seed_)) & 1u))
+                                continue;
+                            put(wx + dx, y, wz + dz, SPRUCE_LEAVES, true);
+                        }
+                }
+                continue;
+            }
+
+            const BlockId logB = birch ? BIRCH_LOG : LOG, leafB = birch ? BIRCH_LEAVES : LEAVES;
+            const int trunk = (birch ? 5 : 4) + static_cast<int>((hsh >> 16) % 3);
             const int topY = top + trunk;
 
-            for (int y = top + 1; y <= topY; ++y) put(wx, y, wz, LOG, false);
+            for (int y = top + 1; y <= topY; ++y) put(wx, y, wz, logB, false);
 
             for (int dy = -2; dy <= 1; ++dy) {
                 const int y = topY + dy;
@@ -189,12 +219,75 @@ void TerrainGenerator::placeTrees(Chunk& chunk) const {
                             if (dy == 1) continue;
                             if (rad == 2 && (hash3(wx + dx, y, wz + dz, static_cast<uint32_t>(seed_)) & 1u)) continue;
                         }
-                        put(wx + dx, y, wz + dz, LEAVES, true);
+                        put(wx + dx, y, wz + dz, leafB, true);
                     }
                 }
             }
         }
     }
+}
+
+// Bodenbewuchs: Gras, Blumen, Pilze, Farn, Beerenstraeucher, Kuerbisse; in der Wueste Kakteen und Tote Buesche; Zuckerrohr am Ufer
+void TerrainGenerator::placePlants(Chunk& chunk, const Column* cols) const {
+    const int ox = chunk.cx * CHUNK_W, oz = chunk.cz * CHUNK_W;
+    const uint32_t seed = static_cast<uint32_t>(seed_) ^ 0x91A7u;
+    for (int z = 0; z < CHUNK_W; ++z)
+        for (int x = 0; x < CHUNK_W; ++x) {
+            const Column& col = cols[z * CHUNK_W + x];
+            const int h = col.height, y = h + 1;
+            if (y >= CHUNK_H - 4 || h < SEA_LEVEL || col.snow) continue;
+            if (chunk.get(x, y, z) != AIR) continue;
+            const BlockId ground = chunk.get(x, h, z);
+            const int wx = ox + x, wz = oz + z;
+            const uint32_t r = hash3(wx, 0x51, wz, seed) % 1000u;
+            const uint32_t r2 = hash3(wx, 0x52, wz, seed);
+
+            if (ground == GRASS) {
+                const bool meadow = hash3(wx >> 3, 5, wz >> 3, seed) % 6u == 0u;
+                const uint32_t grassP = col.forest ? 170u : 110u;
+                const uint32_t flowerP = meadow ? 140u : (col.forest ? 10u : 26u);
+                BlockId plant = AIR;
+                uint32_t acc = 0;
+                if (r < (acc += grassP)) {
+                    plant = TALL_GRASS;
+                } else if (r < (acc += flowerP)) {
+                    static const BlockId flowers[4] = {FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE};
+                    // Beete: in einer Wiese dominiert eine Farbe
+                    const uint32_t kind = meadow ? (hash3(wx >> 2, 6, wz >> 2, seed) + (r2 % 5u == 0u ? r2 : 0u)) % 4u : r2 % 4u;
+                    plant = flowers[kind];
+                } else if (col.forest && r < (acc += 40u)) {
+                    plant = FERN;
+                } else if (col.forest && r < (acc += 9u)) {
+                    plant = (r2 & 1u) ? MUSHROOM_RED : MUSHROOM_BROWN;
+                } else if (col.forest && r < (acc += 6u)) {
+                    plant = BERRY_BUSH;
+                } else if (!col.forest && r < (acc += 2u)) {
+                    // Kuerbis ist ein ganzer Block
+                    chunk.set(x, y, z, PUMPKIN);
+                    continue;
+                }
+                if (plant != AIR) chunk.set(x, y, z, plant);
+            } else if (ground == SAND && col.desert) {
+                if (r < 14) {
+                    const int n = 1 + static_cast<int>(r2 % 3u);
+                    for (int k = 0; k < n && y + k < CHUNK_H - 4; ++k) chunk.set(x, y + k, z, CACTUS);
+                } else if (r < 30) {
+                    chunk.set(x, y, z, DEAD_BUSH);
+                }
+            } else if ((ground == SAND || ground == GRASS || ground == DIRT) && h == SEA_LEVEL && r < 300) {
+                // Zuckerrohr direkt am Wasser
+                bool water = false;
+                static const int D[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+                for (const auto& d : D) {
+                    const int nx = x + d[0], nz = z + d[1];
+                    if (nx >= 0 && nx < CHUNK_W && nz >= 0 && nz < CHUNK_W && chunk.get(nx, h, nz) == WATER) water = true;
+                }
+                if (water) {
+                    const int n = 1 + static_cast<int>(r2 % 3u);
+                    for (int k = 0; k < n; ++k) chunk.set(x, y + k, z, SUGAR_CANE);
+                }
+            }
+        }
 }
 
 }  // namespace oc

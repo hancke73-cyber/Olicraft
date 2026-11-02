@@ -141,7 +141,11 @@ void EntityManager::dropLoot(const Mob& m) {
     switch (m.type) {
         case MobType::Pig:
         case MobType::Cow: n = rng_.irange(1, 3); break;
-        case MobType::Sheep: n = rng_.irange(1, 2); break;
+        case MobType::Sheep:
+            n = rng_.irange(1, 2);
+            spawnItem({WOOL_WHITE, rng_.irange(1, 2)}, m.pos + glm::vec3(0.0f, 0.6f, 0.0f),
+                      glm::vec3(rng_.range(-1.5f, 1.5f), 4.0f, rng_.range(-1.5f, 1.5f)), 0.4f);
+            break;
         default: n = 0; break;
     }
     if (n > 0)
@@ -416,8 +420,12 @@ static bool findGround(const World& w, int x, int z, int yTop, int yBottom, int&
     yBottom = std::max(yBottom, 1);
     for (int y = yTop; y >= yBottom; --y) {
         BlockId b = w.getBlock(x, y, z);
-        if (!isSolid(b) || b == LEAVES) continue;
-        if (w.getBlock(x, y + 1, z) == AIR && w.getBlock(x, y + 2, z) == AIR) {
+        if (!isSolid(b) || isLeaves(b)) continue;
+        auto freeCell = [&](int yy) {
+            const BlockId f = w.getBlock(x, yy, z);
+            return f == AIR || isPlant(f);
+        };
+        if (freeCell(y + 1) && freeCell(y + 2)) {
             outY = y + 1;
             return true;
         }

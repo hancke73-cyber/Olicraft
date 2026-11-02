@@ -4,6 +4,7 @@
 
 #include "Atlas.h"
 #include "Faces.h"
+#include "Noise.h"
 
 namespace oc {
 
@@ -219,6 +220,40 @@ void emitTorch(int x, int y, int z, BlockId b, std::vector<Vertex>& out) {
     }
 }
 
+// Pflanze: zwei gekreuzte Flaechen (beidseitig sichtbar), leicht zufaellig versetzt wie in Minecraft
+void emitPlant(const Ctx& c, int x, int y, int z, BlockId b, std::vector<Vertex>& out) {
+    const UVRect uv = tileUV(blockInfo(b).side);
+    const uint32_t h = hash3(x, y, z, 0x91A47u);
+    const float ox = (static_cast<float>(h & 15u) / 15.0f - 0.5f) * 0.22f;
+    const float oz = (static_cast<float>((h >> 4) & 15u) / 15.0f - 0.5f) * 0.22f;
+    const float height = (b == SUGAR_CANE) ? 1.0f : (b == TALL_GRASS ? 0.9f : 0.85f);
+    const float sky = c.skyAt(x, y, z);
+    const float light = c.lightAt(x, y, z) / static_cast<float>(MAX_LIGHT);
+    const float a = 0.12f, bb = 0.88f;
+    // Ebene A: (a,a) -> (bb,bb), Ebene B: (bb,a) -> (a,bb)
+    const float starts[2][2] = {{a, a}, {bb, a}};
+    const float ends[2][2] = {{bb, bb}, {a, bb}};
+    for (int pl = 0; pl < 2; ++pl) {
+        Vertex v[4];
+        for (int k = 0; k < 4; ++k) {
+            const bool end = k == 1 || k == 2;
+            const bool top = k >= 2;
+            const float* p = end ? ends[pl] : starts[pl];
+            v[k].x = static_cast<float>(x) + p[0] + ox;
+            v[k].y = static_cast<float>(y) + (top ? height : 0.0f);
+            v[k].z = static_cast<float>(z) + p[1] + oz;
+            v[k].u = uv.u0 + (uv.u1 - uv.u0) * (end ? 1.0f : 0.0f);
+            v[k].v = uv.v0 + (uv.v1 - uv.v0) * (top ? 1.0f : 0.0f);
+            v[k].shade = 0.92f;
+            v[k].sky = sky;
+            v[k].light = light;
+        }
+        for (int k = 0; k < 4; ++k) out.push_back(v[k]);
+        const int back[4] = {1, 0, 3, 2};  // Rueckseite: umgekehrter Umlaufsinn
+        for (int k = 0; k < 4; ++k) out.push_back(v[back[k]]);
+    }
+}
+
 }  // namespace
 
 void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out) {
@@ -235,6 +270,10 @@ void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out
                 if (b == AIR) continue;
                 if (isTorch(b)) {
                     emitTorch(x, y, z, b, out.opaque);
+                    continue;
+                }
+                if (isPlant(b)) {
+                    emitPlant(c, x, y, z, b, out.opaque);
                     continue;
                 }
                 const bool liquid = blockInfo(b).liquid;

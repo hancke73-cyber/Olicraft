@@ -54,6 +54,44 @@ enum Block : BlockId {
     TORCH_NX,
     TORCH_PZ,
     TORCH_NZ,
+    // Bausteine
+    BRICKS,
+    STONE_BRICKS,
+    SANDSTONE,
+    GRAVEL,
+    CLAY,
+    WOOL_WHITE,
+    WOOL_RED,
+    WOOL_BLUE,
+    WOOL_GREEN,
+    WOOL_YELLOW,
+    WOOL_BLACK,
+    BOOKSHELF,
+    IRON_BLOCK,
+    GOLD_BLOCK,
+    DIAMOND_BLOCK,
+    COAL_BLOCK,
+    LAMP,
+    PUMPKIN,
+    CACTUS,
+    BIRCH_LOG,
+    BIRCH_LEAVES,
+    SPRUCE_LOG,
+    SPRUCE_LEAVES,
+    CHEST,
+    BED,
+    // Pflanzen: kreuzfoermig, begehbar, brechen sofort und fallen ab, wenn der Boden fehlt
+    TALL_GRASS,
+    FERN,
+    FLOWER_RED,
+    FLOWER_YELLOW,
+    FLOWER_BLUE,
+    FLOWER_WHITE,
+    MUSHROOM_RED,
+    MUSHROOM_BROWN,
+    DEAD_BUSH,
+    SUGAR_CANE,
+    BERRY_BUSH,
     BLOCK_COUNT
 };
 
@@ -112,6 +150,59 @@ enum Tile : int {
     TILE_SHOVEL_GOLD,
     TILE_SWORD_GOLD,
     TILE_TORCH,
+    TILE_BRICKS,
+    TILE_STONE_BRICKS,
+    TILE_SANDSTONE_TOP,
+    TILE_SANDSTONE_SIDE,
+    TILE_GRAVEL,
+    TILE_CLAY,
+    TILE_WOOL_WHITE,
+    TILE_WOOL_RED,
+    TILE_WOOL_BLUE,
+    TILE_WOOL_GREEN,
+    TILE_WOOL_YELLOW,
+    TILE_WOOL_BLACK,
+    TILE_BOOKSHELF,
+    TILE_IRON_BLOCK,
+    TILE_GOLD_BLOCK,
+    TILE_DIAMOND_BLOCK,
+    TILE_COAL_BLOCK,
+    TILE_LAMP,
+    TILE_PUMPKIN_TOP,
+    TILE_PUMPKIN_SIDE,
+    TILE_CACTUS_TOP,
+    TILE_CACTUS_SIDE,
+    TILE_BIRCH_LOG_SIDE,
+    TILE_BIRCH_LOG_TOP,
+    TILE_BIRCH_LEAVES,
+    TILE_SPRUCE_LOG_SIDE,
+    TILE_SPRUCE_LOG_TOP,
+    TILE_SPRUCE_LEAVES,
+    TILE_CHEST_TOP,
+    TILE_CHEST_SIDE,
+    TILE_BED_TOP,
+    TILE_BED_SIDE,
+    TILE_TALL_GRASS,
+    TILE_FERN,
+    TILE_FLOWER_RED,
+    TILE_FLOWER_YELLOW,
+    TILE_FLOWER_BLUE,
+    TILE_FLOWER_WHITE,
+    TILE_MUSHROOM_RED,
+    TILE_MUSHROOM_BROWN,
+    TILE_DEAD_BUSH,
+    TILE_SUGAR_CANE,
+    TILE_BERRY_BUSH,
+    TILE_BRICK,
+    TILE_CLAY_BALL,
+    TILE_PAPER,
+    TILE_BOOK,
+    TILE_DYE_RED,
+    TILE_DYE_YELLOW,
+    TILE_DYE_BLUE,
+    TILE_DYE_GREEN,
+    TILE_DYE_BLACK,
+    TILE_BERRIES,
     TILE_COUNT
 };
 
@@ -159,6 +250,20 @@ inline float liquidHeight(BlockId id) {
 }
 
 inline bool isTorch(BlockId id) { return id >= TORCH && id <= TORCH_NZ; }
+inline bool isPlant(BlockId id) { return id >= TALL_GRASS && id <= BERRY_BUSH; }
+inline bool isLeaves(BlockId id) { return id == LEAVES || id == BIRCH_LEAVES || id == SPRUCE_LEAVES; }
+inline bool isLogBlock(BlockId id) { return id == LOG || id == BIRCH_LOG || id == SPRUCE_LOG; }
+// Darf die Pflanze auf dem Block darunter stehen?
+inline bool plantCanStandOn(BlockId plant, BlockId below) {
+    const bool soil = below == GRASS || below == DIRT;
+    switch (plant) {
+        case DEAD_BUSH: return below == SAND || soil || below == SANDSTONE || below == GRAVEL;
+        case SUGAR_CANE: return below == SAND || soil || below == SUGAR_CANE;
+        case MUSHROOM_RED:
+        case MUSHROOM_BROWN: return soil || below == STONE || isLogBlock(below);
+        default: return soil;
+    }
+}
 // Lage des Traegerblocks einer Fackel relativ zu ihr
 inline void torchSupportOffset(BlockId id, int& dx, int& dy, int& dz) {
     dx = dy = dz = 0;
@@ -175,6 +280,7 @@ inline int lightEmission(BlockId id) {
     if (isTorch(id)) return 14;
     if (id >= LAVA && id <= LAVA_FALL) return 15;
     if (id == FURNACE_LIT) return 13;
+    if (id == LAMP) return 15;
     return 0;
 }
 constexpr int MAX_LIGHT = 15;

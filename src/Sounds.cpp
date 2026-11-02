@@ -52,7 +52,37 @@ const SoundDef& soundDef(SoundId id) { return DEFS[static_cast<int>(id)]; }
 Material blockMaterial(BlockId b) {
     switch (b) {
         case GRASS:
-        case LEAVES: return Material::Grass;
+        case LEAVES:
+        case BIRCH_LEAVES:
+        case SPRUCE_LEAVES:
+        case WOOL_WHITE:
+        case WOOL_RED:
+        case WOOL_BLUE:
+        case WOOL_GREEN:
+        case WOOL_YELLOW:
+        case WOOL_BLACK:
+        case BED:
+        case CACTUS:
+        case PUMPKIN: return Material::Grass;
+        case TALL_GRASS:
+        case FERN:
+        case FLOWER_RED:
+        case FLOWER_YELLOW:
+        case FLOWER_BLUE:
+        case FLOWER_WHITE:
+        case MUSHROOM_RED:
+        case MUSHROOM_BROWN:
+        case DEAD_BUSH:
+        case SUGAR_CANE:
+        case BERRY_BUSH: return Material::Grass;
+        case CLAY:
+        case GRAVEL: return Material::Dirt;
+        case SANDSTONE: return Material::Stone;
+        case BIRCH_LOG:
+        case SPRUCE_LOG:
+        case BOOKSHELF:
+        case CHEST: return Material::Wood;
+        case LAMP: return Material::Glass;
         case DIRT: return Material::Dirt;
         case SAND: return Material::Sand;
         case LOG:

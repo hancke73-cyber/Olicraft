@@ -829,6 +829,26 @@ void Game::updateSurvival(float dt) {
         }
     }
 
+    // Kaktus: Beruehrung verletzt
+    if (!creative_ && !dead_) {
+        bool touching = false;
+        for (float dx : {-0.42f, 0.0f, 0.42f})
+            for (float dz : {-0.42f, 0.0f, 0.42f})
+                for (float dy : {0.1f, 0.9f, 1.7f})
+                    touching = touching || world_->getBlock(static_cast<int>(std::floor(player_.pos.x + dx)),
+                                                            static_cast<int>(std::floor(player_.pos.y + dy)),
+                                                            static_cast<int>(std::floor(player_.pos.z + dz))) == CACTUS;
+        if (touching) {
+            cactusTimer_ += dt;
+            if (cactusTimer_ >= 0.5f) {
+                cactusTimer_ = 0.0f;
+                damagePlayer(1, glm::vec3(0.0f));
+            }
+        } else {
+            cactusTimer_ = 0.0f;
+        }
+    }
+
     // Treffer durch Mobs
     for (const PlayerHit& h : entities_.playerHits()) damagePlayer(h.damage, h.knockback);
     entities_.playerHits().clear();
@@ -946,6 +966,11 @@ void Game::update(float dt) {
         world_->tick(dt);
         for (const glm::ivec3& p : world_->takeTorchDrops())
             if (!creative_) entities_.spawnItem({TORCH, 1}, glm::vec3(p.x + 0.5f, p.y + 0.2f, p.z + 0.5f), glm::vec3(0.0f, 2.0f, 0.0f), 0.3f);
+        for (const World::PlantDrop& d : world_->takePlantDrops()) {
+            const ItemId item = blockDropItem(d.block);
+            if (!creative_ && item != ITEM_NONE)
+                entities_.spawnItem({item, 1}, glm::vec3(d.pos.x + 0.5f, d.pos.y + 0.2f, d.pos.z + 0.5f), glm::vec3(0.0f, 2.0f, 0.0f), 0.3f);
+        }
     } else {
         target_ = RayHit{};
         if (screen_ == MenuScreen::Editor && editorUi_.rotate) editorUi_.previewYaw += dt * 0.9f;
@@ -986,7 +1011,7 @@ void Game::breakBlock(const glm::ivec3& p) {
     if (!creative_) {
         ItemId drop = harvest ? blockDropItem(b) : ITEM_NONE;
         // Laub gibt nur manchmal etwas her
-        if (b == LEAVES && (hash3(p.x, p.y, p.z, 99u) & 7u) >= 3u) drop = ITEM_NONE;
+        if (isLeaves(b) && (hash3(p.x, p.y, p.z, 99u) & 7u) >= 3u) drop = ITEM_NONE;
         if (drop != ITEM_NONE)
             entities_.spawnItem({drop, 1}, glm::vec3(p.x + 0.5f, p.y + 0.25f, p.z + 0.5f),
                                 glm::vec3(static_cast<float>((hash3(p.x, p.y, p.z, 5u) & 15u)) / 8.0f - 1.0f, 3.0f,
@@ -1013,9 +1038,9 @@ void Game::placeBlockOrUse() {
     }
     if (sel.empty()) return;
 
-    if (sel.id == ITEM_MEAT || sel.id == ITEM_COOKED_MEAT) {
+    if (sel.id == ITEM_MEAT || sel.id == ITEM_COOKED_MEAT || sel.id == ITEM_BERRIES) {
         if (!creative_ && health_ < 20 && eatTimer_ <= 0.0f) {
-            health_ = std::min(20, health_ + (sel.id == ITEM_COOKED_MEAT ? 8 : 4));
+            health_ = std::min(20, health_ + (sel.id == ITEM_COOKED_MEAT ? 8 : (sel.id == ITEM_BERRIES ? 2 : 4)));
             inventory_.take(slot_, 1);
             eatTimer_ = 0.8f;
             uiSound(SoundId::Eat);
@@ -1026,10 +1051,16 @@ void Game::placeBlockOrUse() {
 
     glm::ivec3 p = target_.block + target_.normal;
     if (target_.normal.x == 0 && target_.normal.y == 0 && target_.normal.z == 0) return;
+    // Hohes Gras, Farn und Toter Busch werden einfach ersetzt
+    const BlockId targetBlock = world_->getBlock(target_.block.x, target_.block.y, target_.block.z);
+    const bool replace = targetBlock == TALL_GRASS || targetBlock == FERN || targetBlock == DEAD_BUSH;
+    if (replace) p = target_.block;
     if (p.y < 0 || p.y >= CHUNK_H) return;
     const BlockId cur = world_->getBlock(p.x, p.y, p.z);
-    if (cur != AIR && !blockInfo(cur).liquid) return;
+    if (cur != AIR && !replace && !blockInfo(cur).liquid) return;
     BlockId id = itemBlock(sel.id);
+    if (isPlant(id) && (cur != AIR && !replace)) return;
+    if (isPlant(id) && !plantCanStandOn(id, world_->getBlock(p.x, p.y - 1, p.z))) return;
     if (id == TORCH) {
         // Fackeln brauchen einen festen Traegerblock: auf dem Boden oder an einer Wand, nie an der Decke
         const glm::ivec3& n = target_.normal;

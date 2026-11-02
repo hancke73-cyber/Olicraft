@@ -35,7 +35,17 @@ constexpr ItemId ITEM_GOLD_PICKAXE = 223;
 constexpr ItemId ITEM_GOLD_AXE = 224;
 constexpr ItemId ITEM_GOLD_SHOVEL = 225;
 constexpr ItemId ITEM_GOLD_SWORD = 226;
-constexpr ItemId ITEM_LAST = 226;
+constexpr ItemId ITEM_BRICK = 227;
+constexpr ItemId ITEM_CLAY_BALL = 228;
+constexpr ItemId ITEM_PAPER = 229;
+constexpr ItemId ITEM_BOOK = 230;
+constexpr ItemId ITEM_DYE_RED = 231;
+constexpr ItemId ITEM_DYE_YELLOW = 232;
+constexpr ItemId ITEM_DYE_BLUE = 233;
+constexpr ItemId ITEM_DYE_GREEN = 234;
+constexpr ItemId ITEM_DYE_BLACK = 235;
+constexpr ItemId ITEM_BERRIES = 236;  // Beeren (heilen etwas)
+constexpr ItemId ITEM_LAST = 236;
 
 struct ItemStack {
     ItemId id = ITEM_NONE;

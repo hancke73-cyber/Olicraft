@@ -208,8 +208,15 @@ void World::lightChunkInit(Chunk& c, bool fullScan) {
     propagateLight(q);
 }
 
-// Fackeln fallen ab, wenn ihr Traeger fehlt
+// Fackeln fallen ab, wenn ihr Traeger fehlt; Pflanzen darueber brechen, wenn ihr Boden fehlt
 void World::checkTorchSupports(int x, int y, int z) {
+    for (int yy = y + 1; yy < CHUNK_H; ++yy) {
+        const BlockId above = getBlock(x, yy, z);
+        if (!isPlant(above)) break;
+        if (plantCanStandOn(above, getBlock(x, yy - 1, z))) break;
+        setBlockImpl(x, yy, z, AIR, true);
+        plantDrops_.push_back({glm::ivec3(x, yy, z), above});
+    }
     for (const auto& d : DIRS6) {
         const int nx = x + d[0], ny = y + d[1], nz = z + d[2];
         const BlockId b = getBlock(nx, ny, nz);

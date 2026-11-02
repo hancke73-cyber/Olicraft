@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <thread>
 #include <string>
 #include <vector>
@@ -1207,7 +1208,7 @@ static void testCraftingAndTools() {
         auto full = grid(3, {{0, COBBLE}, {1, COBBLE}, {2, COBBLE}, {3, COBBLE}, {4, COBBLE}, {5, COBBLE}, {6, COBBLE}, {7, COBBLE}, {8, COBBLE}});
         CHECK(matchRecipe(full.data(), 3).empty());
         auto g = grid(2, {{0, SAND}, {1, SAND}, {2, SAND}, {3, SAND}});
-        CHECK(matchRecipe(g.data(), 2).empty());
+        CHECK(matchRecipe(g.data(), 2).id == SANDSTONE);  // Glas gibt es nur aus dem Ofen, Sand ergibt Sandstein
         auto c = grid(2, {{3, COBBLE}});
         CHECK(matchRecipe(c.data(), 2).empty());
         // Eisen- und Diamantwerkzeuge
@@ -2356,6 +2357,129 @@ static void testSky() {
     CHECK(big > 10 && big < 150);
 }
 
+static void testNewBlocksAndRecipes() {
+    // Tabellen: jeder Block hat Namen und gueltige Kacheln, Pflanzen sind begehbar
+    for (int b = 1; b < BLOCK_COUNT; ++b) {
+        const BlockInfo& bi = blockInfo(static_cast<BlockId>(b));
+        CHECK(bi.name != nullptr && std::string(bi.name).size() > 1);
+        CHECK(bi.top >= 0 && bi.top < TILE_COUNT && bi.bottom >= 0 && bi.bottom < TILE_COUNT && bi.side >= 0 && bi.side < TILE_COUNT);
+    }
+    for (int b = TALL_GRASS; b <= BERRY_BUSH; ++b) {
+        const BlockInfo& bi = blockInfo(static_cast<BlockId>(b));
+        CHECK(isPlant(static_cast<BlockId>(b)) && !bi.solid && !bi.opaque && !bi.liquid && !bi.blocksSky && bi.breakable);
+        CHECK(miningSeconds(static_cast<BlockId>(b), ItemStack()) == 0.0f);
+    }
+    CHECK(!isPlant(CACTUS) && !isPlant(TORCH) && isLeaves(BIRCH_LEAVES) && isLeaves(SPRUCE_LEAVES) && !isLeaves(LOG));
+    CHECK(lightEmission(LAMP) == 15 && blockInfo(LAMP).emissive);
+    CHECK(plantCanStandOn(FLOWER_RED, GRASS) && !plantCanStandOn(FLOWER_RED, SAND) && plantCanStandOn(DEAD_BUSH, SAND));
+    CHECK(plantCanStandOn(SUGAR_CANE, SUGAR_CANE) && !plantCanStandOn(SUGAR_CANE, STONE) && plantCanStandOn(MUSHROOM_RED, STONE));
+    // Beute
+    CHECK(blockDropItem(DEAD_BUSH) == ITEM_STICK && blockDropItem(BERRY_BUSH) == ITEM_BERRIES && blockDropItem(TALL_GRASS) == ITEM_NONE);
+    CHECK(blockDropItem(BIRCH_LOG) == BIRCH_LOG && blockDropItem(CLAY) == CLAY);
+    CHECK(!canHarvest(IRON_BLOCK, ItemStack{ITEM_STONE_PICKAXE, 1}) && canHarvest(IRON_BLOCK, ItemStack{ITEM_IRON_PICKAXE, 1}));
+    CHECK(itemInfo(ITEM_BRICK).maxStack == 64 && std::string(itemInfo(ITEM_BERRIES).name) == "Beeren" && itemValid(ITEM_BERRIES));
+    // Kreativliste: alle Eintraege gueltig, ohne Doppelte
+    {
+        std::vector<ItemId> seen;
+        for (int i = 0; i < creativeItemCount(); ++i) {
+            CHECK(itemValid(creativeItem(i)));
+            seen.push_back(creativeItem(i));
+        }
+        std::sort(seen.begin(), seen.end());
+        CHECK(std::adjacent_find(seen.begin(), seen.end()) == seen.end());
+    }
+    // Rezepte: Ergebnis gueltig, Zutaten gueltig, Raster passt, jedes Rezept ist mit seiner eigenen Belegung herstellbar
+    for (const Recipe& r : recipes()) {
+        CHECK(itemValid(r.result.id) && r.result.count >= 1);
+        const int n = r.gridNeeded();
+        CHECK(n == 2 || n == 3);
+        const std::vector<ItemId> lay = recipeLayout(r, n);
+        std::vector<ItemStack> cells(lay.size());
+        for (size_t i = 0; i < lay.size(); ++i)
+            if (lay[i] != ITEM_NONE) cells[i] = {lay[i], 1};
+        const ItemStack out = matchRecipe(cells.data(), n);
+        CHECK(!out.empty());
+        for (const Ingredient& ing : recipeIngredients(r)) CHECK(itemValid(ing.item) && ing.count >= 1);
+    }
+    // Einzelne Rezepte
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (const auto& c : cells) g[static_cast<size_t>(c.first)] = {c.second, 1};
+        return g;
+    };
+    CHECK(matchRecipe(grid(2, {{0, BIRCH_LOG}}).data(), 2).id == PLANKS);
+    CHECK(matchRecipe(grid(3, {{0, PLANKS}, {1, PLANKS}, {2, PLANKS}, {3, PLANKS}, {5, PLANKS}, {6, PLANKS}, {7, PLANKS}, {8, PLANKS}}).data(), 3).id == CHEST);
+    CHECK(matchRecipe(grid(3, {{0, WOOL_RED}, {1, WOOL_RED}, {2, WOOL_RED}, {3, PLANKS}, {4, PLANKS}, {5, PLANKS}}).data(), 3).id == BED);
+    CHECK(matchRecipe(grid(3, {{1, GLASS}, {3, GLASS}, {4, TORCH}, {5, GLASS}, {7, GLASS}}).data(), 3).id == LAMP);
+    CHECK(matchRecipe(grid(2, {{0, ITEM_BRICK}, {1, ITEM_BRICK}, {2, ITEM_BRICK}, {3, ITEM_BRICK}}).data(), 2).id == BRICKS);
+    ItemStack paper = matchRecipe(grid(3, {{3, SUGAR_CANE}, {4, SUGAR_CANE}, {5, SUGAR_CANE}}).data(), 3);
+    CHECK(paper.id == ITEM_PAPER && paper.count == 3);
+    ItemStack ing = matchRecipe(grid(3, {{4, IRON_BLOCK}}).data(), 3);
+    CHECK(ing.id == ITEM_IRON_INGOT && ing.count == 9);
+    CHECK(matchRecipe(grid(3, {{0, ITEM_GOLD_INGOT}, {1, ITEM_GOLD_INGOT}, {2, ITEM_GOLD_INGOT}, {3, ITEM_GOLD_INGOT}, {4, ITEM_GOLD_INGOT},
+                               {5, ITEM_GOLD_INGOT}, {6, ITEM_GOLD_INGOT}, {7, ITEM_GOLD_INGOT}, {8, ITEM_GOLD_INGOT}}).data(), 3).id == GOLD_BLOCK);
+    // Formlos: Farbe + Wolle in beliebiger Lage, mehr oder weniger Zutaten gelten nicht
+    CHECK(matchRecipe(grid(2, {{0, WOOL_WHITE}, {3, ITEM_DYE_RED}}).data(), 2).id == WOOL_RED);
+    CHECK(matchRecipe(grid(2, {{2, ITEM_DYE_BLUE}, {1, WOOL_WHITE}}).data(), 2).id == WOOL_BLUE);
+    CHECK(matchRecipe(grid(2, {{0, WOOL_WHITE}, {1, ITEM_DYE_RED}, {2, ITEM_DYE_RED}}).data(), 2).empty());
+    CHECK(matchRecipe(grid(2, {{0, WOOL_RED}, {1, ITEM_DYE_RED}}).data(), 2).empty());
+    // Ofen und Brennstoff
+    CHECK(smeltRecipe(ITEM_CLAY_BALL)->output.id == ITEM_BRICK && smeltRecipe(CACTUS)->output.id == ITEM_DYE_GREEN);
+    CHECK(smeltRecipe(BIRCH_LOG)->output.id == ITEM_COAL && fuelSeconds(COAL_BLOCK) > fuelSeconds(ITEM_COAL));
+    // Terrain: neue Baumarten, Pflanzen und Kakteen kommen vor
+    {
+        TerrainGenerator g(3);
+        std::map<BlockId, int> counts;
+        for (int cx = -6; cx <= 6; ++cx)
+            for (int cz = -6; cz <= 6; ++cz) {
+                Chunk ch(cx, cz);
+                g.generate(ch);
+                for (BlockId b : ch.blocks) ++counts[b];
+            }
+        CHECK(counts[LOG] + counts[BIRCH_LOG] + counts[SPRUCE_LOG] > 50);
+        int plants = 0;
+        for (int b = TALL_GRASS; b <= BERRY_BUSH; ++b) plants += counts[static_cast<BlockId>(b)];
+        CHECK(plants > 200 && counts[TALL_GRASS] > 50);
+        CHECK(counts[CACTUS] > 0 || counts[DEAD_BUSH] > 0);
+    }
+    // Pflanzen fallen ab, wenn der Boden entfernt wird (auch uebereinanderstehendes Zuckerrohr)
+    {
+        World w(5);
+        w.setMeshingEnabled(false);
+        w.loadAround(glm::vec3(0.0f), 2);
+        for (int y = 98; y < 110; ++y) w.setBlock(2, y, 2, AIR);
+        w.setBlock(2, 98, 2, SAND);
+        w.setBlock(2, 99, 2, SUGAR_CANE);
+        w.setBlock(2, 100, 2, SUGAR_CANE);
+        w.setBlock(2, 101, 2, SUGAR_CANE);
+        w.takePlantDrops();
+        w.setBlock(2, 98, 2, AIR);
+        CHECK(w.getBlock(2, 99, 2) == AIR && w.getBlock(2, 100, 2) == AIR && w.getBlock(2, 101, 2) == AIR);
+        CHECK(w.takePlantDrops().size() == 3);
+        w.setBlock(3, 98, 2, GRASS);
+        w.setBlock(3, 99, 2, FLOWER_RED);
+        CHECK(w.takePlantDrops().empty() && w.getBlock(3, 99, 2) == FLOWER_RED);
+        w.setBlock(3, 98, 2, STONE);
+        auto d = w.takePlantDrops();
+        CHECK(d.size() == 1 && d[0].block == FLOWER_RED && w.getBlock(3, 99, 2) == AIR);
+        // Pflanzen verdecken kein Licht und blockieren keine Bewegung
+        w.setBlock(4, 98, 2, GRASS);
+        w.setBlock(4, 99, 2, TALL_GRASS);
+        CHECK(!w.isSolidAt(4, 99, 2));
+    }
+    // Mesher: Pflanzen erzeugen vier Flaechen (zwei Ebenen, beidseitig)
+    {
+        std::vector<BlockId> p(PAD_VOLUME, AIR);
+        std::vector<uint8_t> l(PAD_VOLUME, 0);
+        p[padIndex(5, 70, 5)] = GRASS;
+        p[padIndex(5, 71, 5)] = FLOWER_RED;
+        MeshOutput out;
+        buildChunkMesh(p.data(), l.data(), out);
+        // Gras: 6 Flaechen, Blume: 4 Flaechen
+        CHECK(out.opaque.size() == (6 + 4) * 4);
+    }
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -2388,6 +2512,7 @@ int main() {
     testMobSounds();
     testPlayerSkins();
     testSky();
+    testNewBlocksAndRecipes();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

@@ -18,6 +18,14 @@ Recipe make(std::vector<std::string> rows, std::initializer_list<std::pair<char,
     return r;
 }
 
+Recipe makeList(std::vector<ItemId> list, ItemStack result) {
+    Recipe r;
+    r.shapeless = true;
+    r.list = std::move(list);
+    r.result = result;
+    return r;
+}
+
 ItemId ingredient(const Recipe& r, char c) {
     for (int i = 0; i < r.symbolCount; ++i)
         if (r.symbols[i] == c) return r.items[i];
@@ -31,6 +39,44 @@ std::vector<Recipe> buildRecipes() {
     v.push_back(make({"PP", "PP"}, {{'P', PLANKS}}, {CRAFTING_TABLE, 1}));
     v.push_back(make({"CCC", "C C", "CCC"}, {{'C', COBBLE}}, {FURNACE, 1}));
     v.push_back(make({"C", "S"}, {{'C', ITEM_COAL}, {'S', ITEM_STICK}}, {TORCH, 4}));
+
+    // Holzarten
+    v.push_back(make({"L"}, {{'L', BIRCH_LOG}}, {PLANKS, 4}));
+    v.push_back(make({"L"}, {{'L', SPRUCE_LOG}}, {PLANKS, 4}));
+    // Stationen und Einrichtung
+    v.push_back(make({"PPP", "P P", "PPP"}, {{'P', PLANKS}}, {CHEST, 1}));
+    for (ItemId wool : {WOOL_WHITE, WOOL_RED, WOOL_BLUE, WOOL_GREEN, WOOL_YELLOW, WOOL_BLACK})
+        v.push_back(make({"WWW", "PPP"}, {{'W', wool}, {'P', PLANKS}}, {BED, 1}));
+    v.push_back(make({"PPP", "BBB", "PPP"}, {{'P', PLANKS}, {'B', ITEM_BOOK}}, {BOOKSHELF, 1}));
+    v.push_back(make({"P", "P", "P"}, {{'P', ITEM_PAPER}}, {ITEM_BOOK, 1}));
+    v.push_back(make({"SSS"}, {{'S', SUGAR_CANE}}, {ITEM_PAPER, 3}));
+    v.push_back(make({" G ", "GTG", " G "}, {{'G', GLASS}, {'T', TORCH}}, {LAMP, 1}));
+    // Stein, Ton, Sand
+    v.push_back(make({"SS", "SS"}, {{'S', STONE}}, {STONE_BRICKS, 4}));
+    v.push_back(make({"SS", "SS"}, {{'S', SAND}}, {SANDSTONE, 1}));
+    v.push_back(make({"C"}, {{'C', CLAY}}, {ITEM_CLAY_BALL, 4}));
+    v.push_back(make({"CC", "CC"}, {{'C', ITEM_CLAY_BALL}}, {CLAY, 1}));
+    v.push_back(make({"BB", "BB"}, {{'B', ITEM_BRICK}}, {BRICKS, 1}));
+    // Materialbloecke und zurueck
+    struct Pack {
+        ItemId item;
+        BlockId block;
+    };
+    for (const Pack& p : {Pack{ITEM_IRON_INGOT, IRON_BLOCK}, Pack{ITEM_GOLD_INGOT, GOLD_BLOCK}, Pack{ITEM_DIAMOND, DIAMOND_BLOCK},
+                          Pack{ITEM_COAL, COAL_BLOCK}}) {
+        v.push_back(make({"III", "III", "III"}, {{'I', p.item}}, {p.block, 1}));
+        v.push_back(make({"B"}, {{'B', p.block}}, {p.item, 9}));
+    }
+    // Farben und Wolle
+    v.push_back(make({"F"}, {{'F', FLOWER_RED}}, {ITEM_DYE_RED, 1}));
+    v.push_back(make({"F"}, {{'F', FLOWER_YELLOW}}, {ITEM_DYE_YELLOW, 1}));
+    v.push_back(make({"F"}, {{'F', FLOWER_BLUE}}, {ITEM_DYE_BLUE, 1}));
+    v.push_back(make({"C"}, {{'C', ITEM_COAL}}, {ITEM_DYE_BLACK, 1}));
+    v.push_back(makeList({WOOL_WHITE, ITEM_DYE_RED}, {WOOL_RED, 1}));
+    v.push_back(makeList({WOOL_WHITE, ITEM_DYE_BLUE}, {WOOL_BLUE, 1}));
+    v.push_back(makeList({WOOL_WHITE, ITEM_DYE_YELLOW}, {WOOL_YELLOW, 1}));
+    v.push_back(makeList({WOOL_WHITE, ITEM_DYE_GREEN}, {WOOL_GREEN, 1}));
+    v.push_back(makeList({WOOL_WHITE, ITEM_DYE_BLACK}, {WOOL_BLACK, 1}));
 
     struct Mat {
         ItemId material;
@@ -72,6 +118,53 @@ const std::vector<Recipe>& recipes() {
     return r;
 }
 
+namespace {
+bool matchesShapeless(const Recipe& rec, const ItemStack* cells, int n) {
+    std::vector<ItemId> have;
+    for (int i = 0; i < n * n; ++i)
+        if (!cells[i].empty()) have.push_back(cells[i].id);
+    if (have.size() != rec.list.size()) return false;
+    std::vector<ItemId> want = rec.list;
+    std::sort(have.begin(), have.end());
+    std::sort(want.begin(), want.end());
+    return have == want;
+}
+}  // namespace
+
+std::vector<Ingredient> recipeIngredients(const Recipe& r) {
+    std::vector<Ingredient> out;
+    auto add = [&](ItemId id) {
+        for (Ingredient& i : out)
+            if (i.item == id) {
+                ++i.count;
+                return;
+            }
+        out.push_back({id, 1});
+    };
+    if (r.shapeless) {
+        for (ItemId id : r.list) add(id);
+    } else {
+        for (const std::string& row : r.rows)
+            for (char ch : row)
+                if (ch != ' ') add(ingredient(r, ch));
+    }
+    return out;
+}
+
+std::vector<ItemId> recipeLayout(const Recipe& r, int n) {
+    std::vector<ItemId> cells(static_cast<size_t>(n * n), ITEM_NONE);
+    if (r.shapeless) {
+        for (size_t i = 0; i < r.list.size() && i < cells.size(); ++i) cells[i] = r.list[i];
+        return cells;
+    }
+    for (int row = 0; row < r.height() && row < n; ++row)
+        for (int col = 0; col < r.width() && col < n; ++col) {
+            const char ch = r.rows[static_cast<size_t>(row)][static_cast<size_t>(col)];
+            if (ch != ' ') cells[static_cast<size_t>(row * n + col)] = ingredient(r, ch);
+        }
+    return cells;
+}
+
 ItemStack matchRecipe(const ItemStack* cells, int n) {
     // Begrenzungsrahmen der belegten Felder
     int minR = n, maxR = -1, minC = n, maxC = -1;
@@ -86,6 +179,10 @@ ItemStack matchRecipe(const ItemStack* cells, int n) {
     if (maxR < 0) return ItemStack();
     const int h = maxR - minR + 1, w = maxC - minC + 1;
     for (const Recipe& rec : recipes()) {
+        if (rec.shapeless) {
+            if (matchesShapeless(rec, cells, n)) return rec.result;
+            continue;
+        }
         if (rec.height() != h || rec.width() != w) continue;
         if (matchesAt(rec, cells, n, minR, minC, false) || matchesAt(rec, cells, n, minR, minC, true)) return rec.result;
     }
@@ -99,6 +196,11 @@ const SmeltRecipe* smeltRecipe(ItemId input) {
         {SAND, {GLASS, 1}},
         {COBBLE, {STONE, 1}},
         {ITEM_MEAT, {ITEM_COOKED_MEAT, 1}},
+        {ITEM_CLAY_BALL, {ITEM_BRICK, 1}},
+        {CACTUS, {ITEM_DYE_GREEN, 1}},
+        {LOG, {ITEM_COAL, 1}},
+        {BIRCH_LOG, {ITEM_COAL, 1}},
+        {SPRUCE_LOG, {ITEM_COAL, 1}},
     };
     for (const SmeltRecipe& r : table)
         if (r.input == input) return &r;
@@ -108,9 +210,15 @@ const SmeltRecipe* smeltRecipe(ItemId input) {
 float fuelSeconds(ItemId item) {
     switch (item) {
         case ITEM_COAL: return 80.0f;
+        case COAL_BLOCK: return 800.0f;
         case LOG:
+        case BIRCH_LOG:
+        case SPRUCE_LOG:
         case PLANKS:
+        case CHEST:
+        case BOOKSHELF:
         case CRAFTING_TABLE: return 15.0f;
+        case DEAD_BUSH: return 5.0f;
         case ITEM_STICK: return 5.0f;
         case ITEM_WOODEN_PICKAXE:
         case ITEM_WOODEN_AXE:

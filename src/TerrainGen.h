@@ -18,6 +18,7 @@ public:
         bool desert;
         bool snow;
         bool forest;
+        float temp = 0.0f, moist = 0.0f;  // Rauschwerte -1..1
     };
     Column column(int wx, int wz) const;
 
@@ -27,6 +28,7 @@ private:
     bool isCave(int wx, int y, int wz) const;
     void placeTrees(Chunk& chunk) const;
     void placeOres(Chunk& chunk) const;
+    void placePlants(Chunk& chunk, const Column* cols) const;
 
     int32_t seed_;
     Noise continental_, detail_, ridge_, temperature_, moisture_;

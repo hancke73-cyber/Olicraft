@@ -62,6 +62,17 @@ public:
         return out;
     }
 
+    // Pflanzen, deren Boden entfernt wurde (die Pflanze ist schon weg; Ort und Blockart zum Abholen der Beute)
+    struct PlantDrop {
+        glm::ivec3 pos;
+        BlockId block;
+    };
+    std::vector<PlantDrop> takePlantDrops() {
+        std::vector<PlantDrop> out;
+        out.swap(plantDrops_);
+        return out;
+    }
+
     // Fluessigkeiten: Wasser fliesst in Schritten von 0.25 s, Lava deutlich langsamer (1.5 s)
     void tick(float dt);
     void scheduleFluidAround(int x, int y, int z);
@@ -128,6 +139,7 @@ private:
     std::vector<BlockId> padded_;
     std::vector<uint8_t> paddedLight_;
     std::vector<glm::ivec3> torchDrops_;
+    std::vector<PlantDrop> plantDrops_;
     bool lightUrgent_ = false;
     bool meshing_ = true;
     struct FluidQueue {

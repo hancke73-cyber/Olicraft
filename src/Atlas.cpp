@@ -478,6 +478,438 @@ void drawCookedMeat(TileCanvas& c) {
     for (auto& b : bone) c.set(b[0], b[1], {232, 226, 208, 255});
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------
+// Neue Bausteine, Pflanzen und Gegenstaende
+// ---------------------------------------------------------------------------------------------------------------
+void clearTile(TileCanvas& c) { drawToolBase(c); }
+
+void drawBricks(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int row = y / 4;
+            const int off = (row % 2) * 4;
+            const bool mortarH = y % 4 == 3;
+            const bool mortarV = (x + off) % 8 == 7;
+            int d = static_cast<int>((rnd(x, y, TILE_BRICKS) - 0.5f) * 20);
+            if (mortarH || mortarV) c.set(x, y, shade({186, 180, 170, 255}, d / 2));
+            else c.set(x, y, shade({156, 78, 60, 255}, d));
+        }
+}
+
+void drawStoneBricks(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int row = y / 8;
+            const bool jointH = y % 8 == 7;
+            const bool jointV = (x + row * 4) % 8 == 7;
+            int base = 128 + static_cast<int>((rnd(x, y, TILE_STONE_BRICKS) - 0.5f) * 20);
+            if (jointH || jointV) base = 88 + static_cast<int>(rnd(x, y, TILE_STONE_BRICKS, 3) * 10);
+            c.set(x, y, {base, base, base + 2, 255});
+        }
+}
+
+void drawSandstoneTop(TileCanvas& c) { drawNoisy(c, TILE_SANDSTONE_TOP, {214, 198, 140, 255}, 8); }
+void drawSandstoneSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_SANDSTONE_SIDE) - 0.5f) * 14);
+            Rgba col = shade({218, 202, 146, 255}, d);
+            if (y == 3 || y == 12) col = shade({184, 166, 108, 255}, d);
+            if (y > 3 && y < 12 && (y == 7 || y == 8)) col = shade({206, 188, 128, 255}, d);
+            c.set(x, y, col);
+        }
+}
+
+void drawGravel(TileCanvas& c) {
+    static const int greys[3] = {96, 128, 156};
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int cell = static_cast<int>(hash3(x / 3, y / 3, TILE_GRAVEL, 21u) % 3);
+            const int edge = (x % 3 == 2 || y % 3 == 2) ? -26 : 0;
+            const int v = greys[cell] + edge + static_cast<int>((rnd(x, y, TILE_GRAVEL) - 0.5f) * 14);
+            c.set(x, y, {v, v - 2, v - 4, 255});
+        }
+}
+
+void drawClay(TileCanvas& c) { drawNoisy(c, TILE_CLAY, {160, 166, 182, 255}, 6); }
+
+void drawWool(TileCanvas& c, int tile, Rgba base) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int weave = ((x / 2 + y / 2) % 2) ? 7 : -5;
+            const int d = weave + static_cast<int>((rnd(x, y, tile) - 0.5f) * 10);
+            c.set(x, y, shade(base, d));
+        }
+}
+
+void drawBookshelf(TileCanvas& c) {
+    static const Rgba book[6] = {{150, 40, 40, 255}, {50, 80, 150, 255}, {60, 120, 60, 255}, {170, 130, 50, 255}, {110, 60, 110, 255}, {200, 190, 170, 255}};
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_BOOKSHELF) - 0.5f) * 14);
+            Rgba col = shade({160, 124, 72, 255}, d);  // Brett
+            const bool shelf = y <= 1 || y >= 14 || y == 7 || y == 8;
+            if (!shelf) {
+                const int idx = static_cast<int>(hash3(x / 2, y < 7 ? 0 : 1, TILE_BOOKSHELF, 33u) % 6);
+                col = shade(book[idx], d + ((x % 2) ? -14 : 0));
+                if (y == 6 || y == 9 || y == 13 || y == 2) col = shade(col, -30);  // Schatten unter dem Brett
+            }
+            c.set(x, y, col);
+        }
+}
+
+void drawMetalBlock(TileCanvas& c, int tile, Rgba base, Rgba light, Rgba dark) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const bool edge = x == 0 || y == 0 || x == TILE_PX - 1 || y == TILE_PX - 1;
+            const bool inner = x == 1 || y == 1 || x == TILE_PX - 2 || y == TILE_PX - 2;
+            int d = static_cast<int>((rnd(x, y, tile) - 0.5f) * 10);
+            Rgba col = base;
+            if (edge) col = dark;
+            else if (inner) col = (x + y < 16) ? light : shade(base, -16);
+            c.set(x, y, shade(col, d));
+        }
+}
+
+void drawIronBlock(TileCanvas& c) { drawMetalBlock(c, TILE_IRON_BLOCK, {214, 214, 220, 255}, {240, 240, 244, 255}, {150, 150, 158, 255}); }
+void drawGoldBlock(TileCanvas& c) { drawMetalBlock(c, TILE_GOLD_BLOCK, {246, 208, 64, 255}, {255, 240, 150, 255}, {176, 136, 24, 255}); }
+void drawDiamondBlock(TileCanvas& c) { drawMetalBlock(c, TILE_DIAMOND_BLOCK, {80, 214, 220, 255}, {190, 255, 255, 255}, {30, 130, 140, 255}); }
+void drawCoalBlock(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int v = 30 + static_cast<int>(rnd(x, y, TILE_COAL_BLOCK) * 22);
+            if (rnd(x, y, TILE_COAL_BLOCK, 9) > 0.92f) v += 30;
+            if (x == 0 || y == 0 || x == TILE_PX - 1 || y == TILE_PX - 1) v -= 14;
+            c.set(x, y, {v, v, v + 4, 255});
+        }
+}
+
+void drawLamp(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const bool frame = x <= 1 || y <= 1 || x >= TILE_PX - 2 || y >= TILE_PX - 2;
+            const bool bar = x == 7 || x == 8 || y == 7 || y == 8;
+            int d = static_cast<int>((rnd(x, y, TILE_LAMP) - 0.5f) * 14);
+            if (frame || bar) c.set(x, y, shade({120, 84, 44, 255}, d));
+            else {
+                const float dx = x - 7.5f, dy = y - 7.5f;
+                const int glow = static_cast<int>(40 - std::sqrt(dx * dx + dy * dy) * 4.0f);
+                c.set(x, y, {255, 224 + glow / 2 + d / 2, 140 + glow + d, 255});
+            }
+        }
+}
+
+void drawPumpkinTop(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_PUMPKIN_TOP) - 0.5f) * 16);
+            Rgba col = shade({198, 118, 24, 255}, d);
+            if (x >= 6 && x <= 9 && y >= 6 && y <= 9) col = shade({88, 112, 40, 255}, d);
+            c.set(x, y, col);
+        }
+}
+void drawPumpkinSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_PUMPKIN_SIDE) - 0.5f) * 14);
+            const int ridge = (x % 4 == 0) ? -26 : ((x % 4 == 1) ? 8 : 0);
+            c.set(x, y, shade({206, 124, 26, 255}, d + ridge));
+        }
+}
+
+void drawCactusTop(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_CACTUS_TOP) - 0.5f) * 14);
+            Rgba col = shade({66, 128, 52, 255}, d);
+            if (x == 0 || y == 0 || x == TILE_PX - 1 || y == TILE_PX - 1) col = shade({40, 90, 36, 255}, d);
+            if (x >= 6 && x <= 9 && y >= 6 && y <= 9) col = shade({110, 160, 80, 255}, d);
+            c.set(x, y, col);
+        }
+}
+void drawCactusSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_CACTUS_SIDE) - 0.5f) * 12);
+            const int ridge = (x % 4 == 0 || x % 4 == 3) ? -20 : 8;
+            Rgba col = shade({70, 136, 54, 255}, d + ridge);
+            if ((x % 4 == 2) && (y % 4 == 1)) col = {230, 226, 190, 255};  // Stacheln
+            c.set(x, y, col);
+        }
+}
+
+void drawBirchSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_BIRCH_LOG_SIDE) - 0.5f) * 14);
+            Rgba col = shade({224, 222, 212, 255}, d);
+            const uint32_t h = hash3(x / 3, y, TILE_BIRCH_LOG_SIDE, 41u) % 11u;
+            if (h < 2 && (x % 3 != 1)) col = shade({40, 38, 36, 255}, d);  // dunkle Rindenmarken
+            c.set(x, y, col);
+        }
+}
+void drawBirchTop(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float dx = x - 7.5f, dy = y - 7.5f;
+            const float r = std::sqrt(dx * dx + dy * dy);
+            Rgba base = (static_cast<int>(r * 1.2f) % 2 == 0) ? Rgba{210, 190, 138, 255} : Rgba{192, 170, 118, 255};
+            if (std::max(std::fabs(dx), std::fabs(dy)) > 6.9f) base = {224, 222, 212, 255};
+            c.set(x, y, shade(base, static_cast<int>((rnd(x, y, TILE_BIRCH_LOG_TOP) - 0.5f) * 10)));
+        }
+}
+void drawLeavesVariant(TileCanvas& c, int tile, Rgba base, float gap) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float r = rnd(x, y, tile);
+            const int d = static_cast<int>((rnd(x, y, tile, 4) - 0.5f) * 44);
+            Rgba col = shade(base, d);
+            if (r > gap) col.a = 0;
+            c.set(x, y, col);
+        }
+}
+void drawBirchLeaves(TileCanvas& c) { drawLeavesVariant(c, TILE_BIRCH_LEAVES, {104, 156, 54, 255}, 0.88f); }
+void drawSpruceLeaves(TileCanvas& c) { drawLeavesVariant(c, TILE_SPRUCE_LEAVES, {40, 92, 56, 255}, 0.86f); }
+void drawSpruceSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float streak = rnd(x, 0, TILE_SPRUCE_LOG_SIDE, 5);
+            const int d = static_cast<int>((streak - 0.5f) * 34 + (rnd(x, y, TILE_SPRUCE_LOG_SIDE) - 0.5f) * 10);
+            c.set(x, y, shade({72, 52, 32, 255}, d));
+        }
+}
+void drawSpruceTop(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float dx = x - 7.5f, dy = y - 7.5f;
+            const float r = std::sqrt(dx * dx + dy * dy);
+            Rgba base = (static_cast<int>(r * 1.2f) % 2 == 0) ? Rgba{140, 108, 64, 255} : Rgba{120, 90, 52, 255};
+            if (std::max(std::fabs(dx), std::fabs(dy)) > 6.9f) base = {72, 52, 32, 255};
+            c.set(x, y, shade(base, static_cast<int>((rnd(x, y, TILE_SPRUCE_LOG_TOP) - 0.5f) * 10)));
+        }
+}
+
+void drawChestSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_CHEST_SIDE) - 0.5f) * 14);
+            Rgba col = shade({152, 108, 56, 255}, d);
+            const bool border = x == 0 || x == TILE_PX - 1 || y == 0 || y == TILE_PX - 1;
+            if (border) col = shade({96, 64, 30, 255}, d);
+            if (y == 9) col = shade({84, 56, 26, 255}, d);  // Fuge zwischen Deckel und Korpus
+            if (x >= 7 && x <= 8 && y >= 7 && y <= 10) col = shade({210, 200, 120, 255}, d);  // Schloss
+            c.set(x, y, col);
+        }
+}
+void drawChestTop(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_CHEST_TOP) - 0.5f) * 14);
+            Rgba col = shade({160, 116, 62, 255}, d);
+            if (x <= 1 || x >= TILE_PX - 2 || y <= 1 || y >= TILE_PX - 2) col = shade({100, 68, 32, 255}, d);
+            c.set(x, y, col);
+        }
+}
+
+void drawBedTop(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_BED_TOP) - 0.5f) * 10);
+            Rgba col = shade({176, 44, 44, 255}, d);
+            if (y >= 11) col = shade({238, 236, 228, 255}, d);  // Kissen
+            if (y == 10) col = shade({130, 30, 30, 255}, d);
+            c.set(x, y, col);
+        }
+}
+void drawBedSide(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_BED_SIDE) - 0.5f) * 12);
+            Rgba col = shade({150, 108, 60, 255}, d);
+            if (y >= 8) col = shade({176, 44, 44, 255}, d);
+            if (y == 8) col = shade({120, 28, 28, 255}, d);
+            c.set(x, y, col);
+        }
+}
+
+// --- Pflanzen: transparenter Hintergrund, y = 0 ist der Boden
+void drawTallGrass(TileCanvas& c) {
+    clearTile(c);
+    for (int x = 1; x < 15; ++x) {
+        const uint32_t h = hash3(x, 5, TILE_TALL_GRASS, 71u);
+        if (h % 100 < 30) continue;
+        const int hgt = 5 + static_cast<int>(h % 9u);
+        for (int y = 0; y < hgt; ++y) {
+            const int sway = (y > hgt * 2 / 3) ? ((x % 2) ? 1 : -1) : 0;
+            const int g = 96 + y * 6 + static_cast<int>(rnd(x, y, TILE_TALL_GRASS) * 24);
+            put(c, x + sway, y, {50 + y * 2, g, 38, 255});
+        }
+    }
+}
+void drawFern(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < 13; ++y) put(c, 7, y, {44, 112, 44, 255});
+    for (int y = 2; y < 13; y += 2) {
+        const int len = 6 - y / 3;
+        for (int k = 1; k <= len; ++k) {
+            put(c, 7 - k, y + k / 2 + 1, {52 + k * 4, 128 + k * 3, 52, 255});
+            put(c, 8 + k - 1, y + k / 2 + 1, {52 + k * 4, 128 + k * 3, 52, 255});
+        }
+    }
+}
+void flowerBase(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < 9; ++y) put(c, 7, y, {54, 130, 48, 255});
+    put(c, 6, 3, {54, 130, 48, 255});
+    put(c, 8, 5, {54, 130, 48, 255});
+    put(c, 5, 4, {70, 150, 56, 255});
+    put(c, 9, 6, {70, 150, 56, 255});
+}
+void flowerHead(TileCanvas& c, Rgba petal, Rgba center, int cx = 7, int cy = 10) {
+    for (int dy = -2; dy <= 2; ++dy)
+        for (int dx = -2; dx <= 2; ++dx) {
+            if (std::abs(dx) == 2 && std::abs(dy) == 2) continue;
+            put(c, cx + dx, cy + dy, petal);
+        }
+    put(c, cx, cy, center);
+    put(c, cx + 1, cy, center);
+}
+void drawFlowerRed(TileCanvas& c) { flowerBase(c); flowerHead(c, {212, 36, 36, 255}, {40, 30, 30, 255}); }
+void drawFlowerYellow(TileCanvas& c) { flowerBase(c); flowerHead(c, {244, 214, 40, 255}, {230, 140, 20, 255}); }
+void drawFlowerBlue(TileCanvas& c) { flowerBase(c); flowerHead(c, {70, 96, 226, 255}, {240, 240, 250, 255}); }
+void drawFlowerWhite(TileCanvas& c) { flowerBase(c); flowerHead(c, {244, 244, 244, 255}, {240, 200, 40, 255}); }
+void mushroom(TileCanvas& c, Rgba cap, Rgba spot, bool dots) {
+    clearTile(c);
+    for (int y = 0; y < 6; ++y) {
+        put(c, 7, y, {226, 214, 190, 255});
+        put(c, 8, y, {204, 192, 168, 255});
+    }
+    for (int y = 6; y < 10; ++y) {
+        const int w = y == 6 ? 4 : (y == 7 ? 5 : (y == 8 ? 4 : 2));
+        for (int x = 8 - w; x < 8 + w; ++x) put(c, x, y, cap);
+    }
+    if (dots) {
+        put(c, 5, 7, spot);
+        put(c, 9, 8, spot);
+        put(c, 7, 8, spot);
+        put(c, 10, 7, spot);
+    }
+}
+void drawMushroomRed(TileCanvas& c) { mushroom(c, {200, 36, 36, 255}, {244, 244, 236, 255}, true); }
+void drawMushroomBrown(TileCanvas& c) { mushroom(c, {150, 104, 64, 255}, {190, 150, 104, 255}, false); }
+void drawDeadBush(TileCanvas& c) {
+    clearTile(c);
+    const Rgba wood = {120, 88, 48, 255}, dark = {92, 64, 34, 255};
+    for (int y = 0; y < 6; ++y) put(c, 7, y, y % 2 ? wood : dark);
+    for (int i = 0; i < 6; ++i) {
+        put(c, 7 - i, 5 + i, wood);
+        put(c, 8 + i / 1, 5 + i, i % 2 ? dark : wood);
+        if (i > 1 && i < 5) put(c, 7 - i + 2, 5 + i - 1, dark);
+    }
+    put(c, 3, 8, dark);
+    put(c, 11, 9, dark);
+}
+void drawSugarCane(TileCanvas& c) {
+    clearTile(c);
+    static const int xs[3] = {3, 8, 12};
+    static const int hs[3] = {13, 15, 11};
+    for (int k = 0; k < 3; ++k)
+        for (int y = 0; y < hs[k]; ++y) {
+            const bool node = y % 5 == 4;
+            put(c, xs[k], y, node ? Rgba{96, 150, 60, 255} : Rgba{138, 196, 92, 255});
+            put(c, xs[k] + 1, y, node ? Rgba{76, 120, 48, 255} : Rgba{110, 166, 72, 255});
+            if (y == hs[k] - 1 || y == hs[k] - 2) put(c, xs[k] - 1 + (k % 2) * 3, y, {110, 170, 74, 255});
+        }
+}
+void drawBerryBush(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < 11; ++y)
+        for (int x = 2; x < 14; ++x) {
+            const float dx = (x - 7.5f) / 5.6f, dy = (y - 4.5f) / 5.6f;
+            if (dx * dx + dy * dy > 1.0f) continue;
+            if (rnd(x, y, TILE_BERRY_BUSH) > 0.9f) continue;
+            const int g = 96 + static_cast<int>(rnd(x, y, TILE_BERRY_BUSH, 3) * 50);
+            put(c, x, y, {40, g, 36, 255});
+        }
+    for (const auto& b : {std::pair<int, int>{4, 5}, {7, 7}, {10, 4}, {9, 8}, {5, 2}, {12, 6}}) {
+        put(c, b.first, b.second, {196, 28, 52, 255});
+        put(c, b.first + 1, b.second, {150, 20, 42, 255});
+    }
+}
+
+// --- Gegenstaende
+void drawBrickItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 4; y < 11; ++y)
+        for (int x = 2; x < 14; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_BRICK) - 0.5f) * 16);
+            Rgba col = shade({166, 84, 64, 255}, d);
+            if (y == 10 || x == 13) col = shade({112, 52, 40, 255}, d);
+            if (y == 4 || x == 2) col = shade({196, 112, 88, 255}, d);
+            put(c, x, y, col);
+        }
+}
+void drawClayBall(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float dx = x - 7.5f, dy = y - 7.5f;
+            if (dx * dx + dy * dy < 20.0f) {
+                int v = static_cast<int>((rnd(x, y, TILE_CLAY_BALL) - 0.5f) * 14) - static_cast<int>(dy * 3);
+                put(c, x, y, shade({166, 172, 190, 255}, v));
+            }
+        }
+}
+void drawPaper(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 2; y < 14; ++y)
+        for (int x = 3; x < 13; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_PAPER) - 0.5f) * 10);
+            Rgba col = shade({240, 238, 228, 255}, d);
+            if (y == 2 || x == 3) col = shade({255, 255, 250, 255}, d);
+            if (y == 13 || x == 12) col = shade({200, 198, 188, 255}, d);
+            put(c, x, y, col);
+        }
+    for (int x = 5; x < 11; x += 1)
+        if (x % 3 != 0) put(c, x, 9, {150, 150, 150, 255});
+    for (int x = 5; x < 10; x += 1) put(c, x, 6, {170, 170, 170, 255});
+}
+void drawBook(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 2; y < 14; ++y)
+        for (int x = 3; x < 13; ++x) {
+            int d = static_cast<int>((rnd(x, y, TILE_BOOK) - 0.5f) * 10);
+            Rgba col = shade({120, 60, 36, 255}, d);
+            if (x == 3) col = shade({84, 38, 22, 255}, d);
+            if (x == 12) col = shade({236, 230, 210, 255}, d);  // Seiten
+            put(c, x, y, col);
+        }
+    for (int y = 6; y < 10; ++y) put(c, 7, y, {214, 180, 70, 255});
+}
+void drawDye(TileCanvas& c, int tile, Rgba col) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float dx = x - 7.5f, dy = y - 7.0f;
+            if (dx * dx + dy * dy < 17.0f) {
+                int v = static_cast<int>((rnd(x, y, tile) - 0.5f) * 12) - static_cast<int>(dy * 4);
+                put(c, x, y, shade(col, v));
+            }
+        }
+}
+void drawBerries(TileCanvas& c) {
+    clearTile(c);
+    for (const auto& b : {std::pair<int, int>{5, 5}, {9, 6}, {7, 9}, {10, 10}, {4, 9}}) {
+        for (int dy = 0; dy < 3; ++dy)
+            for (int dx = 0; dx < 3; ++dx) {
+                if (dx == 2 && dy == 2) continue;
+                put(c, b.first + dx, b.second + dy, dx == 0 && dy == 2 ? Rgba{130, 16, 40, 255} : Rgba{200, 30, 56, 255});
+            }
+        put(c, b.first + 1, b.second + 2, {255, 140, 150, 255});
+    }
+}
+
 }  // namespace
 
 std::vector<uint8_t> generateAtlasPixels() {
@@ -535,6 +967,64 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_IRON_INGOT, drawIronIngot);
     make(TILE_DIAMOND, drawDiamondItem);
     make(TILE_COOKED_MEAT, drawCookedMeat);
+    make(TILE_BRICKS, drawBricks);
+    make(TILE_STONE_BRICKS, drawStoneBricks);
+    make(TILE_SANDSTONE_TOP, drawSandstoneTop);
+    make(TILE_SANDSTONE_SIDE, drawSandstoneSide);
+    make(TILE_GRAVEL, drawGravel);
+    make(TILE_CLAY, drawClay);
+    {
+        const Rgba wools[6] = {{236, 236, 230, 255}, {178, 46, 40, 255}, {54, 74, 176, 255}, {86, 124, 40, 255}, {242, 202, 44, 255}, {30, 30, 34, 255}};
+        const int tiles[6] = {TILE_WOOL_WHITE, TILE_WOOL_RED, TILE_WOOL_BLUE, TILE_WOOL_GREEN, TILE_WOOL_YELLOW, TILE_WOOL_BLACK};
+        for (int i = 0; i < 6; ++i) {
+            TileCanvas cv(px, tiles[i]);
+            drawWool(cv, tiles[i], wools[i]);
+        }
+    }
+    make(TILE_BOOKSHELF, drawBookshelf);
+    make(TILE_IRON_BLOCK, drawIronBlock);
+    make(TILE_GOLD_BLOCK, drawGoldBlock);
+    make(TILE_DIAMOND_BLOCK, drawDiamondBlock);
+    make(TILE_COAL_BLOCK, drawCoalBlock);
+    make(TILE_LAMP, drawLamp);
+    make(TILE_PUMPKIN_TOP, drawPumpkinTop);
+    make(TILE_PUMPKIN_SIDE, drawPumpkinSide);
+    make(TILE_CACTUS_TOP, drawCactusTop);
+    make(TILE_CACTUS_SIDE, drawCactusSide);
+    make(TILE_BIRCH_LOG_SIDE, drawBirchSide);
+    make(TILE_BIRCH_LOG_TOP, drawBirchTop);
+    make(TILE_BIRCH_LEAVES, drawBirchLeaves);
+    make(TILE_SPRUCE_LOG_SIDE, drawSpruceSide);
+    make(TILE_SPRUCE_LOG_TOP, drawSpruceTop);
+    make(TILE_SPRUCE_LEAVES, drawSpruceLeaves);
+    make(TILE_CHEST_TOP, drawChestTop);
+    make(TILE_CHEST_SIDE, drawChestSide);
+    make(TILE_BED_TOP, drawBedTop);
+    make(TILE_BED_SIDE, drawBedSide);
+    make(TILE_TALL_GRASS, drawTallGrass);
+    make(TILE_FERN, drawFern);
+    make(TILE_FLOWER_RED, drawFlowerRed);
+    make(TILE_FLOWER_YELLOW, drawFlowerYellow);
+    make(TILE_FLOWER_BLUE, drawFlowerBlue);
+    make(TILE_FLOWER_WHITE, drawFlowerWhite);
+    make(TILE_MUSHROOM_RED, drawMushroomRed);
+    make(TILE_MUSHROOM_BROWN, drawMushroomBrown);
+    make(TILE_DEAD_BUSH, drawDeadBush);
+    make(TILE_SUGAR_CANE, drawSugarCane);
+    make(TILE_BERRY_BUSH, drawBerryBush);
+    make(TILE_BRICK, drawBrickItem);
+    make(TILE_CLAY_BALL, drawClayBall);
+    make(TILE_PAPER, drawPaper);
+    make(TILE_BOOK, drawBook);
+    {
+        const Rgba dyes[5] = {{204, 40, 40, 255}, {240, 208, 40, 255}, {64, 96, 220, 255}, {70, 130, 40, 255}, {36, 36, 44, 255}};
+        const int tiles[5] = {TILE_DYE_RED, TILE_DYE_YELLOW, TILE_DYE_BLUE, TILE_DYE_GREEN, TILE_DYE_BLACK};
+        for (int i = 0; i < 5; ++i) {
+            TileCanvas cv(px, tiles[i]);
+            drawDye(cv, tiles[i], dyes[i]);
+        }
+    }
+    make(TILE_BERRIES, drawBerries);
     return px;
 }
 

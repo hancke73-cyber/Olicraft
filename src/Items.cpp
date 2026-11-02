@@ -4,15 +4,30 @@ namespace oc {
 
 static const ItemInfo BLOCK_ITEM_NONE = {"", 0, false, TILE_STONE, TILE_STONE, TOOL_NONE, 0, 0, 1.0f, 2};
 
-static const ItemId CREATIVE_LIST[] = {GRASS, DIRT, STONE, COBBLE, SAND, SNOW, LOG, PLANKS, LEAVES, GLASS, WATER, LAVA, OBSIDIAN, BEDROCK, TORCH,
-                                       CRAFTING_TABLE, ITEM_STICK, ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL,
-                                       ITEM_WOODEN_SWORD, ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL,
-                                       ITEM_STONE_SWORD, ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD,
-                                       ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD,
-                                       ITEM_GOLD_PICKAXE, ITEM_GOLD_AXE, ITEM_GOLD_SHOVEL, ITEM_GOLD_SWORD,
-                                       COAL_ORE, IRON_ORE, DIAMOND_ORE, GOLD_ORE, FURNACE, ITEM_COAL, ITEM_IRON_INGOT,
-                                       ITEM_GOLD_INGOT, ITEM_DIAMOND,
-                                       ITEM_MEAT, ITEM_COOKED_MEAT};
+static const ItemId CREATIVE_LIST[] = {
+    // Bloecke
+    GRASS, DIRT, STONE, COBBLE, SAND, GRAVEL, CLAY, SNOW, SANDSTONE, BRICKS, STONE_BRICKS, OBSIDIAN, BEDROCK,
+    LOG, BIRCH_LOG, SPRUCE_LOG, PLANKS, LEAVES, BIRCH_LEAVES, SPRUCE_LEAVES, GLASS,
+    WOOL_WHITE, WOOL_RED, WOOL_BLUE, WOOL_GREEN, WOOL_YELLOW, WOOL_BLACK,
+    IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, COAL_BLOCK, BOOKSHELF, LAMP, PUMPKIN, CACTUS,
+    WATER, LAVA, TORCH,
+    // Stationen
+    CRAFTING_TABLE, FURNACE, CHEST, BED,
+    // Pflanzen
+    TALL_GRASS, FERN, FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE, MUSHROOM_RED, MUSHROOM_BROWN, DEAD_BUSH,
+    SUGAR_CANE, BERRY_BUSH,
+    // Erze
+    COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
+    // Werkzeuge
+    ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD,
+    ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD,
+    ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD,
+    ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD,
+    ITEM_GOLD_PICKAXE, ITEM_GOLD_AXE, ITEM_GOLD_SHOVEL, ITEM_GOLD_SWORD,
+    // Material und Essen
+    ITEM_STICK, ITEM_COAL, ITEM_IRON_INGOT, ITEM_GOLD_INGOT, ITEM_DIAMOND, ITEM_CLAY_BALL, ITEM_BRICK, ITEM_PAPER, ITEM_BOOK,
+    ITEM_DYE_RED, ITEM_DYE_YELLOW, ITEM_DYE_BLUE, ITEM_DYE_GREEN, ITEM_DYE_BLACK,
+    ITEM_MEAT, ITEM_COOKED_MEAT, ITEM_BERRIES};
 
 bool itemValid(ItemId id) {
     if (id == ITEM_MEAT || (id >= ITEM_STICK && id <= ITEM_LAST)) return true;
@@ -31,7 +46,7 @@ const ItemInfo& itemInfo(ItemId id) {
     if (!init) {
         for (int i = 1; i < BLOCK_COUNT; ++i) {
             const BlockInfo& bi = blockInfo(static_cast<BlockId>(i));
-            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH};
+            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i))};
         }
         init = true;
     }
@@ -63,6 +78,16 @@ const ItemInfo& itemInfo(ItemId id) {
         {"Goldaxt", 1, false, TILE_AXE_GOLD, TILE_AXE_GOLD, TOOL_AXE, 1, 33, 7.0f, 4},
         {"Goldschaufel", 1, false, TILE_SHOVEL_GOLD, TILE_SHOVEL_GOLD, TOOL_SHOVEL, 1, 33, 7.0f, 3},
         {"Goldschwert", 1, false, TILE_SWORD_GOLD, TILE_SWORD_GOLD, TOOL_SWORD, 1, 33, 1.5f, 5},
+        {"Ziegel", 64, false, TILE_BRICK, TILE_BRICK, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Tonklumpen", 64, false, TILE_CLAY_BALL, TILE_CLAY_BALL, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Papier", 64, false, TILE_PAPER, TILE_PAPER, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Buch", 64, false, TILE_BOOK, TILE_BOOK, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Rote Farbe", 64, false, TILE_DYE_RED, TILE_DYE_RED, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Gelbe Farbe", 64, false, TILE_DYE_YELLOW, TILE_DYE_YELLOW, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Blaue Farbe", 64, false, TILE_DYE_BLUE, TILE_DYE_BLUE, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Gruene Farbe", 64, false, TILE_DYE_GREEN, TILE_DYE_GREEN, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Schwarze Farbe", 64, false, TILE_DYE_BLACK, TILE_DYE_BLACK, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Beeren", 64, false, TILE_BERRIES, TILE_BERRIES, TOOL_NONE, 0, 0, 1.0f, 2},
     };
     if (id >= ITEM_STICK && id <= ITEM_LAST) return items[id - ITEM_STICK];
     if (id > 0 && id < BLOCK_COUNT) return cache[id];
@@ -91,7 +116,7 @@ float miningSeconds(BlockId b, const ItemStack& held) {
     if (!held.empty()) {
         const ItemInfo& ii = itemInfo(held.id);
         if (ii.tool != TOOL_NONE && ii.tool == bi.tool) t /= ii.speed;
-        else if (ii.tool == TOOL_SWORD && b == LEAVES) t /= ii.speed;
+        else if (ii.tool == TOOL_SWORD && isLeaves(b)) t /= ii.speed;
     }
     if (!canHarvest(b, held)) t *= 4.0f;  // ohne passendes Werkzeug muehsam und ohne Beute
     return t;

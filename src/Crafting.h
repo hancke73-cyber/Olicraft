@@ -14,12 +14,28 @@ struct Recipe {
     ItemId items[8];       // ... und zugehoerige Gegenstaende
     int symbolCount = 0;
     ItemStack result;
+    // Formlose Rezepte: nur die Zutaten zaehlen (je ein Stueck), nicht ihre Lage
+    bool shapeless = false;
+    std::vector<ItemId> list;
 
     int height() const { return static_cast<int>(rows.size()); }
     int width() const { return rows.empty() ? 0 : static_cast<int>(rows[0].size()); }
+    // Kleinste noetige Rastergroesse: 2 (Inventar) oder 3 (Werkbank)
+    int gridNeeded() const {
+        if (shapeless) return list.size() > 4 ? 3 : 2;
+        return (height() > 2 || width() > 2) ? 3 : 2;
+    }
 };
 
 const std::vector<Recipe>& recipes();
+// Die Zutaten eines Rezepts als Liste mit Anzahl (z. B. fuer Anzeige und automatisches Befuellen)
+struct Ingredient {
+    ItemId item;
+    int count;
+};
+std::vector<Ingredient> recipeIngredients(const Recipe& r);
+// Belegung des Rasters (gridSize x gridSize) fuer das Rezept, Zeile fuer Zeile; formlos: von links oben nacheinander
+std::vector<ItemId> recipeLayout(const Recipe& r, int gridSize);
 
 // cells: gridSize * gridSize Felder, zeilenweise (gridSize 2 oder 3). Liefert das Ergebnis oder einen leeren Stapel.
 ItemStack matchRecipe(const ItemStack* cells, int gridSize);
