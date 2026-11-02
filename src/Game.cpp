@@ -415,6 +415,7 @@ void Game::damagePlayer(int amount, const glm::vec3& knockback) {
 void Game::die() {
     health_ = 0;
     dead_ = true;
+    burnTimer_ = 0.0f;
     cursor_.clear();
     closeInventory();
     inventoryOpen_ = false;
@@ -425,6 +426,7 @@ void Game::respawn() {
     dead_ = false;
     health_ = 20;
     air_ = MAX_AIR;
+    burnTimer_ = 0.0f;
     player_.pos = spawnPoint_;
     player_.vel = glm::vec3(0.0f);
     player_.landedFall = 0.0f;
@@ -461,6 +463,37 @@ void Game::updateSurvival(float dt) {
     } else {
         air_ = std::min(MAX_AIR, air_ + dt * 5.0f);
         drownTimer_ = 0.0f;
+    }
+
+    // Lava: Schaden und Brennen (Wasser loescht)
+    if (creative_) {
+        burnTimer_ = 0.0f;
+        lavaTimer_ = 0.0f;
+    } else {
+        if (player_.inLava) {
+            lavaTimer_ += dt;
+            burnTimer_ = 8.0f;
+            if (lavaTimer_ >= 0.5f) {
+                lavaTimer_ = 0.0f;
+                damagePlayer(2, glm::vec3(0.0f));
+            }
+        } else {
+            lavaTimer_ = 0.0f;
+        }
+        if (burnTimer_ > 0.0f) {
+            if (player_.inWater && !player_.inLava) {
+                burnTimer_ = 0.0f;
+            } else {
+                burnTimer_ -= dt;
+                burnDamageTimer_ += dt;
+                if (burnDamageTimer_ >= 1.0f) {
+                    burnDamageTimer_ = 0.0f;
+                    damagePlayer(1, glm::vec3(0.0f));
+                }
+            }
+        } else {
+            burnDamageTimer_ = 0.0f;
+        }
     }
 
     // Treffer durch Mobs
@@ -893,6 +926,30 @@ int Game::selfTest() {
     settle(2.0f);
     SCHECK(air_ > 5.0f);  // an der Luft fuellt sich der Vorrat wieder
 
+    // 12. Lava: Schaden und Brennen, Wasser loescht
+    health_ = 20;
+    sinceDamage_ = 99.0f;
+    invulnerable_ = 0.0f;
+    dead_ = false;
+    for (int dx = -1; dx <= 1; ++dx)
+        for (int dz = -1; dz <= 1; ++dz)
+            for (int y = gy; y <= gy + 2; ++y) world_->setBlock(-9 + dx, y, -9 + dz, LAVA);
+    player_.pos = glm::vec3(-8.5f, gy + 0.2f, -8.5f);
+    player_.vel = glm::vec3(0.0f);
+    settle(1.3f);
+    SCHECK(player_.inLava);
+    SCHECK(health_ <= 16 && burnTimer_ > 0.0f);
+    player_.pos = glm::vec3(8.5f, gy + 2.0f, 8.5f);  // ins Wasserbecken
+    player_.vel = glm::vec3(0.0f);
+    settle(0.5f);
+    SCHECK(player_.inWater && burnTimer_ == 0.0f);
+    creative_ = true;
+    health_ = 20;
+    player_.pos = glm::vec3(-8.5f, gy + 0.2f, -8.5f);
+    settle(1.0f);
+    SCHECK(health_ == 20 && burnTimer_ == 0.0f);  // Kreativ: unverwundbar
+    creative_ = false;
+
     // 9. Inventar per Mausklick
     dead_ = false;
     health_ = 20;
@@ -983,6 +1040,7 @@ void Game::render() {
     f.timeOfDay = timeOfDay_;
     f.renderDistance = opt_.renderDistance;
     f.underwater = world_->inWaterAt(f.camPos);
+    f.underLava = world_->inLavaAt(f.camPos);
     f.hasTarget = target_.hit && !inventoryOpen_ && !dead_;
     f.target = target_.block;
 
@@ -1006,6 +1064,7 @@ void Game::render() {
     h.breakProgress = breakProgress_;
     h.damageFlash = damageFlash_;
     h.dead = dead_;
+    h.burning = burnTimer_ > 0.0f;
     h.message = statusMsg_;
     h.messageAlpha = statusTimer_;
     h.itemName = shownItem_ == ITEM_NONE ? "" : itemInfo(shownItem_).name;

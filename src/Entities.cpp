@@ -274,7 +274,16 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
         m.attackCooldown = std::max(0.0f, m.attackCooldown - dt);
         m.panicTimer = std::max(0.0f, m.panicTimer - dt);
     }
-    m.inWater = world.inWaterAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f));
+    m.inWater = world.inWaterAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f)) || world.inLavaAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f));
+    if (!m.dead() && world.inLavaAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f))) {  // Lava: 4 Schaden pro Sekunde
+        m.lavaTimer += dt;
+        if (m.lavaTimer >= 0.5f) {
+            m.lavaTimer = 0.0f;
+            m.health -= 2;
+            m.hurtTimer = 0.3f;
+            if (m.health <= 0) m.deathTimer = 0.0f;  // ohne Beute
+        }
+    }
 
     glm::vec2 want(0.0f);
     float speed = 0.0f;
@@ -485,7 +494,7 @@ void EntityManager::update(float dt, World& world, const Player& player, Invento
         const int cx = floorDiv(static_cast<int>(std::floor(it.pos.x)), CHUNK_W);
         const int cz = floorDiv(static_cast<int>(std::floor(it.pos.z)), CHUNK_W);
         if (world.isChunkLoaded(cx, cz)) updateItem(it, dt, world);
-        bool remove = it.age > 300.0f || it.pos.y < -20.0f;
+        bool remove = it.age > 300.0f || it.pos.y < -20.0f || world.inLavaAt(it.pos + glm::vec3(0.0f, 0.1f, 0.0f));  // Lava vernichtet
         if (!remove && !env.playerDead && it.pickupDelay <= 0.0f &&
             glm::length(pc - (it.pos + glm::vec3(0.0f, 0.1f, 0.0f))) < 1.5f) {
             int left = inv.add(it.stack.id, it.stack.count);

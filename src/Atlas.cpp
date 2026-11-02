@@ -276,6 +276,34 @@ void drawZombieFace(TileCanvas& c) {
 void drawZombieShirt(TileCanvas& c) { drawNoisy(c, TILE_ZOMBIE_SHIRT, {52, 150, 168, 255}, 12); }
 void drawZombiePants(TileCanvas& c) { drawNoisy(c, TILE_ZOMBIE_PANTS, {52, 54, 148, 255}, 10); }
 
+void drawLava(TileCanvas& c) {
+    Noise n(57);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            // periodisch (nahtlos): Rauschen ueber Torus-Koordinaten
+            float v = 0.0f;
+            for (int ox = 0; ox <= 1; ++ox)
+                for (int oy = 0; oy <= 1; ++oy) {
+                    float wx = (ox ? x - TILE_PX : x) * 0.28f, wy = (oy ? y - TILE_PX : y) * 0.28f;
+                    float wgt = (ox ? static_cast<float>(x) / TILE_PX : 1.0f - static_cast<float>(x) / TILE_PX) *
+                                (oy ? static_cast<float>(y) / TILE_PX : 1.0f - static_cast<float>(y) / TILE_PX);
+                    v += wgt * n.fbm2(wx + 3.0f, wy + 7.0f, 2);
+                }
+            int r = 235, g = 95 + static_cast<int>((v + 0.5f) * 150), b = 12 + static_cast<int>(std::max(0.0f, v + 0.2f) * 60);
+            c.set(x, y, {r, g, b, 255});
+        }
+}
+
+void drawObsidian(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int base = 18 + static_cast<int>(rnd(x, y, TILE_OBSIDIAN) * 22);
+            int r = base, g = base - 4, b = base + 18;
+            if (rnd(x, y, TILE_OBSIDIAN, 6) > 0.92f) { r += 40; g += 16; b += 70; }
+            c.set(x, y, {r, g, b, 255});
+        }
+}
+
 }  // namespace
 
 std::vector<uint8_t> generateAtlasPixels() {
@@ -313,6 +341,8 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_ZOMBIE_FACE, drawZombieFace);
     make(TILE_ZOMBIE_SHIRT, drawZombieShirt);
     make(TILE_ZOMBIE_PANTS, drawZombiePants);
+    make(TILE_LAVA, drawLava);
+    make(TILE_OBSIDIAN, drawObsidian);
     return px;
 }
 

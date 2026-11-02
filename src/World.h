@@ -51,12 +51,13 @@ public:
     bool isChunkLoaded(int cx, int cz) const { return find(cx, cz) != nullptr; }
     bool setBlock(int x, int y, int z, BlockId b);
 
-    // Fluessigkeiten: Wasser fliesst in Schritten von 0.25 s (wie in Minecraft)
+    // Fluessigkeiten: Wasser fliesst in Schritten von 0.25 s, Lava deutlich langsamer (1.5 s)
     void tick(float dt);
     void scheduleFluidAround(int x, int y, int z);
-    size_t pendingFluidCount() const { return fluidPending_.size(); }
-    // Liegt der Punkt (Weltkoordinaten) unter der Wasseroberflaeche?
+    size_t pendingFluidCount() const { return fluid_[0].pending.size() + fluid_[1].pending.size(); }
+    // Liegt der Punkt (Weltkoordinaten) unter der Wasser- bzw. Lavaoberflaeche?
     bool inWaterAt(const glm::vec3& p) const;
+    bool inLavaAt(const glm::vec3& p) const;
     const Chunk* chunkAt(int cx, int cz) const { return find(cx, cz); }
 
     // Chunk-Streaming; budgetMs begrenzt die Arbeit pro Frame
@@ -88,8 +89,10 @@ private:
     void markDirty(int cx, int cz, bool urgent);
     bool setBlockImpl(int x, int y, int z, BlockId b, bool urgent);
     void scheduleFluid(int x, int y, int z);
-    void updateFluidCell(int x, int y, int z);
-    BlockId computeFluid(int x, int y, int z) const;
+    void updateFluidCell(int kind, int x, int y, int z);
+    BlockId computeFluid(int kind, int x, int y, int z) const;
+    void reactFluids(int x, int y, int z);  // Wasser trifft Lava: Obsidian bzw. Bruchstein
+    bool inFluidAt(const glm::vec3& p, bool lava) const;
     BlockId blockOrSolid(int x, int y, int z) const;  // ungeladen/unten = Stein
 
     TerrainGenerator terrain_;
@@ -97,9 +100,12 @@ private:
     std::unordered_map<ChunkKey, std::vector<BlockId>, ChunkKeyHash> stored_;  // entladene, veraenderte Chunks
     std::vector<BlockId> padded_;
     bool meshing_ = true;
-    std::vector<glm::ivec3> fluidPending_;
-    std::unordered_set<uint64_t> fluidPendingSet_;
-    float fluidAccum_ = 0.0f;
+    struct FluidQueue {
+        std::vector<glm::ivec3> pending;
+        std::unordered_set<uint64_t> set;
+        float accum = 0.0f;
+    };
+    FluidQueue fluid_[2];  // 0 = Wasser, 1 = Lava
 };
 
 }  // namespace oc

@@ -55,7 +55,7 @@ void main() {
     vec4 t = texture(uAtlas, vUV);
     if (uCutout == 1 && t.a < 0.5) discard;
     float cave = min(0.26, uSun);
-    float light = mix(cave, uSun, vSky);
+    float light = vSky > 1.5 ? 1.0 : mix(cave, uSun, vSky);
     vec3 c = t.rgb * vShade * light * uTint;
     float f = clamp((vDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
     c = mix(c, uFogColor, f);
@@ -272,7 +272,10 @@ void Renderer::render(const World& world, const FrameInfo& f) {
 
     glm::vec3 fogColor = sky;
     float sunLevel = 0.22f + 0.78f * day;
-    if (f.underwater) {
+    if (f.underLava) {
+        fogColor = glm::vec3(0.55f, 0.14f, 0.02f);
+        sunLevel = 1.0f;
+    } else if (f.underwater) {
         fogColor = glm::vec3(0.04f, 0.18f, 0.34f) * (0.35f + 0.65f * day);
         sunLevel = std::max(0.3f, sunLevel * 0.9f);
     }
@@ -286,7 +289,7 @@ void Renderer::render(const World& world, const FrameInfo& f) {
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
 
-    if (!f.underwater) drawSky(f, sky);
+    if (!f.underwater && !f.underLava) drawSky(f, sky);
     drawWorld(world, f, fogColor, sunLevel);
     if (f.hud.show) {
         drawSelection(f);
@@ -357,7 +360,10 @@ void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3
 
     const float viewDist = static_cast<float>(f.renderDistance * CHUNK_W);
     float fogStart = viewDist * 0.55f, fogEnd = viewDist * 0.97f;
-    if (f.underwater) {
+    if (f.underLava) {
+        fogStart = 0.0f;
+        fogEnd = 3.5f;
+    } else if (f.underwater) {
         fogStart = 1.0f;
         fogEnd = 24.0f;
     }
@@ -501,6 +507,7 @@ void Renderer::drawHud(const FrameInfo& f) {
 
     HudState st = f.hud;
     st.underwater = f.underwater;
+    st.underLava = f.underLava;
     buildHud(hudBatch_, st, f.width, f.height);
     flushHud(f);
 

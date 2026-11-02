@@ -4,14 +4,14 @@ namespace oc {
 
 static const ItemInfo BLOCK_ITEM_NONE = {"", 0, false, TILE_STONE, TILE_STONE};
 
-static const ItemId CREATIVE_LIST[] = {GRASS, DIRT, STONE, COBBLE, SAND, SNOW, LOG, PLANKS, LEAVES, GLASS, WATER, BEDROCK,
+static const ItemId CREATIVE_LIST[] = {GRASS, DIRT, STONE, COBBLE, SAND, SNOW, LOG, PLANKS, LEAVES, GLASS, WATER, LAVA, OBSIDIAN, BEDROCK,
                                        ITEM_MEAT};
 
 bool itemValid(ItemId id) {
     if (id == ITEM_MEAT) return true;
     if (id > 0 && id < BLOCK_COUNT) {
         // Fliessendes Wasser gibt es nicht als Gegenstand
-        return !(id >= WATER_1 && id <= WATER_FALL);
+        return !((id >= WATER_1 && id <= WATER_FALL) || (id >= LAVA_1 && id <= LAVA_FALL));
     }
     return false;
 }

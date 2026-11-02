@@ -26,6 +26,7 @@ public:
     bool flying = false;
     bool onGround = false;
     bool inWater = false;
+    bool inLava = false;
     bool headInWater = false;
     float landedFall = 0.0f;  // Fallhoehe beim letzten Aufprall (vom Spiel auszulesen und zurueckzusetzen)
 

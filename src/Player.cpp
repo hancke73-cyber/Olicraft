@@ -55,7 +55,8 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
     int cz = floorDiv(static_cast<int>(std::floor(pos.z)), CHUNK_W);
     if (!world.isChunkLoaded(cx, cz)) return;
 
-    inWater = bodyInWater(world);
+    inLava = world.inLavaAt(glm::vec3(pos.x, pos.y + 0.4f, pos.z));
+    inWater = bodyInWater(world) || inLava;  // Lava bremst wie Wasser, nur staerker
     boost_ = std::max(0.0f, boost_ - dt);
 
     // Wunsch-Geschwindigkeit in der Horizontalen
@@ -67,7 +68,7 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
 
     float speed = flying ? FLY : (in.sprint ? SPRINT : WALK);
     if (flying && in.sprint) speed *= 2.0f;
-    if (inWater && !flying) speed *= 0.6f;
+    if (inWater && !flying) speed *= inLava ? 0.3f : 0.6f;
     const glm::vec3 target = wish * speed;
 
     const float accel = flying ? 8.0f : (onGround ? 14.0f : (inWater ? 5.0f : 3.0f));
@@ -95,9 +96,9 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
             vel.y -= GRAVITY * 0.6f * dt;  // Schub ueber die Kante, danach normale Wasserphysik
         } else {
             vel.y -= 6.0f * dt;
-            vel.y *= std::exp(-2.5f * dt);
-            if (in.jump) vel.y += 22.0f * dt;
-            vel.y = std::max(-4.0f, std::min(3.5f, vel.y));
+            vel.y *= std::exp((inLava ? -4.5f : -2.5f) * dt);
+            if (in.jump) vel.y += (inLava ? 14.0f : 22.0f) * dt;
+            vel.y = std::max(-4.0f, std::min(inLava ? 1.8f : 3.5f, vel.y));
         }
     } else {
         vel.y -= GRAVITY * dt;
@@ -107,7 +108,7 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
 
     const float startY = pos.y;
     onGround = false;
-    headInWater = world.inWaterAt(eyePos());
+    headInWater = world.inWaterAt(eyePos());  // Lava ertraenkt nicht, sie verbrennt
     moveAxis(0, vel.x * dt, world);
     moveAxis(2, vel.z * dt, world);
     moveAxis(1, vel.y * dt, world);

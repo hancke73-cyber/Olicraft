@@ -7,6 +7,7 @@ namespace oc {
 constexpr int CHUNK_W = 16;
 constexpr int CHUNK_H = 128;
 constexpr int SEA_LEVEL = 62;
+constexpr int LAVA_LEVEL = 10;  // Hoehlen bis zu dieser Hoehe sind mit Lava gefuellt
 
 using BlockId = uint8_t;
 
@@ -33,6 +34,13 @@ enum Block : BlockId {
     WATER_6,
     WATER_7,
     WATER_FALL,
+    // Lava: LAVA ist die Quelle, LAVA_1..3 Stroemungsstufen (kuerzere Reichweite als Wasser), LAVA_FALL faellt.
+    LAVA,
+    LAVA_1,
+    LAVA_2,
+    LAVA_3,
+    LAVA_FALL,
+    OBSIDIAN,
     BLOCK_COUNT
 };
 
@@ -64,6 +72,8 @@ enum Tile : int {
     TILE_ZOMBIE_FACE,
     TILE_ZOMBIE_SHIRT,
     TILE_ZOMBIE_PANTS,
+    TILE_LAVA,
+    TILE_OBSIDIAN,
     TILE_COUNT
 };
 
@@ -84,15 +94,24 @@ const BlockInfo& blockInfo(BlockId id);
 
 inline bool isOpaque(BlockId id) { return blockInfo(id).opaque; }
 inline bool isSolid(BlockId id) { return blockInfo(id).solid; }
-inline bool isLiquid(BlockId id) { return id == WATER || (id >= WATER_1 && id <= WATER_FALL); }
-// Stroemungsstufe 1..7 (WATER_1..WATER_7), sonst 0
-inline int flowLevel(BlockId id) { return (id >= WATER_1 && id <= WATER_7) ? id - WATER_1 + 1 : 0; }
-// Hoehe der Wasseroberflaeche in einem Block (0..1), ohne Beruecksichtigung von Wasser darueber
+inline bool isWater(BlockId id) { return id == WATER || (id >= WATER_1 && id <= WATER_FALL); }
+inline bool isLava(BlockId id) { return id >= LAVA && id <= LAVA_FALL; }
+inline bool isLiquid(BlockId id) { return isWater(id) || isLava(id); }
+constexpr int MAX_WATER_LEVEL = 7;
+constexpr int MAX_LAVA_LEVEL = 3;
+// Stroemungsstufe 1..7 (Wasser) bzw. 1..3 (Lava), sonst 0 (Quelle, fallend oder keine Fluessigkeit)
+inline int flowLevel(BlockId id) {
+    if (id >= WATER_1 && id <= WATER_7) return id - WATER_1 + 1;
+    if (id >= LAVA_1 && id <= LAVA_3) return id - LAVA_1 + 1;
+    return 0;
+}
+// Hoehe der Oberflaeche in einem Block (0..1), ohne Beruecksichtigung von Fluessigkeit darueber
 inline float liquidHeight(BlockId id) {
-    if (id == WATER_FALL) return 1.0f;
-    if (id == WATER) return 8.0f / 9.0f;
+    if (id == WATER_FALL || id == LAVA_FALL) return 1.0f;
+    if (id == WATER || id == LAVA) return 8.0f / 9.0f;
     int l = flowLevel(id);
-    return l ? static_cast<float>(8 - l) / 9.0f : 0.0f;
+    if (l == 0) return 0.0f;
+    return isLava(id) ? static_cast<float>(8 - 2 * l) / 9.0f : static_cast<float>(8 - l) / 9.0f;
 }
 
 // Auswahl in der Hotbar

@@ -7,6 +7,7 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Unendliche, chunkbasierte Welt (16 x 128 x 16), Gelände aus Perlin-Rauschen: Ozeane, Strände, Hügel, Berge mit Schneekappen, Wüsten, Wälder, Höhlen
 - Bäume (über Chunkgrenzen hinweg konsistent), Meer mit halbtransparentem Wasser, Schwimmen, an Uferkanten mit der Sprungtaste aus dem Wasser klettern
 - Fließendes Wasser: Quellen breiten sich bis 7 Blöcke aus, fließen bergab, bilden Wasserfälle, zwei Quellen ergeben eine neue (unendliche Quelle), Wasser zieht sich zurück, wenn die Quelle fehlt
+- Lava: Lava-Seen in tiefen Höhlen (bis Höhe 10), fließt langsamer (1,5 s je Schritt) und nur 3 Blöcke weit, verursacht Schaden und Brennen (Wasser löscht), leuchtet, vernichtet Gegenstände und verletzt Mobs. Trifft Wasser auf eine Lavaquelle, entsteht Obsidian, auf fließende Lava Bruchstein
 - Abbauen und Setzen von Blöcken per Raycast
 - Survival- und Kreativmodus (Umschalten mit G): Abbauzeit je Block, Drops als Gegenstände am Boden, Gesundheit mit Herzen, Fallschaden, Ertrinken (Luftblasen), Regeneration, Tod und Wiedergeburt
 - Inventar (E): 27 Rucksack-Slots plus 9 Hotbar-Slots, Stapel bis 64, Mausbedienung wie in Minecraft (links ganzen Stapel, rechts Hälfte oder eines, Umschalt-Klick verschiebt). Im Kreativmodus zusätzlich eine Auswahl aller Blöcke
@@ -144,11 +145,10 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 
 1. **Sound:** Effekte und Musik. Vorher wird die Audio-Bibliothek geklärt.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
-3. **Lava:** Lava-Block auf Basis der Wassersimulation, mit langsamerem Fluss, Schaden und Brennen sowie Lava-Seen in Höhlen. Dazu die Interaktion mit Wasser (Obsidian oder Bruchstein).
-4. **Third-Person-Ansicht:** Kamera hinter oder vor dem Charakter (z. B. umschaltbar), mit eigenem Spielermodell aus Quadern wie bei den Mobs. Die Kamera darf vom Gelände nicht blockiert werden.
-5. **Textur-Editor:** Im Spiel erreichbar über ein Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Voraussetzung ist ein Einstellungsmenü, das es noch nicht gibt (bisher nur die Pause mit Esc).
-6. **Crafting und Werkzeuge.**
-7. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+3. **Third-Person-Ansicht:** Kamera hinter oder vor dem Charakter (z. B. umschaltbar), mit eigenem Spielermodell aus Quadern wie bei den Mobs. Die Kamera darf vom Gelände nicht blockiert werden.
+4. **Textur-Editor:** Im Spiel erreichbar über ein Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Voraussetzung ist ein Einstellungsmenü, das es noch nicht gibt (bisher nur die Pause mit Esc).
+5. **Crafting und Werkzeuge.**
+6. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
 
 ## Drittanbieter
 

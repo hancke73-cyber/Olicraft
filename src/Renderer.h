@@ -20,6 +20,7 @@ struct FrameInfo {
     int width = 1, height = 1;
     float timeOfDay = 0.3f;  // 0..1, 0.25 = Mittag, 0.75 = Mitternacht
     bool underwater = false;
+    bool underLava = false;
     int renderDistance = 8;  // in Chunks
     bool hasTarget = false;
     glm::ivec3 target{0};

@@ -147,6 +147,10 @@ void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, float lo, flo
         }
         v[k].sky = skySum / static_cast<float>(skyN);
         v[k].shade = fd.shade * AO_CURVE[ao];
+        if (isLava(b)) {  // Lava leuchtet: unabhaengig von Tageszeit und Schatten
+            v[k].sky = 2.0f;
+            v[k].shade = 1.0f;
+        }
         aoSum[k] = static_cast<float>(ao);
     }
 
@@ -175,7 +179,7 @@ void buildChunkMesh(const BlockId* padded, MeshOutput& out) {
                 BlockId b = padded[padIndex(x + 1, y, z + 1)];
                 if (b == AIR) continue;
                 const bool liquid = blockInfo(b).liquid;
-                std::vector<Vertex>& dst = liquid ? out.water : out.opaque;
+                std::vector<Vertex>& dst = (liquid && !isLava(b)) ? out.water : out.opaque;
                 for (int f = 0; f < 6; ++f) {
                     const FaceDef& fd = faceDef(f);
                     BlockId nb = c.at(x + fd.n[0], y + fd.n[1], z + fd.n[2]);

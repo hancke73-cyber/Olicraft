@@ -907,6 +907,116 @@ static void testWaterExitAndZombieDay() {
     CHECK(em.mobs().empty());
 }
 
+static void testLava() {
+    World w(31);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    clearArea(w, -14, 14, 86, 110, -14, 14);
+    for (int x = -14; x <= 14; ++x)
+        for (int z = -14; z <= 14; ++z) w.setBlock(x, 99, z, STONE);
+
+    // Ausbreitung: nur 3 Stufen, und langsamer (1.5 s je Schritt) als Wasser
+    w.setBlock(0, 100, 0, LAVA);
+    w.tick(0.3f);  // Wasser waere schon einen Schritt weiter, Lava noch nicht
+    CHECK(w.getBlock(1, 100, 0) == AIR);
+    w.tick(1.3f);
+    CHECK(w.getBlock(1, 100, 0) == LAVA_1);
+    for (int i = 0; i < 20; ++i) w.tick(1.5f);
+    CHECK(w.getBlock(2, 100, 0) == LAVA_2);
+    CHECK(w.getBlock(3, 100, 0) == LAVA_3);
+    CHECK(w.getBlock(4, 100, 0) == AIR);
+    CHECK(w.getBlock(1, 100, 1) == LAVA_2);
+    // Quelle weg: Lava zieht sich zurueck
+    w.setBlock(0, 100, 0, AIR);
+    for (int i = 0; i < 20; ++i) w.tick(1.5f);
+    int left = 0;
+    for (int x = -6; x <= 6; ++x)
+        for (int z = -6; z <= 6; ++z)
+            if (isLiquid(w.getBlock(x, 100, z))) ++left;
+    CHECK(left == 0);
+
+    // Keine unendliche Lava: zwei Quellen mit Luecke bleiben getrennt
+    w.setBlock(-6, 100, 8, LAVA);
+    w.setBlock(-4, 100, 8, LAVA);
+    for (int i = 0; i < 6; ++i) w.tick(1.5f);
+    CHECK(w.getBlock(-5, 100, 8) != LAVA);
+
+    // Wasser trifft Lavaquelle: Obsidian
+    w.setBlock(8, 100, -8, LAVA);
+    w.tick(0.1f);
+    w.setBlock(9, 100, -8, WATER);
+    for (int i = 0; i < 6; ++i) w.tick(0.3f);
+    CHECK(w.getBlock(8, 100, -8) == OBSIDIAN);
+    // Wasser darf Obsidian nicht verdraengen
+    CHECK(w.getBlock(9, 100, -8) == WATER);
+
+    // Fliessende Lava trifft Wasser: Bruchstein
+    for (int x = 4; x <= 8; ++x)
+        for (int z = 4; z <= 8; ++z) w.setBlock(x, 100, z, AIR);
+    w.setBlock(4, 100, 6, LAVA);
+    for (int i = 0; i < 2; ++i) w.tick(1.6f);  // Lava fliesst nach (5, 100, 6)
+    CHECK(w.getBlock(5, 100, 6) == LAVA_1);
+    w.setBlock(7, 100, 6, WATER);              // Wasser fliesst nach (6, 100, 6) und trifft die Lava
+    for (int i = 0; i < 12; ++i) w.tick(0.3f);
+    bool cobble = w.getBlock(5, 100, 6) == COBBLE || w.getBlock(6, 100, 6) == COBBLE;
+    CHECK(cobble);
+    CHECK(w.getBlock(4, 100, 6) == OBSIDIAN || w.getBlock(4, 100, 6) == LAVA);
+
+    // inLavaAt und Wasser unterscheiden sich
+    w.setBlock(-10, 100, -10, LAVA);
+    CHECK(w.inLavaAt(glm::vec3(-9.5f, 100.5f, -9.5f)) && !w.inWaterAt(glm::vec3(-9.5f, 100.5f, -9.5f)));
+
+    // Spieler in Lava: langsam, bremst Sturz, kein Ertrinken
+    Player p;
+    p.pos = glm::vec3(-9.5f, 100.0f, -9.5f);
+    MoveInput none;
+    for (int i = 0; i < 10; ++i) p.update(0.05f, none, w);
+    CHECK(p.inLava && !p.headInWater);
+
+    // Gegenstaende verbrennen, Mobs nehmen Schaden
+    EntityManager em(1);
+    Inventory inv;
+    EntityEnv env;
+    env.allowSpawns = false;
+    Player far;
+    far.pos = glm::vec3(0.5f, 100.0f, 0.5f);
+    em.spawnItem({STONE, 1}, glm::vec3(-9.5f, 100.2f, -9.5f), glm::vec3(0.0f), 99.0f);
+    em.spawnMob(MobType::Pig, glm::vec3(-9.5f, 100.3f, -9.5f));
+    for (int i = 0; i < 40; ++i) em.update(0.05f, w, far, inv, env);
+    CHECK(em.items().empty());
+    CHECK(em.mobs().empty() || em.mobs()[0].health < mobSpec(MobType::Pig).health);
+
+    // Mesh: Lava liegt im undurchsichtigen Teil und leuchtet (sky = 2)
+    std::vector<BlockId> pad(PAD_VOLUME, AIR);
+    pad[padIndex(5 + 1, 40, 5 + 1)] = STONE;
+    pad[padIndex(5 + 1, 41, 5 + 1)] = LAVA;
+    pad[padIndex(8 + 1, 40, 8 + 1)] = STONE;
+    pad[padIndex(8 + 1, 41, 8 + 1)] = WATER;
+    MeshOutput out;
+    buildChunkMesh(pad.data(), out);
+    bool emissive = false, water = !out.water.empty();
+    for (const Vertex& v : out.opaque)
+        if (v.sky > 1.5f && v.y > 41.0f) emissive = true;
+    CHECK(emissive && water);
+    for (const Vertex& v : out.water) CHECK(v.sky <= 1.0f);
+}
+
+static void testLavaTerrain() {
+    World w(42);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 4);
+    int lava = 0, lavaHigh = 0;
+    for (int x = -64; x < 64; ++x)
+        for (int z = -64; z < 64; ++z)
+            for (int y = 0; y < CHUNK_H; ++y)
+                if (w.getBlock(x, y, z) == LAVA) {
+                    ++lava;
+                    if (y > LAVA_LEVEL) ++lavaHigh;
+                }
+    CHECK(lava > 50);
+    CHECK(lavaHigh == 0);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -930,6 +1040,8 @@ int main() {
     testSave();
     testFluids();
     testWaterExitAndZombieDay();
+    testLava();
+    testLavaTerrain();
     testFluidMesh();
     testSpawn();
     testItemsAndInventory();

@@ -107,6 +107,9 @@ private:
     float damageFlash_ = 0.0f;
     float air_ = 15.0f;
     float drownTimer_ = 0.0f;
+    float lavaTimer_ = 0.0f;
+    float burnTimer_ = 0.0f;     // Restzeit des Brennens
+    float burnDamageTimer_ = 0.0f;
     glm::vec3 spawnPoint_{0.0f};
 
     int slot_ = 0;

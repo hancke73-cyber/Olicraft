@@ -73,6 +73,8 @@ struct HudState {
     float damageFlash = 0.0f;
     bool dead = false;
     bool underwater = false;
+    bool underLava = false;
+    bool burning = false;
     std::string message;
     float messageAlpha = 0.0f;
     std::string itemName;

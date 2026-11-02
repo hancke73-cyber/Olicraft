@@ -26,6 +26,12 @@ static const BlockInfo INFOS[BLOCK_COUNT] = {
     {"Wasser",     false, false, true,  false, true,  false, TILE_WATER,     TILE_WATER,     TILE_WATER,     0.0f, AIR},
     {"Wasser",     false, false, true,  false, true,  false, TILE_WATER,     TILE_WATER,     TILE_WATER,     0.0f, AIR},
     {"Wasser",     false, false, true,  false, true,  false, TILE_WATER,     TILE_WATER,     TILE_WATER,     0.0f, AIR},
+    {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
+    {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
+    {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
+    {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
+    {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
+    {"Obsidian",   true,  true,  false, true,  false, true,  TILE_OBSIDIAN,  TILE_OBSIDIAN,  TILE_OBSIDIAN,  6.0f, OBSIDIAN},
 };
 
 const BlockInfo& blockInfo(BlockId id) {

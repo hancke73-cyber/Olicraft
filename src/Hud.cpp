@@ -212,6 +212,8 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
     const float s = guiScale(h);
 
     if (st.underwater) b.rect(0, 0, W, H, glm::vec4(0.08f, 0.25f, 0.55f, 0.35f));
+    if (st.underLava) b.rect(0, 0, W, H, glm::vec4(0.95f, 0.35f, 0.02f, 0.6f));
+    else if (st.burning) b.rect(0, H * 0.82f, W, H, glm::vec4(1.0f, 0.45f, 0.05f, 0.22f));
     if (st.damageFlash > 0.0f) b.rect(0, 0, W, H, glm::vec4(0.85f, 0.05f, 0.05f, 0.4f * st.damageFlash));
 
     if (st.inventoryOpen && !st.dead) {

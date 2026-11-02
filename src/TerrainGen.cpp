@@ -98,6 +98,10 @@ void TerrainGenerator::generate(Chunk& chunk) const {
             for (int y = 5; y <= limit; ++y)
                 if (chunk.get(x, y, z) != BEDROCK && isCave(wx, y, wz)) chunk.set(x, y, z, AIR);
 
+            // Lava-Seen: Hoehlen tief unten sind mit Lava gefuellt
+            for (int y = 5; y <= std::min(limit, LAVA_LEVEL); ++y)
+                if (chunk.get(x, y, z) == AIR) chunk.set(x, y, z, LAVA);
+
             // Meer
             for (int y = h + 1; y <= SEA_LEVEL; ++y) chunk.set(x, y, z, WATER);
         }
