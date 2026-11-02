@@ -80,8 +80,9 @@ float guiScale(int windowHeight) { return std::max(1.0f, std::floor(static_cast<
 // Layout des Inventarfensters
 // ---------------------------------------------------------------------------------------------------------------
 
-InvLayout InvLayout::make(int w, int h, bool creative, int craftSize) {
+InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furnace) {
     InvLayout l;
+    l.furnace = furnace;
     l.s = guiScale(h);
     l.creative = creative;
     l.craftSize = craftSize;
@@ -140,12 +141,26 @@ glm::vec2 InvLayout::craftPos(int index) const {
 }
 
 int InvLayout::hitCraft(glm::vec2 m) const {
+    if (furnace) return -1;
     for (int i = 0; i < craftSize * craftSize; ++i)
         if (inRect(m, craftPos(i), pitch(), pitch())) return i;
     return -1;
 }
 
-bool InvLayout::hitResult(glm::vec2 m) const { return craftSize > 0 && inRect(m, resultPos, pitch(), pitch()); }
+bool InvLayout::hitResult(glm::vec2 m) const { return craftSize > 0 && !furnace && inRect(m, resultPos, pitch(), pitch()); }
+
+glm::vec2 InvLayout::furnaceSlotPos(int which) const {
+    if (which == 0) return craftTop;
+    if (which == 1) return craftTop + glm::vec2(0.0f, 2.0f * pitch());
+    return resultPos;
+}
+
+int InvLayout::hitFurnace(glm::vec2 m) const {
+    if (!furnace) return -1;
+    for (int i = 0; i < 3; ++i)
+        if (inRect(m, furnaceSlotPos(i), pitch(), pitch())) return i;
+    return -1;
+}
 
 bool InvLayout::inside(glm::vec2 m) const { return inRect(m, panelPos, panelSize.x, panelSize.y); }
 
@@ -171,7 +186,7 @@ static void drawSlotCount(HudBatch& b, const ItemStack& st, float x, float y, fl
 }
 
 static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
-    const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize);
+    const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize, st.furnaceOpen);
     const float s = L.s, pt = L.pitch();
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.55f));
 
@@ -181,7 +196,8 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     b.rect(L.panelPos.x, L.panelPos.y, L.panelPos.x + L.panelSize.x, L.panelPos.y + L.panelSize.y,
            glm::vec4(0.30f, 0.31f, 0.35f, 0.97f));
     std::string title = st.windowTitle;
-    if (title.empty()) title = st.paletteOpen ? "Kreativ-Inventar" : (st.craftSize == 3 ? "Werkbank" : "Inventar");
+    if (title.empty())
+        title = st.paletteOpen ? "Kreativ-Inventar" : (st.furnaceOpen ? "Ofen" : (st.craftSize == 3 ? "Werkbank" : "Inventar"));
     b.text(L.panelPos.x + 7 * s, L.panelPos.y + 6 * s, s, title, glm::vec4(1.0f));
 
     const glm::vec4 slotBg(0.12f, 0.12f, 0.15f, 1.0f);
@@ -205,8 +221,34 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
         b.rect(L.panelPos.x + 7 * s, sepY, L.panelPos.x + L.panelSize.x - 7 * s, sepY + s, glm::vec4(0, 0, 0, 0.5f));
     }
 
+    // Ofen: Eingabe, Brennstoff, Flamme, Fortschrittspfeil, Ausgabe
+    const int hoverFurnace = L.hitFurnace(st.mouse);
+    if (st.furnaceOpen) {
+        for (int i = 0; i < 3; ++i) slotRect(L.furnaceSlotPos(i), i == hoverFurnace);
+        const ItemStack* fs[3] = {&st.furnaceIn, &st.furnaceFuel, &st.furnaceOut};
+        for (int i = 0; i < 3; ++i) {
+            const glm::vec2 p = L.furnaceSlotPos(i);
+            if (!fs[i]->empty()) b.itemIcon(fs[i]->id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+        }
+        // Flamme zwischen Eingabe und Brennstoff
+        {
+            const glm::vec2 p = L.furnaceSlotPos(0) + glm::vec2(pt * 0.25f, pt * 1.15f);
+            const float fw = pt * 0.5f, fh = pt * 0.6f;
+            b.rect(p.x, p.y, p.x + fw, p.y + fh, glm::vec4(0.12f, 0.1f, 0.1f, 1.0f));
+            const float fill = std::max(0.0f, std::min(1.0f, st.furnaceBurn));
+            b.rect(p.x, p.y + fh * (1.0f - fill), p.x + fw, p.y + fh, glm::vec4(1.0f, 0.55f, 0.1f, 1.0f));
+        }
+        // Pfeil: Fortschritt
+        {
+            const float ax = L.craftTop.x + 2.2f * pt, ay = L.resultPos.y + pt * 0.5f - 3.0f * s, aw = 3.0f * pt;
+            b.rect(ax, ay, ax + aw, ay + 6.0f * s, glm::vec4(0.12f, 0.12f, 0.15f, 1.0f));
+            b.rect(ax, ay, ax + aw * std::max(0.0f, std::min(1.0f, st.furnaceCook)), ay + 6.0f * s,
+                   glm::vec4(0.9f, 0.9f, 0.95f, 1.0f));
+        }
+    }
+
     // Handwerk: Raster, Pfeil, Ergebnis
-    if (st.craftSize > 0) {
+    if (st.craftSize > 0 && !st.furnaceOpen) {
         for (int i = 0; i < st.craftSize * st.craftSize; ++i) {
             glm::vec2 p = L.craftPos(i);
             slotRect(p, i == hoverCraft);
@@ -239,7 +281,14 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
             drawDurability(b, inv->slots[i], p.x, p.y, pt, s);
         }
     }
-    if (st.craftSize > 0) {
+    if (st.furnaceOpen) {
+        const ItemStack* fs[3] = {&st.furnaceIn, &st.furnaceFuel, &st.furnaceOut};
+        for (int i = 0; i < 3; ++i) {
+            const glm::vec2 p = L.furnaceSlotPos(i);
+            drawSlotCount(b, *fs[i], p.x, p.y, pt, s);
+            drawDurability(b, *fs[i], p.x, p.y, pt, s);
+        }
+    } else if (st.craftSize > 0) {
         for (int i = 0; i < st.craftSize * st.craftSize; ++i) {
             glm::vec2 p = L.craftPos(i);
             drawSlotCount(b, st.craftCells[i], p.x, p.y, pt, s);
@@ -253,6 +302,9 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     if (hoverPal >= 0) hoverItem = creativeItem(hoverPal);
     else if (hoverSlot >= 0 && inv && !inv->slots[hoverSlot].empty()) hoverItem = inv->slots[hoverSlot].id;
     else if (hoverCraft >= 0 && !st.craftCells[hoverCraft].empty()) hoverItem = st.craftCells[hoverCraft].id;
+    else if (hoverFurnace == 0 && !st.furnaceIn.empty()) hoverItem = st.furnaceIn.id;
+    else if (hoverFurnace == 1 && !st.furnaceFuel.empty()) hoverItem = st.furnaceFuel.id;
+    else if (hoverFurnace == 2 && !st.furnaceOut.empty()) hoverItem = st.furnaceOut.id;
     else if (hoverResult && !st.craftResult.empty()) hoverItem = st.craftResult.id;
     if (hoverItem != ITEM_NONE && st.cursor.empty()) {
         std::string name = itemInfo(hoverItem).name;
@@ -265,7 +317,7 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     // Gehaltener Stapel
     if (!st.cursor.empty()) {
         b.itemIcon(st.cursor.id, st.mouse.x, st.mouse.y, 6.3f * s);
-        if (!st.creative || st.craftSize > 0)
+        if (!st.creative || st.craftSize > 0 || st.furnaceOpen)
             drawSlotCount(b, st.cursor, st.mouse.x - pt * 0.5f, st.mouse.y - pt * 0.5f, pt, s);
         drawDurability(b, st.cursor, st.mouse.x - pt * 0.5f, st.mouse.y - pt * 0.5f, pt, s);
     }

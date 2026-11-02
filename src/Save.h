@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include "Block.h"
+#include "Furnace.h"
 #include "Inventory.h"
 
 namespace oc {
@@ -28,10 +29,16 @@ struct SavedChunk {
     std::vector<uint8_t> rle;
 };
 
+struct FurnaceSave {
+    int32_t x = 0, y = 0, z = 0;
+    Furnace furnace;
+};
+
 struct SaveFile {
     int32_t seed = 0;
     PlayerState player;
     std::vector<SavedChunk> chunks;
+    std::vector<FurnaceSave> furnaces;
 };
 
 std::vector<uint8_t> rleEncode(const std::vector<BlockId>& blocks);

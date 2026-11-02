@@ -31,8 +31,13 @@ static const BlockInfo INFOS[BLOCK_COUNT] = {
     {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
     {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
     {"Lava",       false, false, true,  false, true,  false, TILE_LAVA,      TILE_LAVA,      TILE_LAVA,      0.0f, AIR},
-    {"Obsidian",   true,  true,  false, true,  false, true,  TILE_OBSIDIAN,  TILE_OBSIDIAN,  TILE_OBSIDIAN,  6.0f, OBSIDIAN, TOOL_PICKAXE, 2},
+    {"Obsidian",   true,  true,  false, true,  false, true,  TILE_OBSIDIAN,  TILE_OBSIDIAN,  TILE_OBSIDIAN,  6.0f, OBSIDIAN, TOOL_PICKAXE, 4},
     {"Werkbank",   true,  true,  false, true,  false, true,  TILE_CRAFT_TOP,   TILE_PLANKS,    TILE_CRAFT_SIDE, 1.0f, CRAFTING_TABLE, TOOL_AXE, 0},
+    {"Kohleerz",    true,  true,  false, true,  false, true,  TILE_COAL_ORE,    TILE_COAL_ORE,    TILE_COAL_ORE,    1.5f, COAL_ORE, TOOL_PICKAXE, 1},
+    {"Eisenerz",    true,  true,  false, true,  false, true,  TILE_IRON_ORE,    TILE_IRON_ORE,    TILE_IRON_ORE,    2.0f, IRON_ORE, TOOL_PICKAXE, 2},
+    {"Diamanterz",  true,  true,  false, true,  false, true,  TILE_DIAMOND_ORE, TILE_DIAMOND_ORE, TILE_DIAMOND_ORE, 2.5f, DIAMOND_ORE, TOOL_PICKAXE, 3},
+    {"Ofen",        true,  true,  false, true,  false, true,  TILE_FURNACE_TOP, TILE_FURNACE_TOP, TILE_FURNACE,     1.5f, FURNACE, TOOL_PICKAXE, 1},
+    {"Ofen",        true,  true,  false, true,  false, true,  TILE_FURNACE_TOP, TILE_FURNACE_TOP, TILE_FURNACE_LIT, 1.5f, FURNACE, TOOL_PICKAXE, 1, true},
 };
 
 const BlockInfo& blockInfo(BlockId id) {

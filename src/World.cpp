@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 
+#include "Crafting.h"
 #include "Mesher.h"
 
 namespace oc {
@@ -182,6 +183,7 @@ void World::updateFluidCell(int kind, int x, int y, int z) {
 }
 
 void World::tick(float dt) {
+    tickFurnaces(dt);
     for (int kind = 0; kind < 2; ++kind) {
         FluidQueue& q = fluid_[kind];
         q.accum += dt;
@@ -457,6 +459,93 @@ void World::importChunks(const std::vector<SavedChunk>& in) {
         if (!rleDecode(sc.rle, blocks, static_cast<size_t>(Chunk::VOLUME))) continue;
         stored_[ChunkKey{sc.cx, sc.cz}] = std::move(blocks);
     }
+}
+
+}  // namespace oc
+
+// ---------------------------------------------------------------------------
+// Oefen
+// ---------------------------------------------------------------------------
+
+namespace oc {
+
+static uint64_t furnaceKey(int x, int y, int z) {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(x) & 0xFFFFFFu) << 32) |
+           (static_cast<uint64_t>(static_cast<uint32_t>(z) & 0xFFFFFFu) << 8) | static_cast<uint64_t>(y & 0xFF);
+}
+
+Furnace& World::furnaceAt(int x, int y, int z) {
+    auto it = furnaces_.find(furnaceKey(x, y, z));
+    if (it == furnaces_.end()) it = furnaces_.emplace(furnaceKey(x, y, z), FurnaceEntry{glm::ivec3(x, y, z), Furnace()}).first;
+    return it->second.f;
+}
+
+Furnace* World::findFurnace(int x, int y, int z) {
+    auto it = furnaces_.find(furnaceKey(x, y, z));
+    return it == furnaces_.end() ? nullptr : &it->second.f;
+}
+
+bool World::removeFurnace(int x, int y, int z, Furnace* out) {
+    auto it = furnaces_.find(furnaceKey(x, y, z));
+    if (it == furnaces_.end()) return false;
+    if (out) *out = it->second.f;
+    furnaces_.erase(it);
+    return true;
+}
+
+void World::tickFurnaces(float dt) {
+    std::vector<uint64_t> orphans;
+    for (auto& kv : furnaces_) {
+        FurnaceEntry& e = kv.second;
+        const glm::ivec3 p = e.pos;
+        const int cx = floorDiv(p.x, CHUNK_W), cz = floorDiv(p.z, CHUNK_W);
+        if (!find(cx, cz)) continue;  // Chunk nicht geladen: Ofen ruht
+        const BlockId b = getBlock(p.x, p.y, p.z);
+        if (b != FURNACE && b != FURNACE_LIT) {
+            orphans.push_back(kv.first);
+            continue;
+        }
+        Furnace& f = e.f;
+        const SmeltRecipe* r = f.input.empty() ? nullptr : smeltRecipe(f.input.id);
+        const bool canSmelt =
+            r && (f.output.empty() || (f.output.id == r->output.id && f.output.damage == 0 &&
+                                       f.output.count + r->output.count <= itemInfo(r->output.id).maxStack));
+        if (f.burnTime > 0.0f) f.burnTime = std::max(0.0f, f.burnTime - dt);
+        if (f.burnTime <= 0.0f && canSmelt && !f.fuel.empty() && fuelSeconds(f.fuel.id) > 0.0f) {
+            f.burnTime = f.burnTotal = fuelSeconds(f.fuel.id);
+            if (--f.fuel.count <= 0) f.fuel.clear();
+        }
+        if (f.burnTime > 0.0f && canSmelt) {
+            f.cookTime += dt;
+            if (f.cookTime >= SMELT_SECONDS) {
+                f.cookTime -= SMELT_SECONDS;
+                if (--f.input.count <= 0) f.input.clear();
+                if (f.output.empty()) f.output = r->output;
+                else f.output.count += r->output.count;
+            }
+        } else if (f.cookTime > 0.0f) {
+            f.cookTime = std::max(0.0f, f.cookTime - 2.0f * dt);
+        }
+        const BlockId want = f.lit() ? FURNACE_LIT : FURNACE;
+        if (b != want) setBlockImpl(p.x, p.y, p.z, want, false);
+    }
+    for (uint64_t k : orphans) furnaces_.erase(k);
+}
+
+void World::exportFurnaces(std::vector<FurnaceSave>& out) const {
+    for (const auto& kv : furnaces_) {
+        const FurnaceEntry& e = kv.second;
+        FurnaceSave fs;
+        fs.x = e.pos.x;
+        fs.y = e.pos.y;
+        fs.z = e.pos.z;
+        fs.furnace = e.f;
+        out.push_back(fs);
+    }
+}
+
+void World::importFurnaces(const std::vector<FurnaceSave>& in) {
+    for (const FurnaceSave& fs : in) furnaces_[furnaceKey(fs.x, fs.y, fs.z)] = FurnaceEntry{glm::ivec3(fs.x, fs.y, fs.z), fs.furnace};
 }
 
 }  // namespace oc

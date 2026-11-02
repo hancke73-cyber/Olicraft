@@ -27,4 +27,13 @@ ItemStack matchRecipe(const ItemStack* cells, int gridSize);
 // Verbraucht je Zutat ein Stueck aus jedem belegten Feld.
 void consumeIngredients(ItemStack* cells, int gridSize);
 
+// Ofen
+struct SmeltRecipe {
+    ItemId input;
+    ItemStack output;
+};
+const SmeltRecipe* smeltRecipe(ItemId input);  // nullptr, wenn der Gegenstand nicht geschmolzen werden kann
+float fuelSeconds(ItemId item);                // Brenndauer, 0 = kein Brennstoff
+constexpr float SMELT_SECONDS = 10.0f;         // je Gegenstand
+
 }  // namespace oc

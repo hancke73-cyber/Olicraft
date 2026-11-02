@@ -18,6 +18,19 @@ constexpr ItemId ITEM_STONE_PICKAXE = 206;
 constexpr ItemId ITEM_STONE_AXE = 207;
 constexpr ItemId ITEM_STONE_SHOVEL = 208;
 constexpr ItemId ITEM_STONE_SWORD = 209;
+constexpr ItemId ITEM_COAL = 210;
+constexpr ItemId ITEM_IRON_INGOT = 211;
+constexpr ItemId ITEM_DIAMOND = 212;
+constexpr ItemId ITEM_COOKED_MEAT = 213;  // Gebratenes Fleisch (heilt mehr)
+constexpr ItemId ITEM_IRON_PICKAXE = 214;
+constexpr ItemId ITEM_IRON_AXE = 215;
+constexpr ItemId ITEM_IRON_SHOVEL = 216;
+constexpr ItemId ITEM_IRON_SWORD = 217;
+constexpr ItemId ITEM_DIAMOND_PICKAXE = 218;
+constexpr ItemId ITEM_DIAMOND_AXE = 219;
+constexpr ItemId ITEM_DIAMOND_SHOVEL = 220;
+constexpr ItemId ITEM_DIAMOND_SWORD = 221;
+constexpr ItemId ITEM_LAST = 221;
 
 struct ItemStack {
     ItemId id = ITEM_NONE;
@@ -42,7 +55,7 @@ struct ItemInfo {
     Tile iconTop;   // Symbol: Oberseite (Bloecke) bzw. Flachsymbol
     Tile iconSide;  // Symbol: Seite (Bloecke)
     ToolClass tool = TOOL_NONE;
-    int tier = 0;            // 1 = Holz, 2 = Stein
+    int tier = 0;            // 1 = Holz, 2 = Stein, 3 = Eisen, 4 = Diamant
     int maxDurability = 0;   // 0 = kein Werkzeug
     float speed = 1.0f;      // Abbaugeschwindigkeit bei passendem Block
     int attack = 2;          // Schaden gegen Mobs

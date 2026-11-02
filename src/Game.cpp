@@ -133,6 +133,7 @@ bool Game::init() {
     entities_ = EntityManager(static_cast<uint32_t>(seed) ^ 0xA5A5u);
     if (loaded) {
         world_->importChunks(sf.chunks);
+        world_->importFurnaces(sf.furnaces);
         player_.pos = sf.player.pos;
         player_.yaw = sf.player.yaw;
         player_.pitch = sf.player.pitch;
@@ -175,6 +176,28 @@ bool Game::init() {
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     if (opt_.demo == "inv") openInventory();
+    if (opt_.demo == "furnace") {
+        inventory_.clear();
+        inventory_.add(IRON_ORE, 12);
+        inventory_.add(ITEM_COAL, 7);
+        inventory_.add(COAL_ORE, 3);
+        inventory_.add(DIAMOND_ORE, 2);
+        inventory_.add(ITEM_DIAMOND, 4);
+        inventory_.add(ITEM_IRON_INGOT, 9);
+        inventory_.add(ITEM_COOKED_MEAT, 3);
+        inventory_.add(FURNACE, 1);
+        const glm::ivec3 fp(static_cast<int>(std::floor(player_.pos.x)) + 2, static_cast<int>(std::floor(player_.pos.y)),
+                            static_cast<int>(std::floor(player_.pos.z)));
+        world_->setBlock(fp.x, fp.y, fp.z, FURNACE);
+        openFurnace(fp);
+        Furnace& fu = world_->furnaceAt(fp.x, fp.y, fp.z);
+        fu.input = {IRON_ORE, 5};
+        fu.fuel = {ITEM_COAL, 3};
+        fu.burnTime = 50.0f;
+        fu.burnTotal = 80.0f;
+        fu.cookTime = 6.0f;
+        fu.output = {ITEM_IRON_INGOT, 2};
+    }
     if (opt_.demo == "craft") {
         inventory_.clear();
         const ItemId tools[] = {ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD,
@@ -315,6 +338,7 @@ void Game::toggleFullscreen() {
 void Game::openInventory(bool table) {
     if (dead_) return;
     inventoryOpen_ = true;
+    furnaceWindow_ = false;
     craftSize_ = table ? 3 : (creative_ ? 0 : 2);
     paletteWindow_ = creative_ && !table;
     for (ItemStack& c : craft_) c.clear();
@@ -323,6 +347,13 @@ void Game::openInventory(bool table) {
     curX_ = winW_cur_ * 0.5;
     curY_ = winH_cur_ * 0.5;
     glfwSetCursorPos(window_, curX_, curY_);
+}
+
+void Game::openFurnace(const glm::ivec3& pos) {
+    openInventory(true);
+    furnaceWindow_ = true;
+    furnacePos_ = pos;
+    world_->furnaceAt(pos.x, pos.y, pos.z);
 }
 
 void Game::closeInventory() {
@@ -349,6 +380,7 @@ void Game::closeInventory() {
     inventoryOpen_ = false;
     craftSize_ = 0;
     paletteWindow_ = false;
+    furnaceWindow_ = false;
     firstMouse_ = true;
     breakTimer_ = placeTimer_ = attackTimer_ = 0.3f;
     if (!paused_) glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -378,8 +410,34 @@ void Game::dropSelected(bool all) {
 
 void Game::inventoryClick(int button, int mods) {
     const bool right = button == GLFW_MOUSE_BUTTON_RIGHT;
-    const InvLayout layout = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_);
+    const InvLayout layout = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_);
     const glm::vec2 m = mousePx();
+
+    if (furnaceWindow_) {
+        Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z);
+        const int fslot = layout.hitFurnace(m);
+        if (fu && fslot >= 0) {
+            ItemStack* st = fslot == 0 ? &fu->input : (fslot == 1 ? &fu->fuel : &fu->output);
+            if ((mods & GLFW_MOD_SHIFT) && !right) {
+                if (!st->empty()) {  // in den Rucksack verschieben
+                    const int left = inventory_.add(st->id, st->count, st->damage);
+                    if (left <= 0) st->clear();
+                    else st->count = left;
+                }
+            } else if (fslot == 2) {  // Ausgabe: nur entnehmen
+                if (cursor_.empty()) {
+                    cursor_ = *st;
+                    st->clear();
+                } else if (cursor_.sameKind(*st) && cursor_.count + st->count <= itemInfo(cursor_.id).maxStack) {
+                    cursor_.count += st->count;
+                    st->clear();
+                }
+            } else {
+                Inventory::click(*st, cursor_, right);
+            }
+            return;
+        }
+    }
 
     const int pal = layout.hitPalette(m);
     if (pal >= 0) {
@@ -761,6 +819,14 @@ void Game::breakBlock(const glm::ivec3& p) {
     const BlockId b = world_->getBlock(p.x, p.y, p.z);
     if (!blockInfo(b).breakable) return;
     const bool harvest = creative_ ? false : canHarvest(b, inventory_.slots[slot_]);
+    if (b == FURNACE || b == FURNACE_LIT) {  // Inhalt des Ofens faellt heraus
+        Furnace content;
+        if (world_->removeFurnace(p.x, p.y, p.z, &content) && !creative_) {
+            for (const ItemStack* st : {&content.input, &content.fuel, &content.output})
+                if (!st->empty())
+                    entities_.spawnItem(*st, glm::vec3(p.x + 0.5f, p.y + 0.4f, p.z + 0.5f), glm::vec3(0.0f, 2.5f, 0.0f), 0.4f);
+        }
+    }
     world_->setBlock(p.x, p.y, p.z, AIR);
     if (!creative_) {
         ItemId drop = harvest ? blockDropItem(b) : ITEM_NONE;
@@ -777,17 +843,24 @@ void Game::breakBlock(const glm::ivec3& p) {
 
 void Game::placeBlockOrUse() {
     ItemStack& sel = inventory_.slots[slot_];
-    // Rechtsklick auf eine Werkbank oeffnet sie (mit Umschalt wird stattdessen gesetzt)
-    if (target_.hit && world_->getBlock(target_.block.x, target_.block.y, target_.block.z) == CRAFTING_TABLE &&
-        glfwGetKey(window_, GLFW_KEY_LEFT_SHIFT) != GLFW_PRESS && glfwGetKey(window_, GLFW_KEY_RIGHT_SHIFT) != GLFW_PRESS) {
-        openInventory(true);
-        return;
+    // Rechtsklick auf Werkbank oder Ofen oeffnet sie (mit Umschalt wird stattdessen gesetzt)
+    if (target_.hit && glfwGetKey(window_, GLFW_KEY_LEFT_SHIFT) != GLFW_PRESS &&
+        glfwGetKey(window_, GLFW_KEY_RIGHT_SHIFT) != GLFW_PRESS) {
+        const BlockId tb = world_->getBlock(target_.block.x, target_.block.y, target_.block.z);
+        if (tb == CRAFTING_TABLE) {
+            openInventory(true);
+            return;
+        }
+        if (tb == FURNACE || tb == FURNACE_LIT) {
+            openFurnace(target_.block);
+            return;
+        }
     }
     if (sel.empty()) return;
 
-    if (sel.id == ITEM_MEAT) {
+    if (sel.id == ITEM_MEAT || sel.id == ITEM_COOKED_MEAT) {
         if (!creative_ && health_ < 20 && eatTimer_ <= 0.0f) {
-            health_ = std::min(20, health_ + 4);
+            health_ = std::min(20, health_ + (sel.id == ITEM_COOKED_MEAT ? 8 : 4));
             inventory_.take(slot_, 1);
             eatTimer_ = 0.8f;
         }
@@ -1213,6 +1286,66 @@ int Game::selfTest() {
         world_->setBlock(1, gy - 1, 4, STONE);
     }
 
+    // 15. Ofen: oeffnen, befuellen, schmelzen, Ausgabe entnehmen, Abbau gibt den Inhalt zurueck
+    {
+        dead_ = false;
+        creative_ = false;
+        inventory_.clear();
+        entities_.clear();
+        cursor_.clear();
+        world_->setBlock(-3, gy, 4, FURNACE);
+        slot_ = 3;
+        inventory_.slots[3] = {DIRT, 5};
+        target_ = world_->raycast(glm::vec3(-2.5f, gy + 1.5f, 2.5f), glm::vec3(-0.15f, -0.5f, 1.0f), 5.0f);
+        SCHECK(target_.hit && target_.block == glm::ivec3(-3, gy, 4));
+        placeTimer_ = 0.0f;
+        placeBlockOrUse();
+        SCHECK(inventoryOpen_ && furnaceWindow_ && furnacePos_ == glm::ivec3(-3, gy, 4));
+        inventory_.slots[9] = {IRON_ORE, 3};
+        inventory_.slots[10] = {ITEM_COAL, 2};
+        InvLayout L = InvLayout::make(fbW_, fbH_, false, craftSize_, true);
+        auto clickAtPos = [&](glm::vec2 fbPos, int button, int mods) {
+            curX_ = fbPos.x * static_cast<double>(winW_cur_) / fbW_;
+            curY_ = fbPos.y * static_cast<double>(winH_cur_) / fbH_;
+            inventoryClick(button, mods);
+        };
+        auto center = [&](glm::vec2 p) { return p + glm::vec2(L.pitch() * 0.5f); };
+        clickAtPos(center(L.slotPos(9)), GLFW_MOUSE_BUTTON_LEFT, 0);              // Erz aufnehmen
+        clickAtPos(center(L.furnaceSlotPos(0)), GLFW_MOUSE_BUTTON_LEFT, 0);        // in die Eingabe
+        clickAtPos(center(L.slotPos(10)), GLFW_MOUSE_BUTTON_LEFT, 0);              // Kohle aufnehmen
+        clickAtPos(center(L.furnaceSlotPos(1)), GLFW_MOUSE_BUTTON_RIGHT, 0);       // eine Kohle als Brennstoff
+        clickAtPos(center(L.slotPos(10)), GLFW_MOUSE_BUTTON_LEFT, 0);              // Rest zurueck
+        Furnace* fu = world_->findFurnace(-3, gy, 4);
+        SCHECK(fu && fu->input.id == IRON_ORE && fu->input.count == 3 && fu->fuel.id == ITEM_COAL && fu->fuel.count == 1);
+        SCHECK(cursor_.empty() && inventory_.count(ITEM_COAL) == 1);
+        for (int i = 0; i < 230; ++i) world_->tick(0.1f);  // 23 s: zwei Barren
+        SCHECK(fu && fu->output.id == ITEM_IRON_INGOT && fu->output.count == 2);
+        clickAtPos(center(L.furnaceSlotPos(2)), GLFW_MOUSE_BUTTON_LEFT, 0);        // Ausgabe nehmen
+        SCHECK(cursor_.id == ITEM_IRON_INGOT && cursor_.count == 2 && fu->output.empty());
+        clickAtPos(center(L.slotPos(12)), GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(inventory_.slots[12].id == ITEM_IRON_INGOT);
+        // Umschalt-Klick auf die Eingabe holt den Rest zurueck
+        clickAtPos(center(L.furnaceSlotPos(0)), GLFW_MOUSE_BUTTON_LEFT, GLFW_MOD_SHIFT);
+        SCHECK(fu->input.empty() && inventory_.count(IRON_ORE) == 1);
+        fu->output = {ITEM_IRON_INGOT, 1};
+        closeInventory();
+        SCHECK(!inventoryOpen_ && !furnaceWindow_);
+        // Abbauen: Ofen verschwindet, Inhalt faellt heraus
+        breakBlock(glm::ivec3(-3, gy, 4));
+        SCHECK(world_->getBlock(-3, gy, 4) == AIR && world_->findFurnace(-3, gy, 4) == nullptr);
+        bool foundIngot = false;
+        for (const ItemEntity& it : entities_.items())
+            if (it.stack.id == ITEM_IRON_INGOT) foundIngot = true;
+        SCHECK(foundIngot);
+        // Essen: gebratenes Fleisch heilt mehr
+        inventory_.slots[2] = {ITEM_COOKED_MEAT, 2};
+        slot_ = 2;
+        health_ = 5;
+        eatTimer_ = 0.0f;
+        placeBlockOrUse();
+        SCHECK(health_ == 13 && inventory_.slots[2].count == 1);
+    }
+
     // 9. Inventar per Mausklick
     dead_ = false;
     health_ = 20;
@@ -1392,6 +1525,16 @@ void Game::render() {
     h.selectedSlot = slot_;
     h.inventoryOpen = inventoryOpen_;
     h.paletteOpen = paletteWindow_;
+    h.furnaceOpen = furnaceWindow_;
+    if (furnaceWindow_) {
+        if (const Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z)) {
+            h.furnaceIn = fu->input;
+            h.furnaceFuel = fu->fuel;
+            h.furnaceOut = fu->output;
+            h.furnaceBurn = fu->burnTotal > 0.0f ? fu->burnTime / fu->burnTotal : 0.0f;
+            h.furnaceCook = fu->cookTime / SMELT_SECONDS;
+        }
+    }
     h.craftSize = craftSize_;
     for (int i = 0; i < 9; ++i) h.craftCells[i] = craft_[i];
     h.craftResult = craftSize_ > 0 ? matchRecipe(craft_, craftSize_) : ItemStack();
@@ -1429,6 +1572,7 @@ bool Game::saveWorld() {
     // Ein gehaltener Stapel geht nicht verloren
     if (!cursor_.empty()) sf.player.inventory.add(cursor_.id, cursor_.count);
     world_->exportModified(sf.chunks);
+    world_->exportFurnaces(sf.furnaces);
     std::string err;
     if (!writeSaveFile(opt_.savePath, sf, &err)) {
         std::fprintf(stderr, "Speichern fehlgeschlagen: %s\n", err.c_str());

@@ -147,7 +147,7 @@ void emitFace(const Ctx& c, int x, int y, int z, int f, BlockId b, float lo, flo
         }
         v[k].sky = skySum / static_cast<float>(skyN);
         v[k].shade = fd.shade * AO_CURVE[ao];
-        if (isLava(b)) {  // Lava leuchtet: unabhaengig von Tageszeit und Schatten
+        if (isLava(b) || bi.emissive) {  // leuchtende Bloecke: unabhaengig von Tageszeit und Schatten
             v[k].sky = 2.0f;
             v[k].shade = 1.0f;
         }

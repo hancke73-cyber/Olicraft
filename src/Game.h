@@ -74,6 +74,7 @@ private:
     MenuState menuState() const;
     void toggleFullscreen();
     void openInventory(bool table = false);
+    void openFurnace(const glm::ivec3& pos);
     void useHeldTool(int amount);
     void closeInventory();
     void inventoryClick(int button, int mods);
@@ -113,6 +114,8 @@ private:
     ItemStack craft_[9];
     int craftSize_ = 0;          // 0, 2 (Inventar) oder 3 (Werkbank)
     bool paletteWindow_ = false;  // Kreativ-Auswahl im Inventarfenster
+    bool furnaceWindow_ = false;  // Ofenfenster (craftSize_ == 3 belegt den Platz)
+    glm::ivec3 furnacePos_{0};
 
     bool creative_ = false;
     int health_ = 20;

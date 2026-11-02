@@ -107,7 +107,48 @@ void TerrainGenerator::generate(Chunk& chunk) const {
         }
     }
 
+    placeOres(chunk);
     placeTrees(chunk);
+}
+
+// Erzadern: kleine Zufallsklumpen im Stein, je Chunk aus dem Seed abgeleitet (ueber Chunkgrenzen abgeschnitten)
+void TerrainGenerator::placeOres(Chunk& chunk) const {
+    struct OreType {
+        BlockId block;
+        int tries, minY, maxY, size;
+    };
+    static const OreType ORES[] = {
+        {COAL_ORE, 16, 5, 100, 8},
+        {IRON_ORE, 10, 5, 64, 6},
+        {DIAMOND_ORE, 2, 5, 15, 4},
+    };
+    uint32_t s = hash3(chunk.cx, 0x0E5E, chunk.cz, static_cast<uint32_t>(seed_) ^ 0x0BEEFu);
+    if (s == 0) s = 1;
+    auto next = [&s]() {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        return s;
+    };
+    for (const OreType& o : ORES) {
+        for (int t = 0; t < o.tries; ++t) {
+            int x = static_cast<int>(next() % CHUNK_W), z = static_cast<int>(next() % CHUNK_W);
+            int y = o.minY + static_cast<int>(next() % static_cast<uint32_t>(o.maxY - o.minY + 1));
+            const int n = 1 + static_cast<int>(next() % static_cast<uint32_t>(o.size));
+            for (int i = 0; i < n; ++i) {
+                if (x >= 0 && x < CHUNK_W && z >= 0 && z < CHUNK_W && y >= 1 && y < CHUNK_H && chunk.get(x, y, z) == STONE)
+                    chunk.set(x, y, z, o.block);
+                switch (next() % 6) {
+                    case 0: ++x; break;
+                    case 1: --x; break;
+                    case 2: ++y; break;
+                    case 3: --y; break;
+                    case 4: ++z; break;
+                    default: --z; break;
+                }
+            }
+        }
+    }
 }
 
 void TerrainGenerator::placeTrees(Chunk& chunk) const {

@@ -1151,12 +1151,21 @@ static void testCraftingAndTools() {
         auto extra = grid(3, {{1, PLANKS}, {4, ITEM_STICK}, {7, ITEM_STICK}, {0, DIRT}});
         CHECK(matchRecipe(extra.data(), 3).empty());
     }
-    // Sand 2x2 -> Glas, Bruchstein -> Stein
+    // Ofen: 8 Bruchstein im Ring, Mitte leer; Glas und Stein gibt es nur noch aus dem Ofen
     {
+        auto f = grid(3, {{0, COBBLE}, {1, COBBLE}, {2, COBBLE}, {3, COBBLE}, {5, COBBLE}, {6, COBBLE}, {7, COBBLE}, {8, COBBLE}});
+        CHECK(matchRecipe(f.data(), 3).id == FURNACE);
+        auto full = grid(3, {{0, COBBLE}, {1, COBBLE}, {2, COBBLE}, {3, COBBLE}, {4, COBBLE}, {5, COBBLE}, {6, COBBLE}, {7, COBBLE}, {8, COBBLE}});
+        CHECK(matchRecipe(full.data(), 3).empty());
         auto g = grid(2, {{0, SAND}, {1, SAND}, {2, SAND}, {3, SAND}});
-        CHECK(matchRecipe(g.data(), 2).id == GLASS);
+        CHECK(matchRecipe(g.data(), 2).empty());
         auto c = grid(2, {{3, COBBLE}});
-        CHECK(matchRecipe(c.data(), 2).id == STONE);
+        CHECK(matchRecipe(c.data(), 2).empty());
+        // Eisen- und Diamantwerkzeuge
+        auto ip = grid(3, {{0, ITEM_IRON_INGOT}, {1, ITEM_IRON_INGOT}, {2, ITEM_IRON_INGOT}, {4, ITEM_STICK}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(ip.data(), 3).id == ITEM_IRON_PICKAXE);
+        auto ds = grid(3, {{1, ITEM_DIAMOND}, {4, ITEM_DIAMOND}, {7, ITEM_STICK}});
+        CHECK(matchRecipe(ds.data(), 3).id == ITEM_DIAMOND_SWORD);
     }
     // Leeres Raster und Zutaten verbrauchen
     {
@@ -1187,7 +1196,12 @@ static void testCraftingAndTools() {
     // Abbau: Stein braucht eine Spitzhacke, Obsidian eine Steinspitzhacke
     const ItemStack hand, wp{ITEM_WOODEN_PICKAXE, 1}, sp{ITEM_STONE_PICKAXE, 1}, wa{ITEM_WOODEN_AXE, 1};
     CHECK(!canHarvest(STONE, hand) && canHarvest(STONE, wp) && canHarvest(STONE, sp));
-    CHECK(!canHarvest(OBSIDIAN, hand) && !canHarvest(OBSIDIAN, wp) && canHarvest(OBSIDIAN, sp));
+    const ItemStack ip{ITEM_IRON_PICKAXE, 1}, dp{ITEM_DIAMOND_PICKAXE, 1};
+    CHECK(!canHarvest(OBSIDIAN, hand) && !canHarvest(OBSIDIAN, wp) && !canHarvest(OBSIDIAN, sp) && !canHarvest(OBSIDIAN, ip) &&
+          canHarvest(OBSIDIAN, dp));
+    CHECK(!canHarvest(IRON_ORE, wp) && canHarvest(IRON_ORE, sp) && !canHarvest(DIAMOND_ORE, sp) && canHarvest(DIAMOND_ORE, ip));
+    CHECK(canHarvest(COAL_ORE, wp) && !canHarvest(COAL_ORE, hand));
+    CHECK(miningSeconds(STONE, dp) < miningSeconds(STONE, ip) && miningSeconds(STONE, ip) < miningSeconds(STONE, sp));
     CHECK(!canHarvest(STONE, wa));  // falsche Werkzeugart
     CHECK(canHarvest(DIRT, hand) && canHarvest(LOG, hand) && canHarvest(LEAVES, hand));
     CHECK(miningSeconds(STONE, sp) < miningSeconds(STONE, wp));
@@ -1228,6 +1242,134 @@ static void testCraftingAndTools() {
     CHECK(blockDropItem(STONE) == COBBLE);
 }
 
+static void testOresAndFurnace() {
+    // Erze: Verteilung, Haeufigkeit und Hoehenbereiche
+    World w(42);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 4);
+    int coal = 0, iron = 0, diamond = 0, diamondHigh = 0, ironHigh = 0, exposedBad = 0;
+    for (int x = -64; x < 64; ++x)
+        for (int z = -64; z < 64; ++z)
+            for (int y = 0; y < CHUNK_H; ++y) {
+                BlockId b = w.getBlock(x, y, z);
+                if (b == COAL_ORE) ++coal;
+                if (b == IRON_ORE) {
+                    ++iron;
+                    if (y > 64 + 6) ++ironHigh;
+                }
+                if (b == DIAMOND_ORE) {
+                    ++diamond;
+                    if (y > 15 + 4) ++diamondHigh;
+                }
+                if ((b == COAL_ORE || b == IRON_ORE || b == DIAMOND_ORE) && y < 1) ++exposedBad;
+            }
+    CHECK(coal > 300 && iron > 100);
+    CHECK(coal > iron && iron > diamond);
+    CHECK(diamond >= 1 && diamondHigh == 0 && ironHigh == 0 && exposedBad == 0);
+
+    // Ofen
+    World f(5);
+    f.setMeshingEnabled(false);
+    f.loadAround(glm::vec3(0.0f), 1);
+    for (int y = 100; y < 106; ++y) f.setBlock(2, y, 2, AIR);
+    f.setBlock(2, 100, 2, FURNACE);
+    CHECK(f.findFurnace(2, 100, 2) == nullptr);
+    Furnace& fu = f.furnaceAt(2, 100, 2);
+    CHECK(f.furnaceCount() == 1 && f.findFurnace(2, 100, 2) == &fu);
+
+    // ohne Brennstoff passiert nichts
+    fu.input = {IRON_ORE, 2};
+    for (int i = 0; i < 400; ++i) f.tick(0.1f);
+    CHECK(fu.output.empty() && fu.input.count == 2 && !fu.lit() && f.getBlock(2, 100, 2) == FURNACE);
+
+    // mit Kohle: 2 Erze brauchen 20 s, der Ofen leuchtet, 1 Kohle reicht
+    fu.fuel = {ITEM_COAL, 1};
+    f.tick(0.1f);
+    CHECK(fu.lit() && f.getBlock(2, 100, 2) == FURNACE_LIT && fu.fuel.empty());
+    for (int i = 0; i < 150; ++i) f.tick(0.1f);  // 15 s: ein Barren
+    CHECK(fu.output.id == ITEM_IRON_INGOT && fu.output.count == 1 && fu.input.count == 1);
+    for (int i = 0; i < 100; ++i) f.tick(0.1f);  // 25 s
+    CHECK(fu.output.count == 2 && fu.input.empty());
+    CHECK(fu.lit());  // 80 s Brenndauer, noch nicht abgelaufen
+    for (int i = 0; i < 800; ++i) f.tick(0.1f);
+    CHECK(!fu.lit() && f.getBlock(2, 100, 2) == FURNACE);  // verloescht, wenn nichts mehr zu tun ist
+
+    // Brennstoff wird nicht verschwendet, wenn nichts zu schmelzen ist
+    fu.fuel = {ITEM_COAL, 1};
+    f.tick(1.0f);
+    CHECK(fu.fuel.count == 1 && !fu.lit());
+
+    // falsche Eingabe wird nicht geschmolzen, voller Ausgabestapel stoppt den Ofen
+    fu.input = {DIRT, 3};
+    f.tick(5.0f);
+    CHECK(fu.input.count == 3 && !fu.lit());
+    fu.input = {SAND, 3};
+    fu.output = {GLASS, 64};
+    f.tick(5.0f);
+    CHECK(fu.input.count == 3 && fu.output.count == 64);
+    fu.output.clear();
+    for (int i = 0; i < 400; ++i) f.tick(0.1f);
+    CHECK(fu.output.id == GLASS && fu.output.count == 3 && fu.input.empty());
+
+    // Fleisch braten, verschiedene Ausgaben mischen nicht
+    fu.input = {ITEM_MEAT, 1};
+    fu.fuel = {LOG, 1};
+    for (int i = 0; i < 200; ++i) f.tick(0.1f);
+    CHECK(fu.output.id == GLASS);  // Glas steht noch im Ausgabefeld, Fleisch wartet
+    CHECK(fu.input.count == 1);
+    fu.output.clear();
+    for (int i = 0; i < 150; ++i) f.tick(0.1f);
+    CHECK(fu.output.id == ITEM_COOKED_MEAT);
+
+    // Ruhender Ofen in ungeladenem Chunk, entfernter Block loescht den Zustand
+    CHECK(f.removeFurnace(2, 100, 2, nullptr));
+    CHECK(f.furnaceCount() == 0);
+    f.furnaceAt(2, 100, 2);
+    f.setBlock(2, 100, 2, AIR);
+    f.tick(0.1f);
+    CHECK(f.furnaceCount() == 0);  // verwaister Zustand wird aufgeraeumt
+
+    // Schmelzliste und Brennstoffe
+    CHECK(smeltRecipe(IRON_ORE) && smeltRecipe(IRON_ORE)->output.id == ITEM_IRON_INGOT);
+    CHECK(smeltRecipe(SAND)->output.id == GLASS && smeltRecipe(COBBLE)->output.id == STONE);
+    CHECK(smeltRecipe(DIRT) == nullptr && smeltRecipe(ITEM_COAL) == nullptr);
+    CHECK(fuelSeconds(ITEM_COAL) > fuelSeconds(LOG) && fuelSeconds(LOG) > fuelSeconds(ITEM_STICK));
+    CHECK(fuelSeconds(STONE) == 0.0f);
+
+    // Speichern: Ofenzustand
+    SaveFile sf;
+    FurnaceSave fs;
+    fs.x = -3;
+    fs.y = 70;
+    fs.z = 9;
+    fs.furnace.input = {IRON_ORE, 5};
+    fs.furnace.fuel = {ITEM_COAL, 2};
+    fs.furnace.output = {ITEM_IRON_INGOT, 3};
+    fs.furnace.burnTime = 12.5f;
+    fs.furnace.burnTotal = 80.0f;
+    fs.furnace.cookTime = 4.25f;
+    sf.furnaces.push_back(fs);
+    std::filesystem::create_directories("olicraft_test_save4");
+    std::string err;
+    CHECK(writeSaveFile("olicraft_test_save4/w.dat", sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile("olicraft_test_save4/w.dat", back, &err));
+    CHECK(back.furnaces.size() == 1);
+    if (back.furnaces.size() == 1) {
+        const FurnaceSave& b = back.furnaces[0];
+        CHECK(b.x == -3 && b.y == 70 && b.z == 9);
+        CHECK(b.furnace.input == fs.furnace.input && b.furnace.fuel == fs.furnace.fuel && b.furnace.output == fs.furnace.output);
+        CHECK(b.furnace.burnTime == 12.5f && b.furnace.burnTotal == 80.0f && b.furnace.cookTime == 4.25f);
+    }
+    std::filesystem::remove_all("olicraft_test_save4");
+    World g(5);
+    g.setMeshingEnabled(false);
+    g.importFurnaces(back.furnaces);
+    std::vector<FurnaceSave> again;
+    g.exportFurnaces(again);
+    CHECK(again.size() == 1 && again[0].furnace.input.count == 5);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -1258,6 +1400,7 @@ int main() {
     testItemsAndInventory();
     testSettingsAndMenu();
     testCraftingAndTools();
+    testOresAndFurnace();
     testSaveV2();
     testEntities();
     std::printf("%d Pruefungen, %d fehlgeschlagen\n", g_checks, g_failed);

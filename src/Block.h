@@ -42,6 +42,11 @@ enum Block : BlockId {
     LAVA_FALL,
     OBSIDIAN,
     CRAFTING_TABLE,
+    COAL_ORE,
+    IRON_ORE,
+    DIAMOND_ORE,
+    FURNACE,
+    FURNACE_LIT,
     BLOCK_COUNT
 };
 
@@ -86,6 +91,24 @@ enum Tile : int {
     TILE_AXE_STONE,
     TILE_SHOVEL_STONE,
     TILE_SWORD_STONE,
+    TILE_COAL_ORE,
+    TILE_IRON_ORE,
+    TILE_DIAMOND_ORE,
+    TILE_FURNACE,
+    TILE_FURNACE_LIT,
+    TILE_FURNACE_TOP,
+    TILE_COAL,
+    TILE_IRON_INGOT,
+    TILE_DIAMOND,
+    TILE_COOKED_MEAT,
+    TILE_PICKAXE_IRON,
+    TILE_AXE_IRON,
+    TILE_SHOVEL_IRON,
+    TILE_SWORD_IRON,
+    TILE_PICKAXE_DIAMOND,
+    TILE_AXE_DIAMOND,
+    TILE_SHOVEL_DIAMOND,
+    TILE_SWORD_DIAMOND,
     TILE_COUNT
 };
 
@@ -105,6 +128,7 @@ struct BlockInfo {
     BlockId drop;    // Block, der beim Abbauen faellt (AIR = nichts)
     ToolClass tool = TOOL_NONE;  // passende Werkzeugart
     int minTier = 0;             // noetige Werkzeugstufe, damit der Block etwas fallen laesst (0 = keine)
+    bool emissive = false;       // leuchtet (unabhaengig von Tageszeit und Schatten)
 };
 
 const BlockInfo& blockInfo(BlockId id);

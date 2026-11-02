@@ -45,6 +45,7 @@ struct InvLayout {
     float s = 1.0f;
     bool creative = false;  // Auswahlfeld mit allen Gegenstaenden (Kreativ-Inventar)
     int craftSize = 0;      // 0 = kein Handwerksfeld, 2 = Handwerk im Inventar, 3 = Werkbank
+    bool furnace = false;   // Ofenfenster (nutzt den Platz des 3x3-Rasters)
     glm::vec2 panelPos{0.0f}, panelSize{0.0f};
     glm::vec2 craftTop{0.0f};    // linke obere Ecke des Handwerksrasters
     glm::vec2 resultPos{0.0f};   // Ergebnisfeld
@@ -53,7 +54,7 @@ struct InvLayout {
     glm::vec2 hotbarTop{0.0f};   // linke obere Ecke der Hotbar im Fenster
     static constexpr int PALETTE_COLS = 9;
 
-    static InvLayout make(int w, int h, bool creative, int craftSize = 0);
+    static InvLayout make(int w, int h, bool creative, int craftSize = 0, bool furnace = false);
     float pitch() const { return 18.0f * s; }
     glm::vec2 slotPos(int index) const;     // Inventar-Slot 0..35
     glm::vec2 palettePos(int index) const;  // Auswahlfeld (Kreativ)
@@ -61,6 +62,8 @@ struct InvLayout {
     int hitPalette(glm::vec2 m) const;      // -1: kein Eintrag
     int hitCraft(glm::vec2 m) const;        // Feld im Handwerksraster, -1: keins
     bool hitResult(glm::vec2 m) const;      // Ergebnisfeld
+    glm::vec2 furnaceSlotPos(int which) const;  // 0 Eingabe, 1 Brennstoff, 2 Ausgabe
+    int hitFurnace(glm::vec2 m) const;          // -1: keins
     glm::vec2 craftPos(int index) const;
     bool inside(glm::vec2 m) const;
 };
@@ -75,6 +78,10 @@ struct HudState {
     int selectedSlot = 0;
     bool inventoryOpen = false;
     bool paletteOpen = false;      // Kreativ-Auswahl statt Handwerk
+    bool furnaceOpen = false;
+    ItemStack furnaceIn, furnaceFuel, furnaceOut;
+    float furnaceBurn = 0.0f;      // Flamme: Rest der Brenndauer 0..1
+    float furnaceCook = 0.0f;      // Pfeil: Fortschritt 0..1
     int craftSize = 0;             // 0, 2 oder 3
     ItemStack craftCells[9];
     ItemStack craftResult;

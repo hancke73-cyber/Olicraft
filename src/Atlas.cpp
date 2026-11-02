@@ -386,6 +386,129 @@ void drawTool(TileCanvas& c, int kind, Rgba m) {  // kind: 0 Spitzhacke, 1 Axt, 
     }
 }
 
+void stoneBase(TileCanvas& c, int tile) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            float r = rnd(x, y, tile, 31);
+            int base = 124 + static_cast<int>((r - 0.5f) * 22);
+            c.set(x, y, {base, base, base, 255});
+        }
+}
+
+// Erzklumpen: kleine Gruppen aus Pixeln in der Erzfarbe
+void drawOre(TileCanvas& c, int tile, Rgba ore, Rgba light) {
+    stoneBase(c, tile);
+    for (int k = 0; k < 7; ++k) {
+        int cx = 1 + static_cast<int>(rnd(k, 1, tile, 41) * 13), cy = 1 + static_cast<int>(rnd(k, 2, tile, 42) * 13);
+        const int offs[][2] = {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {-1, 0}};
+        int n = 2 + static_cast<int>(rnd(k, 3, tile, 43) * 3);
+        for (int i = 0; i < n; ++i) {
+            const int px = cx + offs[i][0], py = cy + offs[i][1];
+            if (px < 0 || py < 0 || px >= TILE_PX || py >= TILE_PX) continue;
+            c.set(px, py, (i == 0) ? light : ore);
+        }
+    }
+}
+void drawCoalOre(TileCanvas& c) { drawOre(c, TILE_COAL_ORE, {32, 32, 36, 255}, {64, 64, 70, 255}); }
+void drawIronOre(TileCanvas& c) { drawOre(c, TILE_IRON_ORE, {214, 160, 130, 255}, {240, 196, 170, 255}); }
+void drawDiamondOre(TileCanvas& c) { drawOre(c, TILE_DIAMOND_ORE, {70, 220, 226, 255}, {190, 255, 255, 255}); }
+
+void drawFurnaceBody(TileCanvas& c, int tile) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int base = 112 + static_cast<int>((rnd(x, y, tile) - 0.5f) * 26);
+            if ((x + (y / 4) * 3) % 8 == 0 || y % 4 == 3) base -= 26;  // Fugen wie Bruchstein
+            c.set(x, y, {base, base, base, 255});
+        }
+}
+
+void drawFurnaceSide(TileCanvas& c) {
+    drawFurnaceBody(c, TILE_FURNACE);
+    for (int y = 3; y <= 9; ++y)
+        for (int x = 4; x <= 11; ++x) c.set(x, y, {26, 26, 28, 255});  // Feueroeffnung
+    for (int x = 4; x <= 11; x += 2)
+        for (int y = 3; y <= 9; ++y) c.set(x, y, {70, 70, 74, 255});  // Gitter
+    for (int x = 5; x <= 10; ++x) c.set(x, 12, {60, 60, 64, 255});
+}
+
+void drawFurnaceLit(TileCanvas& c) {
+    drawFurnaceBody(c, TILE_FURNACE_LIT);
+    for (int y = 3; y <= 9; ++y)
+        for (int x = 4; x <= 11; ++x) {
+            int hot = 140 + static_cast<int>(rnd(x, y, TILE_FURNACE_LIT, 3) * 100);
+            c.set(x, y, {255, hot, 20 + static_cast<int>(rnd(x, y, 7, 4) * 30), 255});
+        }
+    for (int x = 4; x <= 11; x += 2)
+        for (int y = 3; y <= 9; ++y) c.set(x, y, {120, 50, 10, 255});
+    for (int x = 5; x <= 10; ++x) c.set(x, 12, {60, 60, 64, 255});
+}
+
+void drawFurnaceTop(TileCanvas& c) {
+    drawFurnaceBody(c, TILE_FURNACE_TOP);
+    for (int y = 4; y <= 11; ++y)
+        for (int x = 4; x <= 11; ++x) {
+            float dx = x - 7.5f, dy = y - 7.5f;
+            if (dx * dx + dy * dy < 14.0f) c.set(x, y, {48, 48, 52, 255});
+        }
+}
+
+void drawCoalItem(TileCanvas& c) {
+    drawToolBase(c);
+    for (int y = 3; y <= 12; ++y)
+        for (int x = 3; x <= 12; ++x) {
+            float dx = (x - 7.5f) / 4.7f, dy = (y - 7.5f) / 4.2f;
+            if (dx * dx + dy * dy < 1.0f + (rnd(x, y, TILE_COAL, 5) - 0.5f) * 0.5f) {
+                int v = 34 + static_cast<int>(rnd(x, y, TILE_COAL) * 22);
+                if ((x + y) % 5 == 0) v += 36;
+                c.set(x, y, {v, v, v + 4, 255});
+            }
+        }
+}
+
+void drawIronIngot(TileCanvas& c) {
+    drawToolBase(c);
+    for (int y = 5; y <= 10; ++y)
+        for (int x = 2; x <= 13; ++x) {
+            const int slant = (10 - y) / 2;  // Parallelogramm
+            if (x < 2 + slant || x > 11 + slant) continue;
+            int v = 206 - (y - 5) * 7 + static_cast<int>((rnd(x, y, TILE_IRON_INGOT) - 0.5f) * 14);
+            c.set(x, y, {v, v, v + 6, 255});
+        }
+    for (int x = 4; x <= 11; ++x) c.set(x, 10, {120, 120, 128, 255});
+}
+
+void drawDiamondItem(TileCanvas& c) {
+    drawToolBase(c);
+    for (int y = 2; y <= 13; ++y)
+        for (int x = 2; x <= 13; ++x) {
+            const float dx = std::fabs(x - 7.5f), dy = std::fabs(y - 7.5f);
+            if (dx + dy * 0.9f < 5.6f) {
+                int v = 170 + static_cast<int>((rnd(x, y, TILE_DIAMOND) * 70.0f));
+                Rgba col = {60 + (v - 170) / 2, v, 235, 255};
+                if (dx + dy * 0.9f > 4.6f) col = {40, 150, 180, 255};
+                c.set(x, y, col);
+            }
+        }
+    c.set(5, 5, {240, 255, 255, 255});
+    c.set(6, 4, {240, 255, 255, 255});
+}
+
+void drawCookedMeat(TileCanvas& c) {
+    drawToolBase(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            float dx = (x - 9.0f) / 5.8f, dy = (y - 8.5f) / 4.8f;
+            float d = dx * dx + dy * dy;
+            if (d < 1.0f) {
+                int n = static_cast<int>((rnd(x, y, TILE_COOKED_MEAT) - 0.5f) * 28);
+                Rgba col = d > 0.62f ? Rgba{92, 52, 28, 255} : Rgba{156, 98, 52, 255};
+                c.set(x, y, shade(col, n));
+            }
+        }
+    const int bone[][2] = {{4, 5}, {3, 4}, {2, 3}, {2, 2}, {3, 2}, {1, 3}, {3, 1}};
+    for (auto& b : bone) c.set(b[0], b[1], {232, 226, 208, 255});
+}
+
 }  // namespace
 
 std::vector<uint8_t> generateAtlasPixels() {
@@ -429,15 +552,27 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_CRAFT_SIDE, drawCraftSide);
     make(TILE_STICK, drawStick);
     {
-        const Rgba wood = {214, 176, 102, 255}, stone = {150, 150, 158, 255};
-        const int tiles[2][4] = {{TILE_PICKAXE_WOOD, TILE_AXE_WOOD, TILE_SHOVEL_WOOD, TILE_SWORD_WOOD},
-                                 {TILE_PICKAXE_STONE, TILE_AXE_STONE, TILE_SHOVEL_STONE, TILE_SWORD_STONE}};
-        for (int mat = 0; mat < 2; ++mat)
+        const Rgba mats[4] = {{214, 176, 102, 255}, {150, 150, 158, 255}, {226, 226, 232, 255}, {90, 232, 238, 255}};
+        const int tiles[4][4] = {{TILE_PICKAXE_WOOD, TILE_AXE_WOOD, TILE_SHOVEL_WOOD, TILE_SWORD_WOOD},
+                                 {TILE_PICKAXE_STONE, TILE_AXE_STONE, TILE_SHOVEL_STONE, TILE_SWORD_STONE},
+                                 {TILE_PICKAXE_IRON, TILE_AXE_IRON, TILE_SHOVEL_IRON, TILE_SWORD_IRON},
+                                 {TILE_PICKAXE_DIAMOND, TILE_AXE_DIAMOND, TILE_SHOVEL_DIAMOND, TILE_SWORD_DIAMOND}};
+        for (int mat = 0; mat < 4; ++mat)
             for (int kind = 0; kind < 4; ++kind) {
                 TileCanvas cv(px, tiles[mat][kind]);
-                drawTool(cv, kind, mat == 0 ? wood : stone);
+                drawTool(cv, kind, mats[mat]);
             }
     }
+    make(TILE_COAL_ORE, drawCoalOre);
+    make(TILE_IRON_ORE, drawIronOre);
+    make(TILE_DIAMOND_ORE, drawDiamondOre);
+    make(TILE_FURNACE, drawFurnaceSide);
+    make(TILE_FURNACE_LIT, drawFurnaceLit);
+    make(TILE_FURNACE_TOP, drawFurnaceTop);
+    make(TILE_COAL, drawCoalItem);
+    make(TILE_IRON_INGOT, drawIronIngot);
+    make(TILE_DIAMOND, drawDiamondItem);
+    make(TILE_COOKED_MEAT, drawCookedMeat);
     return px;
 }
 

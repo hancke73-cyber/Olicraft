@@ -9,6 +9,7 @@
 
 #include "Block.h"
 #include "Chunk.h"
+#include "Furnace.h"
 #include "Save.h"
 #include "TerrainGen.h"
 
@@ -67,6 +68,14 @@ public:
     // Sucht einen Startpunkt an Land nahe (0,0)
     glm::vec3 findSpawn();
 
+    // Oefen (Zustand je Block, wird beim Speichern mitgeschrieben)
+    Furnace& furnaceAt(int x, int y, int z);  // legt bei Bedarf an
+    Furnace* findFurnace(int x, int y, int z);
+    bool removeFurnace(int x, int y, int z, Furnace* out);
+    size_t furnaceCount() const { return furnaces_.size(); }
+    void exportFurnaces(std::vector<FurnaceSave>& out) const;
+    void importFurnaces(const std::vector<FurnaceSave>& in);
+
     RayHit raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist) const;
 
     const std::unordered_map<ChunkKey, std::unique_ptr<Chunk>, ChunkKeyHash>& chunks() const { return chunks_; }
@@ -91,7 +100,8 @@ private:
     void scheduleFluid(int x, int y, int z);
     void updateFluidCell(int kind, int x, int y, int z);
     BlockId computeFluid(int kind, int x, int y, int z) const;
-    void reactFluids(int x, int y, int z);  // Wasser trifft Lava: Obsidian bzw. Bruchstein
+    void reactFluids(int x, int y, int z);
+    void tickFurnaces(float dt);  // Wasser trifft Lava: Obsidian bzw. Bruchstein
     bool inFluidAt(const glm::vec3& p, bool lava) const;
     BlockId blockOrSolid(int x, int y, int z) const;  // ungeladen/unten = Stein
 
@@ -106,6 +116,11 @@ private:
         float accum = 0.0f;
     };
     FluidQueue fluid_[2];  // 0 = Wasser, 1 = Lava
+    struct FurnaceEntry {
+        glm::ivec3 pos;
+        Furnace f;
+    };
+    std::unordered_map<uint64_t, FurnaceEntry> furnaces_;
 };
 
 }  // namespace oc

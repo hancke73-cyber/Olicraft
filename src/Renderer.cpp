@@ -54,7 +54,7 @@ out vec4 FragColor;
 void main() {
     vec4 t = texture(uAtlas, vUV);
     if (uCutout == 1 && t.a < 0.5) discard;
-    float cave = min(0.26, uSun);
+    float cave = min(0.40, uSun);
     float light = vSky > 1.5 ? 1.0 : mix(cave, uSun, vSky);
     vec3 c = t.rgb * vShade * light * uTint;
     float f = clamp((vDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);

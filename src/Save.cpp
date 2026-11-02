@@ -11,7 +11,7 @@ namespace oc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x52434C4Fu;  // "OLCR" (little endian)
-constexpr uint32_t VERSION = 3;
+constexpr uint32_t VERSION = 4;
 
 class Writer {
 public:
@@ -136,6 +136,21 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
                 w.u8(static_cast<uint8_t>(st.empty() ? 0 : st.count));
                 w.u16(static_cast<uint16_t>(st.empty() ? 0 : std::min(st.damage, 65535)));
             }
+            // Version 4: Oefen
+            w.u32(static_cast<uint32_t>(save.furnaces.size()));
+            for (const FurnaceSave& fs : save.furnaces) {
+                w.i32(fs.x);
+                w.i32(fs.y);
+                w.i32(fs.z);
+                for (const ItemStack* st : {&fs.furnace.input, &fs.furnace.fuel, &fs.furnace.output}) {
+                    w.u16(st->empty() ? 0 : st->id);
+                    w.u8(static_cast<uint8_t>(st->empty() ? 0 : st->count));
+                    w.u16(static_cast<uint16_t>(st->empty() ? 0 : std::min(st->damage, 65535)));
+                }
+                w.f32(fs.furnace.burnTime);
+                w.f32(fs.furnace.burnTotal);
+                w.f32(fs.furnace.cookTime);
+            }
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
                 w.i32(c.cx);
@@ -199,6 +214,37 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
         }
         save.player.hasInventory = true;
         save.player.health = std::max(1, std::min(20, save.player.health));
+    }
+    if (version >= 4) {
+        const uint32_t fcount = r.u32();
+        if (!r.ok() || fcount > 100000u) {
+            if (error) *error = "Beschaedigte Speicherdatei";
+            return false;
+        }
+        for (uint32_t i = 0; i < fcount; ++i) {
+            FurnaceSave fs;
+            fs.x = r.i32();
+            fs.y = r.i32();
+            fs.z = r.i32();
+            for (ItemStack* st : {&fs.furnace.input, &fs.furnace.fuel, &fs.furnace.output}) {
+                ItemId id = r.u16();
+                int cnt = r.u8();
+                int dmg = r.u16();
+                if (itemValid(id) && cnt > 0) {
+                    st->id = id;
+                    st->count = std::min(cnt, itemInfo(id).maxStack);
+                    st->damage = std::min(dmg, std::max(0, itemInfo(id).maxDurability));
+                }
+            }
+            fs.furnace.burnTime = std::max(0.0f, r.f32());
+            fs.furnace.burnTotal = std::max(0.0f, r.f32());
+            fs.furnace.cookTime = std::max(0.0f, r.f32());
+            if (!r.ok()) {
+                if (error) *error = "Beschaedigte Speicherdatei";
+                return false;
+            }
+            save.furnaces.push_back(fs);
+        }
     }
     uint32_t n = r.u32();
     if (!r.ok() || n > 10000000u) {

@@ -26,6 +26,7 @@ public:
 private:
     bool isCave(int wx, int y, int wz) const;
     void placeTrees(Chunk& chunk) const;
+    void placeOres(Chunk& chunk) const;
 
     int32_t seed_;
     Noise continental_, detail_, ridge_, temperature_, moisture_;
