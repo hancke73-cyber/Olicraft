@@ -15,6 +15,7 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten) mit Sonne, Mond und Sternen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
+- Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, VSync, Vollbild, Spielmodus. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
 - Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
 
@@ -42,7 +43,7 @@ Bewusst nicht enthalten: Crafting, Werkzeuge, Hunger, Sound, Mehrspieler.
 | F2 | Screenshot nach `screenshots/` |
 | F5 | Speichern (zusätzlich alle 90 s und beim Beenden) |
 | F11 | Vollbild |
-| Esc | Inventar schließen, sonst Pause. Klick setzt fort, Q beendet das Spiel |
+| Esc | Inventar schließen, sonst Pause-Menü (dort "Weiter", "Einstellungen", "Spiel speichern", "Beenden"); in den Einstellungen geht Esc einen Schritt zurück |
 
 Im Inventar: Linksklick nimmt oder legt einen ganzen Stapel, Rechtsklick nimmt die Hälfte bzw. legt eines ab, Umschalt+Linksklick verschiebt zwischen Hotbar und Rucksack, ein Klick außerhalb des Fensters wirft den gehaltenen Stapel weg. Nach dem Tod lässt dich die Leertaste am Startpunkt wiederkehren (Inventar bleibt erhalten).
 
@@ -107,6 +108,7 @@ cmake --build build -j
 --no-vsync         VSync aus
 --no-save          Nichts laden oder speichern
 --save-path PFAD   Speicherdatei (Standard: saves/world.dat)
+--settings PFAD    Einstellungsdatei (Standard: settings.cfg)
 ```
 
 Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--health N`, `--demo mobs|water|inv` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
@@ -146,7 +148,7 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 1. **Sound:** Effekte und Musik. Vorher wird die Audio-Bibliothek geklärt.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
 3. **Third-Person-Ansicht:** Kamera hinter oder vor dem Charakter (z. B. umschaltbar), mit eigenem Spielermodell aus Quadern wie bei den Mobs. Die Kamera darf vom Gelände nicht blockiert werden.
-4. **Textur-Editor:** Im Spiel erreichbar über ein Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Voraussetzung ist ein Einstellungsmenü, das es noch nicht gibt (bisher nur die Pause mit Esc).
+4. **Textur-Editor:** Im Spiel erreichbar über ein Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Das Einstellungsmenü dafür gibt es bereits.
 5. **Crafting und Werkzeuge.**
 6. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
 

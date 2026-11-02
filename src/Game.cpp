@@ -23,7 +23,6 @@ namespace {
 constexpr float DAY_SECONDS = 600.0f;
 constexpr float REACH = 6.0f;
 constexpr float MELEE_REACH = 3.6f;
-constexpr float MOUSE_SENS = 0.09f;
 constexpr float MAX_AIR = 15.0f;
 
 void APIENTRY glDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei, const GLchar* msg,
@@ -43,6 +42,13 @@ Game::Game(const Options& opt) : opt_(opt) {}
 Game::~Game() { shutdown(); }
 
 bool Game::init() {
+    if (!opt_.noSave) loadSettings(opt_.settingsPath, settings_);
+    if (opt_.distanceCli) settings_.renderDistance = opt_.renderDistance;
+    if (opt_.vsyncCli) settings_.vsync = opt_.vsync;
+    settings_.clamp();
+    opt_.renderDistance = settings_.renderDistance;
+    opt_.vsync = settings_.vsync;
+
     if (!glfwInit()) {
         std::fprintf(stderr, "GLFW konnte nicht initialisiert werden.\n");
         return false;
@@ -168,6 +174,12 @@ bool Game::init() {
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     if (opt_.demo == "inv") openInventory();
+    if (opt_.demo == "menu" || opt_.demo == "settings") {
+        setPaused(true);
+        if (opt_.demo == "settings") screen_ = MenuScreen::Settings;
+        curX_ = winW_cur_ * 0.5;
+        curY_ = winH_cur_ * 0.5 - 25.0 * guiScale(fbH_);
+    }
     return true;
 }
 
@@ -196,11 +208,80 @@ glm::vec2 Game::mousePx() const {
 
 void Game::setPaused(bool p) {
     paused_ = p;
+    screen_ = p ? MenuScreen::Pause : MenuScreen::None;
+    dragWidget_ = W_NONE;
     firstMouse_ = true;
     if (!p) breakTimer_ = placeTimer_ = attackTimer_ = 0.3f;  // der Klick zum Fortsetzen soll nichts abbauen
     const bool freeCursor = p || inventoryOpen_;
     glfwSetInputMode(window_, GLFW_CURSOR, freeCursor ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
     if (!freeCursor && glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    if (p) {
+        glfwGetWindowSize(window_, &winW_cur_, &winH_cur_);
+        curX_ = winW_cur_ * 0.5;
+        curY_ = winH_cur_ * 0.5;
+        glfwSetCursorPos(window_, curX_, curY_);
+    }
+}
+
+MenuState Game::menuState() const {
+    MenuState s;
+    s.renderDistance = settings_.renderDistance;
+    s.mouseSensitivity = settings_.mouseSensitivity;
+    s.fov = settings_.fov;
+    s.vsync = settings_.vsync;
+    s.fullscreen = window_ && glfwGetWindowMonitor(window_) != nullptr;
+    s.creative = creative_;
+    return s;
+}
+
+void Game::persistSettings() {
+    if (!opt_.noSave) saveSettings(opt_.settingsPath, settings_);
+}
+
+void Game::updateSlider(int widgetId, float mouseX) {
+    const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
+    for (const Widget& w : menu.widgets) {
+        if (w.id != widgetId) continue;
+        const float f = sliderFraction(w, mouseX);
+        if (widgetId == W_DISTANCE) {
+            settings_.renderDistance = distanceFromFraction(f);
+            opt_.renderDistance = settings_.renderDistance;
+        } else if (widgetId == W_SENSITIVITY) {
+            settings_.mouseSensitivity = sensitivityFromFraction(f);
+        } else if (widgetId == W_FOV) {
+            settings_.fov = fovFromFraction(f);
+        }
+        settings_.clamp();
+    }
+}
+
+void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
+    if (index < 0 || index >= static_cast<int>(menu.widgets.size())) return;
+    const int id = menu.widgets[index].id;
+    switch (id) {
+        case W_RESUME: setPaused(false); break;
+        case W_SETTINGS: screen_ = MenuScreen::Settings; break;
+        case W_SAVE: wantSave_ = true; break;
+        case W_QUIT: glfwSetWindowShouldClose(window_, GLFW_TRUE); break;
+        case W_BACK:
+            screen_ = MenuScreen::Pause;
+            persistSettings();
+            break;
+        case W_DISTANCE:
+        case W_SENSITIVITY:
+        case W_FOV:
+            dragWidget_ = id;
+            updateSlider(id, mouse.x);
+            break;
+        case W_VSYNC:
+            settings_.vsync = !settings_.vsync;
+            glfwSwapInterval(settings_.vsync ? 1 : 0);
+            persistSettings();
+            break;
+        case W_FULLSCREEN: toggleFullscreen(); break;
+        case W_MODE: setCreative(!creative_); break;
+        default: break;
+    }
 }
 
 void Game::toggleFullscreen() {
@@ -300,7 +381,10 @@ void Game::handleKey(int key, int action, int mods) {
     switch (key) {
         case GLFW_KEY_ESCAPE:
             if (inventoryOpen_) closeInventory();
-            else setPaused(!paused_);
+            else if (paused_ && screen_ == MenuScreen::Settings) {
+                screen_ = MenuScreen::Pause;
+                persistSettings();
+            } else setPaused(!paused_);
             return;
         case GLFW_KEY_Q:
             if (paused_) glfwSetWindowShouldClose(window_, GLFW_TRUE);
@@ -359,11 +443,22 @@ void Game::handleScroll(double dy) {
 }
 
 void Game::handleMouseButton(int button, int action, int mods) {
-    if (action != GLFW_PRESS) return;
     if (paused_) {
-        if (button == GLFW_MOUSE_BUTTON_LEFT) setPaused(false);
+        if (button != GLFW_MOUSE_BUTTON_LEFT) return;
+        if (action == GLFW_RELEASE) {
+            if (dragWidget_ != W_NONE) {
+                dragWidget_ = W_NONE;
+                persistSettings();
+            }
+            return;
+        }
+        if (action == GLFW_PRESS) {
+            const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
+            activateWidget(hitWidget(menu, mousePx()), menu, mousePx());
+        }
         return;
     }
+    if (action != GLFW_PRESS) return;
     if (inventoryOpen_ && (button == GLFW_MOUSE_BUTTON_LEFT || button == GLFW_MOUSE_BUTTON_RIGHT))
         inventoryClick(button, mods);
 }
@@ -371,14 +466,18 @@ void Game::handleMouseButton(int button, int action, int mods) {
 void Game::handleCursor(double x, double y) {
     curX_ = x;
     curY_ = y;
-    if (paused_ || inventoryOpen_) return;
+    if (paused_) {
+        if (dragWidget_ != W_NONE) updateSlider(dragWidget_, mousePx().x);
+        return;
+    }
+    if (inventoryOpen_) return;
     if (firstMouse_) {
         lastMx_ = x;
         lastMy_ = y;
         firstMouse_ = false;
         return;
     }
-    if (!dead_) player_.look(static_cast<float>(x - lastMx_), static_cast<float>(y - lastMy_), MOUSE_SENS);
+    if (!dead_) player_.look(static_cast<float>(x - lastMx_), static_cast<float>(y - lastMy_), settings_.mouseSensitivity);
     lastMx_ = x;
     lastMy_ = y;
 }
@@ -1003,6 +1102,75 @@ int Game::selfTest() {
     setCreative(false);
     SCHECK(!creative_ && !player_.flying);
 
+    // 13. Pause- und Einstellungsmenue
+    {
+        creative_ = false;
+        opt_.noSave = false;
+        opt_.settingsPath = "olicraft_selftest/settings.cfg";
+        std::filesystem::create_directories("olicraft_selftest");
+        const int oldDist = settings_.renderDistance;
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(paused_ && screen_ == MenuScreen::Pause);
+        auto clickWidget = [&](int id) {
+            const MenuLayout m = buildMenu(screen_, menuState(), fbW_, fbH_);
+            for (const Widget& w : m.widgets)
+                if (w.id == id) {
+                    glm::vec2 c = w.pos + w.size * 0.5f;
+                    curX_ = c.x * static_cast<double>(winW_cur_) / fbW_;
+                    curY_ = c.y * static_cast<double>(winH_cur_) / fbH_;
+                    handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+                    handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+                    return true;
+                }
+            return false;
+        };
+        SCHECK(clickWidget(W_SETTINGS) && screen_ == MenuScreen::Settings);
+        // Schieberegler an den rechten Rand ziehen
+        {
+            const MenuLayout m = buildMenu(screen_, menuState(), fbW_, fbH_);
+            const Widget* dist = nullptr;
+            for (const Widget& w : m.widgets)
+                if (w.id == W_DISTANCE) dist = &w;
+            SCHECK(dist != nullptr);
+            if (dist) {
+                const float y = (dist->pos.y + dist->size.y * 0.5f);
+                auto cursorTo = [&](float fx) {
+                    curX_ = fx * static_cast<double>(winW_cur_) / fbW_;
+                    curY_ = y * static_cast<double>(winH_cur_) / fbH_;
+                };
+                cursorTo(dist->pos.x + 2.0f);
+                handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+                SCHECK(settings_.renderDistance == Settings::MIN_DISTANCE);
+                handleCursor(curX_ + 0.0, curY_);  // Ziehen
+                cursorTo(dist->pos.x + dist->size.x - 1.0f);
+                handleCursor(curX_, curY_);
+                SCHECK(settings_.renderDistance == Settings::MAX_DISTANCE);
+                handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+                cursorTo(dist->pos.x + dist->size.x * 0.5f);
+                handleCursor(curX_, curY_);  // ohne gedrueckte Taste keine Aenderung
+                SCHECK(settings_.renderDistance == Settings::MAX_DISTANCE);
+            }
+        }
+        SCHECK(clickWidget(W_MODE) && creative_);
+        SCHECK(clickWidget(W_MODE) && !creative_);
+        const bool oldVsync = settings_.vsync;
+        SCHECK(clickWidget(W_VSYNC) && settings_.vsync != oldVsync);
+        SCHECK(clickWidget(W_VSYNC));
+        SCHECK(clickWidget(W_BACK) && screen_ == MenuScreen::Pause);
+        Settings reread;
+        SCHECK(loadSettings(opt_.settingsPath, reread) && reread.renderDistance == Settings::MAX_DISTANCE);
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);  // Esc im Pausemenue: weiter
+        SCHECK(!paused_ && screen_ == MenuScreen::None);
+        // Esc in den Einstellungen geht erst zurueck
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        clickWidget(W_SETTINGS);
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(paused_ && screen_ == MenuScreen::Pause);
+        SCHECK(clickWidget(W_RESUME) && !paused_);
+        settings_.renderDistance = oldDist;
+        opt_.renderDistance = oldDist;
+    }
+
     // 11. Speichern: Inventar, Gesundheit, Modus
     const std::string path = "olicraft_selftest/world.dat";
     std::filesystem::remove_all("olicraft_selftest");
@@ -1036,7 +1204,7 @@ void Game::render() {
     f.camPos = player_.eyePos();
     f.view = glm::lookAt(f.camPos, f.camPos + player_.front(), glm::vec3(0.0f, 1.0f, 0.0f));
     const float farPlane = static_cast<float>(opt_.renderDistance + 3) * CHUNK_W * 1.5f;
-    f.proj = glm::perspective(glm::radians(70.0f), static_cast<float>(fbW_) / static_cast<float>(fbH_), 0.05f, farPlane);
+    f.proj = glm::perspective(glm::radians(settings_.fov), static_cast<float>(fbW_) / static_cast<float>(fbH_), 0.05f, farPlane);
     f.timeOfDay = timeOfDay_;
     f.renderDistance = opt_.renderDistance;
     f.underwater = world_->inWaterAt(f.camPos);
@@ -1064,6 +1232,10 @@ void Game::render() {
     h.breakProgress = breakProgress_;
     h.damageFlash = damageFlash_;
     h.dead = dead_;
+    if (paused_ && screen_ != MenuScreen::None) {
+        h.menu = buildMenu(screen_, menuState(), fbW_, fbH_);
+        h.menuHover = hitWidget(h.menu, mousePx());
+    }
     h.burning = burnTimer_ > 0.0f;
     h.message = statusMsg_;
     h.messageAlpha = statusTimer_;
@@ -1123,7 +1295,7 @@ void Game::updateTitle(double now) {
     int minute = static_cast<int>(std::fmod(timeOfDay_ * 24.0f * 60.0f, 60.0f));
     std::snprintf(buf, sizeof(buf), "OliCraft | %.0f FPS | XYZ %.1f %.1f %.1f | %02d:%02d | %s%s%s", fps_, player_.pos.x,
                   player_.pos.y, player_.pos.z, hour, minute, creative_ ? "Kreativ" : "Survival",
-                  player_.flying ? " | Flug" : "", paused_ ? " | PAUSE (Klick: weiter, Q: beenden)" : "");
+                  player_.flying ? " | Flug" : "", paused_ ? " | PAUSE" : "");
     glfwSetWindowTitle(window_, buf);
 }
 
@@ -1142,7 +1314,7 @@ int Game::run() {
         last = now;
 
         glfwPollEvents();
-        if (paused_ && (opt_.benchFrames > 0 || shotMode)) setPaused(false);
+        if (paused_ && (opt_.benchFrames > 0 || shotMode) && opt_.demo != "menu" && opt_.demo != "settings") setPaused(false);
         update(dt);
         render();
         ++frameCounter_;

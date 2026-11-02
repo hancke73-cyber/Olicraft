@@ -8,8 +8,10 @@
 #include "Block.h"
 #include "Entities.h"
 #include "Inventory.h"
+#include "Menu.h"
 #include "Player.h"
 #include "Renderer.h"
+#include "Settings.h"
 #include "World.h"
 
 struct GLFWwindow;
@@ -22,6 +24,9 @@ struct Options {
     bool newWorld = false;
     bool noSave = false;
     std::string savePath = "saves/world.dat";
+    std::string settingsPath = "settings.cfg";
+    bool distanceCli = false;  // --distance gegeben: ueberschreibt die gespeicherte Einstellung
+    bool vsyncCli = false;
     int renderDistance = 10;  // Chunks
     int width = 1280, height = 720;
     bool fullscreen = false;
@@ -63,6 +68,10 @@ private:
     void handleResize(int w, int h);
 
     void setPaused(bool paused);
+    void activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse);
+    void updateSlider(int widgetId, float mouseX);
+    void persistSettings();
+    MenuState menuState() const;
     void toggleFullscreen();
     void openInventory();
     void closeInventory();
@@ -94,6 +103,9 @@ private:
     std::unique_ptr<World> world_;
     Renderer renderer_;
     Player player_;
+    Settings settings_;
+    MenuScreen screen_ = MenuScreen::None;
+    int dragWidget_ = W_NONE;
     EntityManager entities_;
     Inventory inventory_;
     ItemStack cursor_;

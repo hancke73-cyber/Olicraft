@@ -205,6 +205,29 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     }
 }
 
+static void drawMenu(HudBatch& b, const MenuLayout& m, int hover, int w, int h) {
+    const float s = m.scale;
+    b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.6f));
+    const float ts = 2.0f * s;
+    const float tw = textWidthPx(m.title) * ts;
+    b.text(std::floor((w - tw) * 0.5f), m.titlePos.y, ts, m.title);
+    for (size_t i = 0; i < m.widgets.size(); ++i) {
+        const Widget& wd = m.widgets[i];
+        const bool hot = static_cast<int>(i) == hover;
+        const float x0 = wd.pos.x, y0 = wd.pos.y, x1 = wd.pos.x + wd.size.x, y1 = wd.pos.y + wd.size.y;
+        b.rect(x0 - s, y0 - s, x1 + s, y1 + s, glm::vec4(0.02f, 0.02f, 0.03f, 0.95f));
+        b.rect(x0, y0, x1, y1, hot ? glm::vec4(0.42f, 0.44f, 0.52f, 1.0f) : glm::vec4(0.30f, 0.31f, 0.36f, 1.0f));
+        if (wd.type == Widget::Slider) {
+            const float fx = x0 + wd.size.x * wd.fraction;
+            b.rect(x0, y0, fx, y1, hot ? glm::vec4(0.28f, 0.50f, 0.78f, 1.0f) : glm::vec4(0.22f, 0.42f, 0.68f, 1.0f));
+            b.rect(fx - s, y0, fx + s, y1, glm::vec4(0.9f, 0.9f, 0.95f, 1.0f));
+        }
+        const float tw2 = textWidthPx(wd.text) * s;
+        b.text(std::floor(x0 + (wd.size.x - tw2) * 0.5f), std::floor(y0 + (wd.size.y - 8.0f * s) * 0.5f), s, wd.text,
+               glm::vec4(1.0f));
+    }
+}
+
 void buildHud(HudBatch& b, const HudState& st, int w, int h) {
     b.clear();
     if (!st.show) return;
@@ -215,6 +238,11 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
     if (st.underLava) b.rect(0, 0, W, H, glm::vec4(0.95f, 0.35f, 0.02f, 0.6f));
     else if (st.burning) b.rect(0, H * 0.82f, W, H, glm::vec4(1.0f, 0.45f, 0.05f, 0.22f));
     if (st.damageFlash > 0.0f) b.rect(0, 0, W, H, glm::vec4(0.85f, 0.05f, 0.05f, 0.4f * st.damageFlash));
+
+    if (!st.menu.widgets.empty()) {
+        drawMenu(b, st.menu, st.menuHover, w, h);
+        return;
+    }
 
     if (st.inventoryOpen && !st.dead) {
         drawInventoryScreen(b, st, w, h);

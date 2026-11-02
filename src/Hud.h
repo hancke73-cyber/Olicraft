@@ -7,6 +7,7 @@
 #include "GuiTexture.h"
 #include "Inventory.h"
 #include "Items.h"
+#include "Menu.h"
 
 namespace oc {
 
@@ -75,6 +76,8 @@ struct HudState {
     bool underwater = false;
     bool underLava = false;
     bool burning = false;
+    MenuLayout menu;  // Pause-/Einstellungsmenue (leer = geschlossen)
+    int menuHover = -1;
     std::string message;
     float messageAlpha = 0.0f;
     std::string itemName;

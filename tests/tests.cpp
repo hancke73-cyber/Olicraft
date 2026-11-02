@@ -13,6 +13,8 @@
 #include "Hud.h"
 #include "Inventory.h"
 #include "Items.h"
+#include "Menu.h"
+#include "Settings.h"
 #include "Mesher.h"
 #include "Noise.h"
 #include "Player.h"
@@ -1017,6 +1019,74 @@ static void testLavaTerrain() {
     CHECK(lavaHigh == 0);
 }
 
+static void testSettingsAndMenu() {
+    const std::string path = "olicraft_test_settings/s.cfg";
+    std::filesystem::remove_all("olicraft_test_settings");
+    std::filesystem::create_directories("olicraft_test_settings");
+    Settings s;
+    s.renderDistance = 17;
+    s.mouseSensitivity = 0.15f;
+    s.fov = 95.0f;
+    s.vsync = false;
+    CHECK(saveSettings(path, s));
+    Settings r;
+    CHECK(loadSettings(path, r));
+    CHECK(r.renderDistance == 17 && std::fabs(r.mouseSensitivity - 0.15f) < 1e-4f && r.fov == 95.0f && !r.vsync);
+    // Werte ausserhalb und Muell werden abgefangen
+    {
+        std::ofstream f(path);
+        f << "render_distance=999\nfov=abc\nmouse_sensitivity=-4\nunbekannt=1\nkeingleichzeichen\n";
+    }
+    Settings c;
+    CHECK(loadSettings(path, c));
+    CHECK(c.renderDistance == Settings::MAX_DISTANCE && c.fov == 70.0f && c.mouseSensitivity == Settings::MIN_SENS);
+    CHECK(!loadSettings("olicraft_test_settings/gibt_es_nicht.cfg", c));
+    std::filesystem::remove_all("olicraft_test_settings");
+
+    // Menue-Layouts: Widgets liegen im Fenster, ueberlappen nicht und sind per Mausposition treffbar
+    for (MenuScreen scr : {MenuScreen::Pause, MenuScreen::Settings}) {
+        for (auto dim : {std::make_pair(1280, 720), std::make_pair(800, 600), std::make_pair(1920, 1080)}) {
+            MenuState st;
+            MenuLayout m = buildMenu(scr, st, dim.first, dim.second);
+            CHECK(!m.widgets.empty());
+            for (size_t i = 0; i < m.widgets.size(); ++i) {
+                const Widget& a = m.widgets[i];
+                CHECK(a.pos.x >= 0 && a.pos.y >= 0 && a.pos.x + a.size.x <= dim.first && a.pos.y + a.size.y <= dim.second);
+                CHECK(hitWidget(m, a.pos + a.size * 0.5f) == static_cast<int>(i));
+                for (size_t j = i + 1; j < m.widgets.size(); ++j) {
+                    const Widget& b = m.widgets[j];
+                    bool overlap = a.pos.x < b.pos.x + b.size.x && b.pos.x < a.pos.x + a.size.x &&
+                                   a.pos.y < b.pos.y + b.size.y && b.pos.y < a.pos.y + a.size.y;
+                    CHECK(!overlap);
+                }
+            }
+            CHECK(hitWidget(m, glm::vec2(1.0f, 1.0f)) == -1);
+        }
+    }
+    CHECK(buildMenu(MenuScreen::None, MenuState(), 1280, 720).widgets.empty());
+
+    // Schieberegler-Abbildung
+    CHECK(distanceFromFraction(0.0f) == Settings::MIN_DISTANCE && distanceFromFraction(1.0f) == Settings::MAX_DISTANCE);
+    CHECK(fovFromFraction(0.0f) == Settings::MIN_FOV && fovFromFraction(1.0f) == Settings::MAX_FOV);
+    CHECK(sensitivityFromFraction(0.0f) == Settings::MIN_SENS && sensitivityFromFraction(1.0f) == Settings::MAX_SENS);
+    MenuState ms;
+    ms.renderDistance = 14;
+    MenuLayout ml = buildMenu(MenuScreen::Settings, ms, 1280, 720);
+    for (const Widget& w : ml.widgets)
+        if (w.id == W_DISTANCE) {
+            CHECK(w.type == Widget::Slider && w.text.find("14") != std::string::npos);
+            CHECK(distanceFromFraction(sliderFraction(w, w.pos.x + w.size.x * w.fraction)) == 14);
+            CHECK(sliderFraction(w, w.pos.x - 50.0f) == 0.0f && sliderFraction(w, w.pos.x + w.size.x + 50.0f) == 1.0f);
+        }
+    // HUD baut das Menue
+    HudBatch batch;
+    HudState hs;
+    hs.menu = ml;
+    hs.menuHover = 1;
+    buildHud(batch, hs, 1280, 720);
+    CHECK(!batch.verts.empty());
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -1045,6 +1115,7 @@ int main() {
     testFluidMesh();
     testSpawn();
     testItemsAndInventory();
+    testSettingsAndMenu();
     testSaveV2();
     testEntities();
     std::printf("%d Pruefungen, %d fehlgeschlagen\n", g_checks, g_failed);

@@ -21,6 +21,7 @@ static void printHelp() {
         "  --survival        Survival erzwingen\n"
         "  --no-mobs         Keine Tiere und Monster\n"
         "  --save-path PFAD  Speicherdatei (Standard: saves/world.dat)\n"
+        "  --settings PFAD   Einstellungsdatei (Standard: settings.cfg)\n"
         "  --help            Diese Hilfe\n"
         "\n"
         "Steuerung: WASD, Maus, Leertaste springen, Strg sprinten, F fliegen (Kreativ),\n"
@@ -55,9 +56,13 @@ int main(int argc, char** argv) {
         } else if (a == "--save-path") {
             need(1);
             opt.savePath = argv[++i];
+        } else if (a == "--settings") {
+            need(1);
+            opt.settingsPath = argv[++i];
         } else if (a == "--distance") {
             need(1);
             opt.renderDistance = std::atoi(argv[++i]);
+            opt.distanceCli = true;
         } else if (a == "--width") {
             need(1);
             opt.width = std::atoi(argv[++i]);
@@ -68,6 +73,7 @@ int main(int argc, char** argv) {
             opt.fullscreen = true;
         } else if (a == "--no-vsync") {
             opt.vsync = false;
+            opt.vsyncCli = true;
         } else if (a == "--screenshot") {
             need(1);
             opt.screenshotPath = argv[++i];
