@@ -21,6 +21,7 @@ enum WidgetId {
     W_VOL_MASTER,
     W_VOL_EFFECTS,
     W_VOL_MUSIC,
+    W_SKIN,
     W_VSYNC,
     W_FULLSCREEN,
     W_MODE,
@@ -71,6 +72,7 @@ struct MenuLayout {
     glm::vec2 titlePos{0.0f};
     float scale = 1.0f;
     std::vector<Widget> widgets;
+    glm::vec4 skinPreview{0.0f};  // x, y, Breite, Hoehe der Skin-Vorschau (Breite 0: keine)
 };
 
 // Werte, die das Menue anzeigt
@@ -80,6 +82,7 @@ struct MenuState {
     float fov = 70.0f;
     bool vsync = true;
     float masterVolume = 0.8f, effectVolume = 1.0f, musicVolume = 0.5f;
+    int skinSlot = 0;
     bool fullscreen = false;
     bool creative = false;
 };

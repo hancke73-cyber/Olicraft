@@ -315,7 +315,7 @@ void TextureEditor::paintLine(int x0, int y0, int x1, int y1) {
 std::string TextureEditor::exportPath() const {
     const EditorEntry& e = entry();
     std::string base;
-    if (e.kind == EditorEntry::Skin) base = skinInfo(e.skin).fileName;
+    if (e.kind == EditorEntry::Skin) base = std::filesystem::path(store_.skinPath(e.skin)).filename().string();
     else if (e.kind == EditorEntry::FlatTile) base = std::string("block_") + tileName(e.tiles[0]).file + ".png";
     else base = std::string("net_") + tileName(e.tiles[2]).file + (e.tiles[0] == e.tiles[2] ? "" : std::string("_") + tileName(e.tiles[0]).file) + ".png";
     return store_.directory() + "/export/" + base;

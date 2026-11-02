@@ -55,10 +55,26 @@ void px(Img& img, const NetRect& r, int x, int y, Rgb c) { img.set(r.x + x, r.y 
 
 const ModelPart& part(SkinId id, int index) { return modelParts(id)[static_cast<size_t>(index)]; }
 
-void paintHumanoid(Img& img, SkinId id, bool zombie) {
-    const Rgb skin = zombie ? Rgb{88, 134, 68} : Rgb{198, 146, 110};
-    const Rgb shirt = zombie ? Rgb{52, 150, 168} : Rgb{50, 168, 170};
-    const Rgb pants = zombie ? Rgb{52, 54, 148} : Rgb{58, 62, 150};
+struct HumanPalette {
+    const char* name;
+    Rgb skin, hair, shirt, pants, eye;
+};
+
+const HumanPalette PLAYER_PALETTES[PLAYER_SKIN_SLOTS] = {
+    {"Standard", {198, 146, 110}, {92, 60, 36}, {50, 168, 170}, {58, 62, 150}, {60, 80, 190}},
+    {"Rot", {198, 146, 110}, {40, 30, 24}, {190, 50, 50}, {50, 50, 60}, {70, 120, 70}},
+    {"Gruen", {190, 140, 104}, {200, 170, 80}, {60, 150, 70}, {90, 70, 50}, {60, 80, 190}},
+    {"Violett", {198, 146, 110}, {30, 30, 30}, {130, 70, 170}, {50, 50, 90}, {120, 80, 40}},
+    {"Orange", {206, 156, 120}, {150, 50, 30}, {230, 140, 40}, {60, 90, 140}, {70, 110, 60}},
+    {"Hell", {235, 190, 160}, {230, 200, 110}, {240, 240, 240}, {80, 110, 170}, {60, 130, 200}},
+    {"Dunkel", {120, 80, 56}, {20, 16, 14}, {40, 40, 48}, {30, 30, 36}, {90, 60, 30}},
+    {"Rosa", {214, 160, 128}, {110, 70, 50}, {236, 130, 170}, {120, 90, 160}, {60, 80, 190}},
+};
+
+void paintHumanoid(Img& img, SkinId id, bool zombie, const HumanPalette& pal = PLAYER_PALETTES[0]) {
+    const Rgb skin = zombie ? Rgb{88, 134, 68} : pal.skin;
+    const Rgb shirt = zombie ? Rgb{52, 150, 168} : pal.shirt;
+    const Rgb pants = zombie ? Rgb{52, 54, 148} : pal.pants;
     const ModelPart& head = part(id, 0);
     const ModelPart& body = part(id, 1);
     const ModelPart& arm = part(id, 2);
@@ -66,13 +82,13 @@ void paintHumanoid(Img& img, SkinId id, bool zombie) {
 
     fillPart(img, head, skin, 8, 100);
     if (!zombie) {
-        const Rgb hair = {92, 60, 36};
+        const Rgb hair = pal.hair;
         fill(img, skinNetRect(head, 2), hair, 10, 110);            // oben
         fill(img, skinNetRect(head, 1), hair, 10, 111);            // hinten
         for (int f : {0, 4, 5}) fill(img, skinNetRect(head, f), hair, 10, 112 + static_cast<uint32_t>(f), 0, f == 0 ? 2 : 3);
     }
     const NetRect fr = skinNetRect(head, 0);  // Gesicht
-    const Rgb eyeWhite = {240, 240, 240}, pupil = zombie ? Rgb{20, 26, 22} : Rgb{60, 80, 190};
+    const Rgb eyeWhite = {240, 240, 240}, pupil = zombie ? Rgb{20, 26, 22} : pal.eye;
     if (zombie) {
         for (int x : {1, 2, 5, 6}) {
             px(img, fr, x, 4, pupil);
@@ -161,6 +177,14 @@ void paintSheep(Img& img) {
 }  // namespace
 
 const SkinInfo& skinInfo(SkinId id) { return SKINS[id]; }
+
+const char* playerSkinName(int slot) { return PLAYER_PALETTES[std::max(0, std::min(PLAYER_SKIN_SLOTS - 1, slot))].name; }
+
+std::vector<uint8_t> generatePlayerSkinPixels(int slot) {
+    Img img(64, 32);
+    paintHumanoid(img, SKIN_PLAYER, false, PLAYER_PALETTES[std::max(0, std::min(PLAYER_SKIN_SLOTS - 1, slot))]);
+    return img.px;
+}
 
 std::vector<uint8_t> generateSkinPixels(SkinId id) {
     const SkinInfo& si = skinInfo(id);

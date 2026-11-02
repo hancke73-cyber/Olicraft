@@ -17,4 +17,9 @@ const SkinInfo& skinInfo(SkinId id);
 // RGBA8, Zeile 0 = oben (wie in Bilddateien). Erzeugt die prozedurale Standardtextur.
 std::vector<uint8_t> generateSkinPixels(SkinId id);
 
+// Spieler-Skins: 8 Plaetze mit je eigener Standardfarbgebung. Platz 0 entspricht generateSkinPixels(SKIN_PLAYER).
+constexpr int PLAYER_SKIN_SLOTS = 8;
+const char* playerSkinName(int slot);                       // "Standard", "Rot", ...
+std::vector<uint8_t> generatePlayerSkinPixels(int slot);    // 64x32 RGBA
+
 }  // namespace oc

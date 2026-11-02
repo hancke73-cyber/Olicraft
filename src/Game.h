@@ -132,6 +132,7 @@ private:
     MenuScreen screen_ = MenuScreen::None;
     int dragWidget_ = W_NONE;
     std::unique_ptr<TextureEditor> editor_;
+    std::unique_ptr<TextureEditor> skinPreviewEd_;  // nur fuer die Modellvorschau im Einstellungsmenue
     EditorUiState editorUi_;
     glm::ivec2 lastPaint_{-1, -1};
     bool painting_ = false;

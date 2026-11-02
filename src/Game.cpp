@@ -118,6 +118,7 @@ bool Game::init() {
         if (n > 0) std::printf("%d eigene Texturen aus %s geladen\n", n, opt_.texturesDir.c_str());
         for (const std::string& m : msgs) std::fprintf(stderr, "Textur ignoriert: %s\n", m.c_str());
     }
+    textures_.selectPlayerSkin(settings_.playerSkin);
     if (!renderer_.init(textures_)) return false;
 
     // Ton: Tests und Screenshots laufen ohne echtes Geraet; OLICRAFT_AUDIO=null erzwingt das ebenfalls
@@ -319,6 +320,7 @@ MenuState Game::menuState() const {
     s.mouseSensitivity = settings_.mouseSensitivity;
     s.fov = settings_.fov;
     s.vsync = settings_.vsync;
+    s.skinSlot = settings_.playerSkin;
     s.masterVolume = settings_.masterVolume;
     s.effectVolume = settings_.effectVolume;
     s.musicVolume = settings_.musicVolume;
@@ -383,6 +385,12 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
         case W_VOL_MUSIC:
             dragWidget_ = id;
             updateSlider(id, mouse.x);
+            break;
+        case W_SKIN:
+            settings_.playerSkin = (settings_.playerSkin + 1) % PLAYER_SKIN_SLOTS;
+            textures_.selectPlayerSkin(settings_.playerSkin);
+            uiSound(SoundId::Click, 0.7f);
+            persistSettings();
             break;
         case W_VSYNC:
             settings_.vsync = !settings_.vsync;
@@ -1126,6 +1134,7 @@ void Game::updateInteraction(float dt) {
 
 void Game::openEditor() {
     if (!editor_) editor_ = std::make_unique<TextureEditor>(textures_);
+    editor_->select(editor_->current());  // Ansicht neu aufbauen (der Spieler-Skin kann inzwischen gewechselt sein)
     screen_ = MenuScreen::Editor;
     dragWidget_ = W_NONE;
     painting_ = false;
@@ -2055,6 +2064,21 @@ int Game::selfTest() {
                 settings_.masterVolume = old;
             }
         }
+        {   // Skin-Knopf wechselt den Platz und die getragene Textur
+            const MenuLayout m = buildMenu(screen_, menuState(), fbW_, fbH_);
+            int idx = -1;
+            for (size_t i = 0; i < m.widgets.size(); ++i)
+                if (m.widgets[i].id == W_SKIN) idx = static_cast<int>(i);
+            SCHECK(idx >= 0);
+            if (idx >= 0) {
+                const int before = settings_.playerSkin;
+                activateWidget(idx, m, glm::vec2(0.0f));
+                SCHECK(settings_.playerSkin == (before + 1) % PLAYER_SKIN_SLOTS && textures_.playerSlot() == settings_.playerSkin);
+                SCHECK(textures_.skin(SKIN_PLAYER).rgba == textures_.playerSkinImage(settings_.playerSkin).rgba);
+                for (int i = 1; i < PLAYER_SKIN_SLOTS; ++i) activateWidget(idx, m, glm::vec2(0.0f));
+                SCHECK(settings_.playerSkin == before);
+            }
+        }
         paused_ = false;
         screen_ = MenuScreen::None;
         audio_.stopAll();
@@ -2170,11 +2194,23 @@ void Game::render() {
         }
         eh.quads = editor_->preview(editorUi_.previewYaw, editorUi_.previewPitch);
         eh.previewSkin = editor_->entry().kind == EditorEntry::Skin ? static_cast<int>(editor_->entry().skin) : -1;
-        eh.title = "Textur-Editor: " + editor_->entry().name + (editor_->modified() ? " *" : "");
+        std::string edName = editor_->entry().name;
+        if (editor_->entry().kind == EditorEntry::Skin && editor_->entry().skin == SKIN_PLAYER)
+            edName += std::string(" (Platz ") + std::to_string(textures_.playerSlot() + 1) + ": " + playerSkinName(textures_.playerSlot()) + ")";
+        eh.title = "Textur-Editor: " + edName + (editor_->modified() ? " *" : "");
         eh.status = editorUi_.status;
     } else if (paused_ && screen_ != MenuScreen::None) {
         h.menu = buildMenu(screen_, menuState(), fbW_, fbH_);
         h.menuHover = hitWidget(h.menu, mousePx());
+        if (h.menu.skinPreview.z > 0.0f) {
+            if (!skinPreviewEd_) {
+                skinPreviewEd_ = std::make_unique<TextureEditor>(textures_);
+                for (size_t i = 0; i < skinPreviewEd_->entries().size(); ++i)
+                    if (skinPreviewEd_->entries()[i].kind == EditorEntry::Skin && skinPreviewEd_->entries()[i].skin == SKIN_PLAYER)
+                        skinPreviewEd_->select(static_cast<int>(i));
+            }
+            h.menuPreview = skinPreviewEd_->preview(static_cast<float>(glfwGetTime()) * 0.7f, 0.12f);
+        }
     }
     h.burning = burnTimer_ > 0.0f;
     h.message = statusMsg_;

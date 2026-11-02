@@ -15,6 +15,7 @@ void Settings::clamp() {
     masterVolume = std::max(0.0f, std::min(1.0f, masterVolume));
     effectVolume = std::max(0.0f, std::min(1.0f, effectVolume));
     musicVolume = std::max(0.0f, std::min(1.0f, musicVolume));
+    playerSkin = std::max(0, std::min(7, playerSkin));
 }
 
 bool loadSettings(const std::string& path, Settings& s) {
@@ -42,6 +43,9 @@ bool loadSettings(const std::string& path, Settings& s) {
                 float& t = key == "master_volume" ? s.masterVolume : key == "effect_volume" ? s.effectVolume : s.musicVolume;
                 t = static_cast<float>(v);
             }
+        } else if (key == "player_skin") {
+            long v = std::strtol(val.c_str(), &end, 10);
+            if (end != val.c_str()) s.playerSkin = static_cast<int>(v) - 1;  // in der Datei 1..8
         } else if (key == "vsync") {
             s.vsync = val == "1" || val == "true" || val == "an";
         }
@@ -61,6 +65,7 @@ bool saveSettings(const std::string& path, const Settings& s) {
     std::snprintf(buf, sizeof(buf), "%.1f", s.fov);
     f << "fov=" << buf << "\n";
     f << "vsync=" << (s.vsync ? 1 : 0) << "\n";
+    f << "player_skin=" << s.playerSkin + 1 << "\n";
     std::snprintf(buf, sizeof(buf), "%.2f", s.masterVolume);
     f << "master_volume=" << buf << "\n";
     std::snprintf(buf, sizeof(buf), "%.2f", s.effectVolume);

@@ -1,5 +1,6 @@
 // Tests ohne OpenGL-Kontext: Welt, Terrain, Physik, Mesher, Speichern.
 #include <algorithm>
+#include <cstring>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -919,6 +920,22 @@ static void testWaterExitAndZombieDay() {
     em.spawnMob(MobType::Zombie, glm::vec3(5.5f, gy + 1.0f, -8.5f)).pos.y = gy + 1.0f;  // unter dem Dach, auf Wasser: schwimmt
     for (int i = 0; i < 20 * 14; ++i) em.update(0.05f, w, pl, inv, env);
     CHECK(em.mobs().empty());
+
+    // Zombies sinken im Wasser und gehen am Grund, Tiere treiben
+    {
+        EntityManager e2(9);
+        EntityEnv night;
+        night.allowSpawns = false;
+        night.daylight = 0.0f;
+        Player far;
+        far.pos = glm::vec3(0.5f, static_cast<float>(gy + 1), 60.0f);  // ausserhalb der Verfolgungsreichweite
+        e2.spawnMob(MobType::Zombie, glm::vec3(0.5f, gy + 0.2f, 0.5f));
+        e2.spawnMob(MobType::Pig, glm::vec3(4.5f, gy + 0.2f, 0.5f));
+        for (int i = 0; i < 60; ++i) e2.update(0.05f, w, far, inv, night);  // 3 s
+        CHECK(e2.mobs().size() == 2);
+        CHECK(e2.mobs()[0].pos.y < gy - 1.5f && e2.mobs()[0].onGround);
+        CHECK(e2.mobs()[1].pos.y > gy + 0.3f);
+    }
 }
 
 static void testLava() {
@@ -2221,6 +2238,90 @@ static void testMobSounds() {
     CHECK(pickup && inv.count(LOG) == 1);
 }
 
+static void testPlayerSkins() {
+    // Standardfarben: Platz 0 ist der bisherige Standard, alle Plaetze unterscheiden sich, Namen sind einmalig
+    CHECK(generatePlayerSkinPixels(0) == generateSkinPixels(SKIN_PLAYER));
+    std::vector<std::string> names;
+    for (int i = 0; i < PLAYER_SKIN_SLOTS; ++i) {
+        names.push_back(playerSkinName(i));
+        CHECK(generatePlayerSkinPixels(i).size() == 64u * 32u * 4u);
+        for (int j = i + 1; j < PLAYER_SKIN_SLOTS; ++j) CHECK(generatePlayerSkinPixels(i) != generatePlayerSkinPixels(j));
+    }
+    std::sort(names.begin(), names.end());
+    CHECK(std::adjacent_find(names.begin(), names.end()) == names.end());
+
+    const std::string dir = "olicraft_test_skins";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    TextureStore st;
+    st.setDirectory(dir);
+    CHECK(st.playerSlot() == 0 && st.skin(SKIN_PLAYER).rgba == generatePlayerSkinPixels(0));
+    CHECK(st.playerSkinPath(0) == dir + "/skin_player.png" && st.playerSkinPath(2) == dir + "/skin_player_3.png");
+
+    // Bearbeiten, Platz wechseln, zurueckwechseln: Aenderung bleibt erhalten
+    const uint8_t red[4] = {255, 0, 0, 255};
+    st.setSkinPixel(SKIN_PLAYER, 3, 3, red);
+    st.selectPlayerSkin(3);
+    CHECK(st.playerSlot() == 3 && st.skin(SKIN_PLAYER).rgba == generatePlayerSkinPixels(3) && st.skinDirty(SKIN_PLAYER));
+    CHECK(st.skinPath(SKIN_PLAYER) == dir + "/skin_player_4.png");
+    CHECK(std::memcmp(st.playerSkinImage(0).at(3, 3), red, 4) == 0);
+    st.setSkinPixel(SKIN_PLAYER, 5, 5, red);
+    std::string err;
+    CHECK(st.saveSkin(SKIN_PLAYER, &err) && std::filesystem::exists(dir + "/skin_player_4.png") && st.playerSkinCustom(3));
+    st.selectPlayerSkin(0);
+    CHECK(std::memcmp(st.skin(SKIN_PLAYER).at(3, 3), red, 4) == 0 && st.playerSkinCustom(3));
+    CHECK(st.saveSkin(SKIN_PLAYER, &err) && std::filesystem::exists(dir + "/skin_player.png"));
+    st.selectPlayerSkin(99);  // wird begrenzt
+    CHECK(st.playerSlot() == PLAYER_SKIN_SLOTS - 1);
+    st.selectPlayerSkin(0);
+
+    // Neu starten: alle gespeicherten Plaetze werden geladen, der gewaehlte Platz bleibt
+    TextureStore st2;
+    st2.setDirectory(dir);
+    st2.selectPlayerSkin(1);
+    std::vector<std::string> msgs;
+    CHECK(st2.loadAllFromDirectory(&msgs) == 2 && msgs.empty());
+    CHECK(st2.playerSlot() == 1 && st2.skin(SKIN_PLAYER).rgba == generatePlayerSkinPixels(1));
+    CHECK(std::memcmp(st2.playerSkinImage(0).at(3, 3), red, 4) == 0);
+    CHECK(std::memcmp(st2.playerSkinImage(3).at(5, 5), red, 4) == 0 && st2.playerSkinCustom(3) && st2.playerSkinCustom(0));
+    CHECK(!st2.playerSkinCustom(1));
+    // Zuruecksetzen betrifft nur den gewaehlten Platz und stellt dessen eigene Standardfarben her
+    st2.selectPlayerSkin(3);
+    st2.resetSkin(SKIN_PLAYER);
+    CHECK(st2.skin(SKIN_PLAYER).rgba == generatePlayerSkinPixels(3));
+    CHECK(std::memcmp(st2.playerSkinImage(0).at(3, 3), red, 4) == 0);
+    std::filesystem::remove_all(dir);
+
+    // Einstellungen und Menue
+    Settings s;
+    s.playerSkin = 5;
+    const std::string cfg = "olicraft_test_skin.cfg";
+    CHECK(saveSettings(cfg, s));
+    Settings r;
+    CHECK(loadSettings(cfg, r) && r.playerSkin == 5);
+    {
+        std::ofstream f(cfg);
+        f << "player_skin=99\n";
+    }
+    CHECK(loadSettings(cfg, r) && r.playerSkin == 7);
+    {
+        std::ofstream f(cfg);
+        f << "player_skin=0\n";
+    }
+    CHECK(loadSettings(cfg, r) && r.playerSkin == 0);
+    std::filesystem::remove(cfg);
+    MenuState ms;
+    ms.skinSlot = 2;
+    const MenuLayout ml = buildMenu(MenuScreen::Settings, ms, 1280, 720);
+    bool found = false;
+    for (const Widget& w : ml.widgets)
+        if (w.id == W_SKIN) found = w.text.find("Gruen") != std::string::npos && w.text.find("3/8") != std::string::npos;
+    CHECK(found);
+    CHECK(ml.skinPreview.z > 0.0f && ml.skinPreview.x + ml.skinPreview.z <= 1280.0f && ml.skinPreview.y >= 0.0f &&
+          ml.skinPreview.y + ml.skinPreview.w <= 720.0f);
+    CHECK(buildMenu(MenuScreen::Settings, ms, 320, 240).skinPreview.z == 0.0f);  // zu schmal: keine Vorschau
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -2251,6 +2352,7 @@ int main() {
     testItemsAndInventory();
     testSettingsAndMenu();
     testMobSounds();
+    testPlayerSkins();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

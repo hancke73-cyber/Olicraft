@@ -11,6 +11,7 @@ struct Settings {
     float masterVolume = 0.8f;  // 0..1
     float effectVolume = 1.0f;
     float musicVolume = 0.5f;
+    int playerSkin = 0;         // Skin-Platz 0..7
 
     static constexpr int MIN_DISTANCE = 4, MAX_DISTANCE = 24;
     static constexpr float MIN_SENS = 0.02f, MAX_SENS = 0.25f, DEFAULT_SENS = 0.09f;

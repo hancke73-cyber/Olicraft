@@ -6,6 +6,7 @@
 
 #include "Hud.h"
 #include "Settings.h"
+#include "Skins.h"
 
 namespace oc {
 
@@ -52,7 +53,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     }
 
     m.title = "Einstellungen";
-    const int rows = 11;
+    const int rows = 12;
     const float total = rows * bh + (rows - 1) * gap + 24.0f * s;
     float y = std::floor((h - total) * 0.5f) + 24.0f * s;
     m.titlePos = {0.0f, y - 22.0f * s};
@@ -82,6 +83,13 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
             y += bh + gap;
         }
     }
+    std::snprintf(buf, sizeof(buf), "Spieler-Skin: %s (%d/%d)", playerSkinName(st.skinSlot), st.skinSlot + 1, PLAYER_SKIN_SLOTS);
+    m.widgets.push_back(button(W_SKIN, buf, x, y, bw, bh));
+    {
+        const float pw = 80.0f * s, ph = 80.0f * s, px = x + bw + 10.0f * s;
+        if (px + pw <= w) m.skinPreview = {px, y + bh * 0.5f - ph * 0.5f, pw, ph};
+    }
+    y += bh + gap;
     m.widgets.push_back(button(W_VSYNC, std::string("VSync: ") + (st.vsync ? "An" : "Aus"), x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_FULLSCREEN, std::string("Vollbild: ") + (st.fullscreen ? "An" : "Aus"), x, y, bw, bh));

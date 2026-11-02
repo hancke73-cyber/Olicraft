@@ -347,13 +347,26 @@ static void drawWidget(HudBatch& b, const Widget& wd, bool hot, float s) {
     b.text(tx, std::floor(y0 + (wd.size.y - 8.0f * s) * 0.5f), s, wd.text, tc);
 }
 
-static void drawMenu(HudBatch& b, const MenuLayout& m, int hover, int w, int h) {
+static void drawMenu(HudBatch& b, const MenuLayout& m, const std::vector<PreviewQuad>& preview, int hover, int w, int h) {
     const float s = m.scale;
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.6f));
     const float ts = 2.0f * s;
     const float tw = textWidthPx(m.title) * ts;
     b.text(std::floor((w - tw) * 0.5f), m.titlePos.y, ts, m.title);
     for (size_t i = 0; i < m.widgets.size(); ++i) drawWidget(b, m.widgets[i], static_cast<int>(i) == hover, s);
+    if (m.skinPreview.z > 0.0f) {
+        const float px = m.skinPreview.x, py = m.skinPreview.y, pw = m.skinPreview.z, ph = m.skinPreview.w;
+        b.rect(px - s, py - s, px + pw + s, py + ph + s, glm::vec4(0.02f, 0.02f, 0.03f, 1.0f));
+        b.rect(px, py, px + pw, py + ph, glm::vec4(0.20f, 0.30f, 0.45f, 1.0f));
+        b.rect(px, py + ph * 0.80f, px + pw, py + ph, glm::vec4(0.22f, 0.36f, 0.20f, 1.0f));
+        const glm::vec2 c(px + pw * 0.5f, py + ph * 0.5f);
+        const float scale = std::min(pw, ph) * 0.5f * 0.95f;
+        for (const PreviewQuad& q : preview) {
+            glm::vec2 pts[4];
+            for (int k = 0; k < 4; ++k) pts[k] = c + q.p[k] * scale;
+            b.quad(pts, q.uv, glm::vec4(q.shade, q.shade, q.shade, 1.0f), HUD_TEX_SKIN);
+        }
+    }
 }
 
 static void drawEditor(HudBatch& b, const EditorHud& e, int w, int h) {
@@ -439,7 +452,7 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
         return;
     }
     if (!st.menu.widgets.empty()) {
-        drawMenu(b, st.menu, st.menuHover, w, h);
+        drawMenu(b, st.menu, st.menuPreview, st.menuHover, w, h);
         return;
     }
 

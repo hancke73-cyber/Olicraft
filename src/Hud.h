@@ -98,6 +98,7 @@ struct HudState {
     EditorHud editor; // Textur-Editor
     MenuLayout menu;  // Pause-/Einstellungsmenue (leer = geschlossen)
     int menuHover = -1;
+    std::vector<PreviewQuad> menuPreview;  // Spieler-Modell in den Einstellungen
     std::string message;
     float messageAlpha = 0.0f;
     std::string itemName;

@@ -360,13 +360,18 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
     }
 
     // Geschwindigkeit
+    // Feindliche Mobs treiben nicht: sie sinken im Wasser und gehen am Grund (Lava traegt weiterhin)
+    const bool sinking = sp.hostile && m.inWater && !world.inLavaAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f));
+    if (sinking) speed *= 0.6f;
     const glm::vec2 target = want * speed;
     const float accel = m.onGround ? 10.0f : 2.5f;
     const float k = 1.0f - std::exp(-accel * dt);
     m.vel.x += (target.x - m.vel.x) * k;
     m.vel.z += (target.y - m.vel.z) * k;
 
-    if (m.inWater) {
+    if (sinking) {
+        m.vel.y = std::max(-3.0f, m.vel.y - GRAVITY * dt);
+    } else if (m.inWater) {
         m.vel.y -= 5.0f * dt;
         m.vel.y *= std::exp(-2.0f * dt);
         if (!m.dead()) m.vel.y += 18.0f * dt;  // treiben nach oben

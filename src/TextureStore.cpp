@@ -83,6 +83,37 @@ TextureStore::TextureStore() {
         customSkin_[i] = false;
     }
     std::fill(std::begin(customTile_), std::end(customTile_), false);
+    for (int s = 0; s < PLAYER_SKIN_SLOTS; ++s) {
+        slotImg_[s] = Image(64, 32);
+        slotImg_[s].rgba = generatePlayerSkinPixels(s);
+        slotCustom_[s] = false;
+    }
+    skins_[SKIN_PLAYER] = slotImg_[0];
+}
+
+void TextureStore::selectPlayerSkin(int slot) {
+    slot = std::max(0, std::min(PLAYER_SKIN_SLOTS - 1, slot));
+    if (slot == playerSlot_) return;
+    slotImg_[playerSlot_] = skins_[SKIN_PLAYER];
+    slotCustom_[playerSlot_] = customSkin_[SKIN_PLAYER];
+    playerSlot_ = slot;
+    skins_[SKIN_PLAYER] = slotImg_[slot];
+    customSkin_[SKIN_PLAYER] = slotCustom_[slot];
+    skinDirty_[SKIN_PLAYER] = true;
+}
+
+Image TextureStore::playerSkinImage(int slot) const {
+    slot = std::max(0, std::min(PLAYER_SKIN_SLOTS - 1, slot));
+    return slot == playerSlot_ ? skins_[SKIN_PLAYER] : slotImg_[slot];
+}
+
+bool TextureStore::playerSkinCustom(int slot) const {
+    slot = std::max(0, std::min(PLAYER_SKIN_SLOTS - 1, slot));
+    return slot == playerSlot_ ? customSkin_[SKIN_PLAYER] : slotCustom_[slot];
+}
+
+std::string TextureStore::playerSkinPath(int slot) const {
+    return dir_ + "/" + (slot <= 0 ? std::string("skin_player.png") : "skin_player_" + std::to_string(slot + 1) + ".png");
 }
 
 Image TextureStore::tile(int t) const {
@@ -145,7 +176,7 @@ bool TextureStore::removeSkinFile(SkinId id) {
 Image TextureStore::defaultSkin(SkinId id) const {
     const SkinInfo& si = skinInfo(id);
     Image img(si.width, si.height);
-    img.rgba = generateSkinPixels(id);
+    img.rgba = id == SKIN_PLAYER ? generatePlayerSkinPixels(playerSlot_) : generateSkinPixels(id);
     return img;
 }
 
@@ -155,7 +186,9 @@ void TextureStore::resetSkin(SkinId id) {
 }
 
 std::string TextureStore::tilePath(int t) const { return dir_ + "/block_" + TILE_NAMES[t].file + ".png"; }
-std::string TextureStore::skinPath(SkinId id) const { return dir_ + "/" + skinInfo(id).fileName; }
+std::string TextureStore::skinPath(SkinId id) const {
+    return id == SKIN_PLAYER ? playerSkinPath(playerSlot_) : dir_ + "/" + skinInfo(id).fileName;
+}
 
 bool TextureStore::conformTile(Image& img, std::string* error) {
     if (img.w == TILE_PX && img.h == TILE_PX) return true;
@@ -220,13 +253,19 @@ int TextureStore::loadAllFromDirectory(std::vector<std::string>* messages) {
         if (loadTile(t, &err)) ++loaded;
         else if (messages) messages->push_back(tilePath(t) + ": " + err);
     }
+    const int keepSlot = playerSlot_;
     for (int i = 0; i < SKIN_COUNT; ++i) {
         const SkinId id = static_cast<SkinId>(i);
-        if (!fs::exists(skinPath(id), ec)) continue;
-        std::string err;
-        if (loadSkin(id, &err)) ++loaded;
-        else if (messages) messages->push_back(skinPath(id) + ": " + err);
+        // Spieler: alle Plaetze nacheinander laden
+        for (int s = 0; s < (id == SKIN_PLAYER ? PLAYER_SKIN_SLOTS : 1); ++s) {
+            if (id == SKIN_PLAYER) selectPlayerSkin(s);
+            if (!fs::exists(skinPath(id), ec)) continue;
+            std::string err;
+            if (loadSkin(id, &err)) ++loaded;
+            else if (messages) messages->push_back(skinPath(id) + ": " + err);
+        }
     }
+    selectPlayerSkin(keepSlot);
     return loaded;
 }
 

@@ -48,6 +48,14 @@ public:
     bool skinDirty(SkinId id) const { return skinDirty_[id]; }
     void clearSkinDirty(SkinId id) { skinDirty_[id] = false; }
 
+    // Spieler-Skins: 8 Plaetze. SKIN_PLAYER ist immer der gewaehlte; die anderen liegen im Zwischenspeicher.
+    // Dateien: skin_player.png (Platz 1), skin_player_2.png ... skin_player_8.png
+    int playerSlot() const { return playerSlot_; }
+    void selectPlayerSkin(int slot);
+    Image playerSkinImage(int slot) const;  // aktuelles Bild des Platzes
+    bool playerSkinCustom(int slot) const;
+    std::string playerSkinPath(int slot) const;
+
     // Dateien
     std::string tilePath(int t) const;
     std::string skinPath(SkinId id) const;
@@ -70,6 +78,9 @@ private:
     bool skinDirty_[SKIN_COUNT];
     bool customTile_[TILE_COUNT];
     bool customSkin_[SKIN_COUNT];
+    int playerSlot_ = 0;
+    Image slotImg_[PLAYER_SKIN_SLOTS];  // Zwischenspeicher der nicht gewaehlten Plaetze
+    bool slotCustom_[PLAYER_SKIN_SLOTS];
 };
 
 }  // namespace oc
