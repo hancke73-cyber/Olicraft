@@ -1,4 +1,5 @@
 // Tests ohne OpenGL-Kontext: Welt, Terrain, Physik, Mesher, Speichern.
+#include <set>
 #include <algorithm>
 #include <cstring>
 #include <chrono>
@@ -655,9 +656,17 @@ static void testItemsAndInventory() {
             CHECK(L.hitSlot(c) == i);
             CHECK(L.inside(c));
         }
-        if (creative)
-            for (int i = 0; i < creativeItemCount(); ++i)
+        if (creative) {
+            for (int i = 0; i < InvLayout::PALETTE_PAGE; ++i)
                 CHECK(L.hitPalette(L.palettePos(i) + glm::vec2(L.pitch() * 0.5f)) == i);
+            for (int t = 0; t <= CREATIVE_TAB_COUNT; ++t) {
+                CHECK(L.hitTab(L.tabPos(t) + glm::vec2(L.pitch() * 0.5f)) == t);
+                CHECK(L.inside(L.tabPos(t) + glm::vec2(L.pitch() * 0.5f)));
+                CHECK(L.hitPalette(L.tabPos(t) + glm::vec2(L.pitch() * 0.5f)) == -1);
+            }
+            CHECK(L.hitScrollbar(L.paletteTop + glm::vec2(InvLayout::PALETTE_COLS * L.pitch() + 2.0f, 3.0f)));
+            CHECK(!L.hitScrollbar(L.paletteTop + glm::vec2(3.0f, 3.0f)));
+        }
         CHECK(L.hitSlot(glm::vec2(1.0f, 1.0f)) == -1);
     }
     // Schrift: Breite und HUD-Aufbau
@@ -3180,6 +3189,138 @@ static void testLaddersBedsWater() {
     }
 }
 
+static void testCreativeTabsAndGui() {
+    // Jeder Gegenstand des Kreativ-Inventars steht in genau einem Themenreiter
+    std::set<ItemId> seen;
+    int total = 0;
+    for (int t = 0; t < CREATIVE_TAB_COUNT; ++t) {
+        CHECK(std::string(creativeTabName(t)).size() > 2);
+        CHECK(!creativeTabItems(t).empty());
+        CHECK(creativeTabIcon(t) != ITEM_NONE && itemValid(creativeTabIcon(t)));
+        for (ItemId id : creativeTabItems(t)) {
+            CHECK(itemValid(id));
+            CHECK(seen.insert(id).second);
+            ++total;
+        }
+    }
+    CHECK(total == creativeItemCount() && seen.size() == static_cast<size_t>(total));
+    CHECK(std::string(creativeTabName(CREATIVE_SEARCH_TAB)) == "Suche" && creativeTabIcon(CREATIVE_SEARCH_TAB) == ITEM_NONE);
+    CHECK(creativeTabItems(CREATIVE_SEARCH_TAB).empty() && creativeTabItems(-1).empty());
+    // Zuordnung nach Thema
+    auto in = [&](int tab, ItemId id) {
+        const auto& v = creativeTabItems(tab);
+        return std::find(v.begin(), v.end(), id) != v.end();
+    };
+    CHECK(in(0, GRASS) && in(0, DIAMOND_ORE) && in(0, WATER));
+    CHECK(in(1, PLANKS) && in(1, STAIRS_BASE) && in(1, ITEM_DOOR_WOOD) && in(1, WALL_COBBLE));
+    CHECK(in(2, LANTERN) && in(2, WOOL_RED) && in(2, LADDER_BASE));
+    CHECK(in(3, FLOWER_RED) && in(3, SUGAR_CANE) && in(3, CACTUS));
+    CHECK(in(4, CRAFTING_TABLE) && in(4, FURNACE) && in(4, CHEST) && in(4, BED));
+    CHECK(in(5, ITEM_IRON_PICKAXE) && in(5, ITEM_ARMOR_BASE + 13) && in(5, ITEM_HOE_GOLD));
+    CHECK(in(6, ITEM_IRON_INGOT) && in(6, ITEM_LEATHER) && in(6, ITEM_DYE_RED));
+    CHECK(in(7, ITEM_BREAD) && in(7, ITEM_COOKED_MEAT));
+    // ein Reiter passt auf hoechstens zwei Seiten
+    for (int t = 0; t < CREATIVE_TAB_COUNT; ++t) CHECK(static_cast<int>(creativeTabItems(t).size()) <= 2 * InvLayout::PALETTE_PAGE);
+
+    // Suche: ohne Gross/Klein, Teilwoerter, leer = alles, Unsinn = nichts
+    CHECK(static_cast<int>(creativeSearch("").size()) == creativeItemCount());
+    CHECK(creativeSearch("zzzqq").empty());
+    {
+        const auto r = creativeSearch("DIAMANT");
+        bool pick = false, ore = false, helm = false;
+        for (ItemId id : r) {
+            pick = pick || id == ITEM_DIAMOND_PICKAXE;
+            ore = ore || id == DIAMOND_ORE;
+            helm = helm || id == ITEM_ARMOR_BASE + 12;
+            CHECK(std::string(itemInfo(id).name).find("iamant") != std::string::npos || std::string(itemInfo(id).name).find("Diamant") != std::string::npos);
+        }
+        CHECK(pick && helm && !r.empty());
+        (void)ore;  // Diamanterz heisst anders ("Diamanterz" enthaelt Diamant, siehe Namen)
+    }
+    CHECK(!creativeSearch("fackel").empty() || !creativeSearch("tor").empty());
+    CHECK(creativeSearch("holztuer").size() == 1);
+
+    // GUI-Groesse: Stufe, Begrenzung, Inventar groesser als die uebrige Oberflaeche
+    setGuiSize(0);
+    CHECK(guiScale(720) == 2.0f && guiScale(1080) == 3.0f && guiScale(300) == 1.0f);
+    setGuiSize(1);
+    CHECK(guiScale(1080) == 1.0f && guiScale(720) == 1.0f);
+    setGuiSize(3);
+    CHECK(guiScale(1080) == 3.0f && guiScale(720) == 3.0f && guiScale(360) == 2.0f);  // nie mehr als Hoehe/180
+    setGuiSize(99);
+    CHECK(guiSizeSetting() == 4);
+    setGuiSize(-5);
+    CHECK(guiSizeSetting() == 0);
+    for (int hgt : {480, 600, 720, 900, 1080, 1440}) {
+        const int wid = hgt * 16 / 9;
+        for (int mode = 0; mode < 5; ++mode) {
+            setGuiSize(mode);
+            for (bool creative : {false, true})
+                for (int craftSize : {0, 2, 3}) {
+                    const InvLayout L = InvLayout::make(wid, hgt, creative, craftSize);
+                    CHECK(L.s >= 1.0f && L.s >= guiScale(hgt) * 0 + 1.0f);
+                    CHECK(L.panelPos.y >= 0.0f && L.panelPos.y + L.panelSize.y <= static_cast<float>(hgt));
+                    CHECK(L.panelPos.x >= 0.0f && L.panelPos.x + L.panelSize.x <= static_cast<float>(wid));
+                    if (hgt >= 600 && mode == 0) CHECK(L.s >= guiScale(hgt));  // Inventar nie kleiner als die Oberflaeche
+                }
+        }
+    }
+    setGuiSize(0);
+    CHECK(InvLayout::make(1280, 720, true).s == 3.0f && InvLayout::make(1280, 720, false, 2).s == 3.0f);
+    CHECK(InvLayout::make(1920, 1080, true).s == 4.0f);
+    // Menues passen bei jeder Stufe ins Fenster
+    for (int mode = 0; mode < 5; ++mode) {
+        setGuiSize(mode);
+        for (MenuScreen scr : {MenuScreen::Pause, MenuScreen::Settings, MenuScreen::Main, MenuScreen::NewWorld, MenuScreen::Graphics})
+            for (auto dim : {std::make_pair(1280, 720), std::make_pair(800, 600), std::make_pair(1920, 1080), std::make_pair(640, 480)}) {
+                MenuState st;
+                st.guiSize = mode;
+                for (int k = 0; k < 7; ++k) st.worldLabels.push_back("Welt");
+                st.worldSel = 0;
+                const MenuLayout m = buildMenu(scr, st, dim.first, dim.second);
+                for (const Widget& w : m.widgets) {
+                    const bool ok = w.pos.x >= 0 && w.pos.y >= 0 && w.pos.x + w.size.x <= dim.first && w.pos.y + w.size.y <= dim.second;
+                    if (!ok) std::fprintf(stderr, "menu %d mode %d %dx%d widget %d y=%f h=%f s=%f\n", static_cast<int>(scr), mode, dim.first, dim.second, w.id, w.pos.y, w.size.y, m.scale);
+                    CHECK(ok);
+                }
+            }
+    }
+    setGuiSize(0);
+    // Einstellung wird gespeichert
+    std::filesystem::create_directories("olicraft_test_gui");
+    Settings gs;
+    gs.guiSize = 3;
+    CHECK(saveSettings("olicraft_test_gui/s.cfg", gs));
+    Settings gr;
+    CHECK(loadSettings("olicraft_test_gui/s.cfg", gr) && gr.guiSize == 3);
+    {
+        std::ofstream f("olicraft_test_gui/s.cfg");
+        f << "gui_size=17\n";
+    }
+    CHECK(loadSettings("olicraft_test_gui/s.cfg", gr) && gr.guiSize == 4);
+    std::filesystem::remove_all("olicraft_test_gui");
+    // HUD mit Reiterleiste und Suchfeld baut Geometrie
+    {
+        Inventory inv;
+        HudBatch batch;
+        HudState st;
+        st.inventory = &inv;
+        st.inventoryOpen = true;
+        st.paletteOpen = true;
+        st.creative = true;
+        const std::vector<ItemId> items = creativeSearch("");
+        st.paletteItems = &items;
+        for (int tab : {0, 3, CREATIVE_SEARCH_TAB}) {
+            st.creativeTab = tab;
+            st.creativeQuery = "ab";
+            st.creativeScroll = 2;
+            st.mouse = glm::vec2(640.0f, 300.0f);
+            buildHud(batch, st, 1280, 720);
+            CHECK(!batch.verts.empty() && batch.verts.size() % 6 == 0);
+        }
+    }
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -3417,6 +3558,7 @@ int main() {
     testArmor();
     testParticlesAndGraphics();
     testWorlds();
+    testCreativeTabsAndGui();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

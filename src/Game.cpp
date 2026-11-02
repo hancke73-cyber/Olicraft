@@ -54,6 +54,7 @@ bool Game::init() {
     if (opt_.distanceCli) settings_.renderDistance = opt_.renderDistance;
     if (opt_.vsyncCli) settings_.vsync = opt_.vsync;
     settings_.clamp();
+    setGuiSize(settings_.guiSize);
     opt_.renderDistance = settings_.renderDistance;
     opt_.vsync = settings_.vsync;
 
@@ -563,6 +564,7 @@ MenuState Game::menuState() const {
     s.particles = settings_.particles;
     s.texFilter = settings_.texFilter;
     s.anisotropy = settings_.anisotropy;
+    s.guiSize = settings_.guiSize;
     for (const WorldEntry& w : worlds_)
         s.worldLabels.push_back(w.name + "  (" + (w.creative ? "Kreativ" : "Survival") + ", Seed " + std::to_string(w.seed) + ")");
     s.worldSel = worldSel_;
@@ -644,6 +646,7 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
         case W_GFX_CLOUDS: settings_.clouds = !settings_.clouds; persistSettings(); break;
         case W_GFX_PARTICLES: settings_.particles = !settings_.particles; persistSettings(); break;
         case W_GFX_FILTER: settings_.texFilter = 1 - settings_.texFilter; persistSettings(); break;
+        case W_GUI_SIZE: settings_.guiSize = (settings_.guiSize + 1) % 5; setGuiSize(settings_.guiSize); persistSettings(); break;
         case W_GFX_ANISO: settings_.anisotropy = settings_.anisotropy >= 16 ? 1 : settings_.anisotropy * 2; persistSettings(); break;
         case W_MAIN_PLAY: {
             if (worldSel_ < 0 || worldSel_ >= static_cast<int>(worlds_.size())) break;
@@ -717,6 +720,26 @@ void Game::toggleFullscreen() {
         glfwSetWindowMonitor(window_, primary, 0, 0, mode->width, mode->height, mode->refreshRate);
     }
     firstMouse_ = true;
+}
+
+const std::vector<ItemId>& Game::paletteItems() const {
+    return creativeTab_ == CREATIVE_SEARCH_TAB ? searchResults_ : creativeTabItems(creativeTab_);
+}
+
+void Game::updateSearch() {
+    searchResults_ = creativeSearch(creativeQuery_);
+    creativeScroll_ = 0;
+}
+
+void Game::setCreativeTab(int tab) {
+    creativeTab_ = std::max(0, std::min(CREATIVE_SEARCH_TAB, tab));
+    creativeScroll_ = 0;
+    if (creativeTab_ == CREATIVE_SEARCH_TAB) updateSearch();
+}
+
+void Game::scrollPalette(int rows) {
+    const int total = (static_cast<int>(paletteItems().size()) + InvLayout::PALETTE_COLS - 1) / InvLayout::PALETTE_COLS;
+    creativeScroll_ = std::max(0, std::min(std::max(0, total - InvLayout::PALETTE_ROWS), creativeScroll_ + rows));
 }
 
 void Game::openInventory(bool table) {
@@ -1050,9 +1073,26 @@ void Game::inventoryClick(int button, int mods) {
         }
     }
 
+    if (paletteWindow_) {
+        const int tab = layout.hitTab(m);
+        if (tab >= 0) {
+            setCreativeTab(tab);
+            uiSound(SoundId::Click, 0.7f);
+            return;
+        }
+        if (layout.hitScrollbar(m)) {  // Klick in die Leiste springt an die Stelle
+            const int total = (static_cast<int>(paletteItems().size()) + InvLayout::PALETTE_COLS - 1) / InvLayout::PALETTE_COLS;
+            const int maxScroll = std::max(0, total - InvLayout::PALETTE_ROWS);
+            const float f = std::max(0.0f, std::min(1.0f, (m.y - layout.scrollbarTop()) / layout.scrollbarHeight()));
+            creativeScroll_ = static_cast<int>(std::lround(f * static_cast<float>(maxScroll)));
+            return;
+        }
+    }
     const int pal = layout.hitPalette(m);
     if (pal >= 0) {
-        const ItemId id = creativeItem(pal);
+        const size_t idx = static_cast<size_t>(creativeScroll_ * InvLayout::PALETTE_COLS + pal);
+        if (idx >= paletteItems().size()) return;
+        const ItemId id = paletteItems()[idx];
         if (!cursor_.empty() && cursor_.id == id) cursor_.clear();  // zurueckgeben
         else cursor_ = {id, right ? 1 : itemInfo(id).maxStack};
         return;
@@ -1201,6 +1241,13 @@ void Game::handleKey(int key, int action, int mods) {
         if (key == GLFW_KEY_SPACE) respawn();
         return;
     }
+    if (inventoryOpen_ && paletteWindow_ && creativeTab_ == CREATIVE_SEARCH_TAB) {  // Tasten gehoeren dem Suchfeld
+        if (key == GLFW_KEY_BACKSPACE && !creativeQuery_.empty()) {
+            creativeQuery_.pop_back();
+            updateSearch();
+        }
+        return;
+    }
     if (key == GLFW_KEY_E) {
         if (inventoryOpen_) closeInventory();
         else openInventory();
@@ -1231,6 +1278,19 @@ void Game::handleKey(int key, int action, int mods) {
 }
 
 void Game::handleChar(unsigned int cp) {
+    if (!paused_ && inventoryOpen_ && paletteWindow_ && creativeTab_ == CREATIVE_SEARCH_TAB) {  // Suchfeld
+        std::string add;
+        if (cp >= 32 && cp < 127) add = std::string(1, static_cast<char>(cp));
+        else if (cp == 0xE4 || cp == 0xC4) add = "ae";
+        else if (cp == 0xF6 || cp == 0xD6) add = "oe";
+        else if (cp == 0xFC || cp == 0xDC) add = "ue";
+        else if (cp == 0xDF) add = "ss";
+        if (!add.empty() && creativeQuery_.size() + add.size() <= 20) {
+            creativeQuery_ += add;
+            updateSearch();
+        }
+        return;
+    }
     if (!paused_ || screen_ != MenuScreen::NewWorld) return;
     if (newNameFocus_) {
         if (!worldNameChar(static_cast<int>(cp))) return;
@@ -1259,6 +1319,10 @@ void Game::handleScroll(double dy) {
             bookScroll_ += dy > 0 ? -1 : (dy < 0 ? 1 : 0);
             clampBookScroll(static_cast<int>(buildBook().size()));
         }
+        return;
+    }
+    if (inventoryOpen_ && paletteWindow_ && !paused_) {
+        scrollPalette(dy > 0 ? -1 : (dy < 0 ? 1 : 0));
         return;
     }
     if (paused_ || inventoryOpen_ || dead_) return;
@@ -3421,6 +3485,120 @@ int Game::selfTest() {
         opt_.noSave = true;  // keine Dateien mehr anfassen
     }
 
+    // 25. Kreativ-Inventar: Reiter nach Themen, Suche, Bildlauf, GUI-Groesse
+    {
+        setPaused(false);
+        creative_ = true;
+        if (inventoryOpen_) closeInventory();
+        cursor_.clear();
+        openInventory();
+        SCHECK(inventoryOpen_ && paletteWindow_);
+        auto clickAt = [&](glm::vec2 fbPos, int button, int mods) {
+            const double sx = static_cast<double>(winW_cur_) / fbW_, sy = static_cast<double>(winH_cur_) / fbH_;
+            curX_ = fbPos.x * sx;
+            curY_ = fbPos.y * sy;
+            inventoryClick(button, mods);
+        };
+        const glm::vec2 half = glm::vec2(invLayout().pitch() * 0.5f);
+        // jeder Themenreiter: Klick waehlt ihn, das erste Feld liefert dessen ersten Gegenstand
+        for (int t = 0; t < CREATIVE_TAB_COUNT; ++t) {
+            clickAt(invLayout().tabPos(t) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+            SCHECK(creativeTab_ == t && creativeScroll_ == 0);
+            cursor_.clear();
+            clickAt(invLayout().palettePos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+            SCHECK(cursor_.id == creativeTabItems(t)[0] && cursor_.count == itemInfo(cursor_.id).maxStack);
+            clickAt(invLayout().palettePos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);  // erneuter Klick gibt zurueck
+            SCHECK(cursor_.empty());
+        }
+        // leeres Feld hinter dem letzten Eintrag tut nichts
+        clickAt(invLayout().tabPos(4) + half, GLFW_MOUSE_BUTTON_LEFT, 0);  // Stationen: wenige Eintraege
+        clickAt(invLayout().palettePos(InvLayout::PALETTE_PAGE - 1) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.empty());
+        // Hotkeys wirken ausserhalb der Suche weiter: E schliesst das Inventar
+        handleKey(GLFW_KEY_E, GLFW_PRESS, 0);
+        SCHECK(!inventoryOpen_);
+        openInventory();
+        SCHECK(creativeTab_ == 4);  // der Reiter bleibt gemerkt
+        // Suche
+        clickAt(invLayout().tabPos(CREATIVE_SEARCH_TAB) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(creativeTab_ == CREATIVE_SEARCH_TAB && creativeQuery_.empty());
+        SCHECK(static_cast<int>(paletteItems().size()) == creativeItemCount());
+        // mit leerem Suchtext viele Seiten: Mausrad und Leiste scrollen
+        SCHECK(creativeScroll_ == 0);
+        handleScroll(-1.0);
+        SCHECK(creativeScroll_ == 1);
+        handleScroll(1.0);
+        handleScroll(1.0);
+        SCHECK(creativeScroll_ == 0);
+        {
+            const InvLayout L = invLayout();
+            clickAt(glm::vec2(L.paletteTop.x + InvLayout::PALETTE_COLS * L.pitch() + 2.0f, L.scrollbarTop() + L.scrollbarHeight() - 1.0f), GLFW_MOUSE_BUTTON_LEFT, 0);
+            const int rows = (creativeItemCount() + InvLayout::PALETTE_COLS - 1) / InvLayout::PALETTE_COLS;
+            SCHECK(creativeScroll_ == rows - InvLayout::PALETTE_ROWS);
+            for (int i = 0; i < 50; ++i) handleScroll(-1.0);
+            SCHECK(creativeScroll_ == rows - InvLayout::PALETTE_ROWS);  // nicht ueber das Ende hinaus
+        }
+        // Tippen: Tasten wie E oder Zahlen schliessen nichts und waehlen keinen Hotbar-Platz
+        const int slotBefore = slot_;
+        for (char c : std::string("diamant")) {
+            handleKey(std::toupper(static_cast<unsigned char>(c)), GLFW_PRESS, 0);
+            handleChar(static_cast<unsigned char>(c));
+        }
+        handleKey(GLFW_KEY_E, GLFW_PRESS, 0);
+        handleChar('e');
+        handleKey(GLFW_KEY_5, GLFW_PRESS, 0);
+        SCHECK(inventoryOpen_ && slot_ == slotBefore && creativeQuery_ == "diamante");
+        SCHECK(creativeScroll_ == 0 && static_cast<int>(paletteItems().size()) < creativeItemCount());
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        SCHECK(creativeQuery_ == "diamant" && !paletteItems().empty());
+        bool pick = false;
+        for (ItemId id : paletteItems()) pick = pick || id == ITEM_DIAMOND_PICKAXE;
+        SCHECK(pick);
+        // Umlaut, Gross/Klein, Treffer anklicken
+        handleChar(0xFC);
+        SCHECK(creativeQuery_ == "diamantue" && paletteItems().empty());
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        for (int i = 0; i < 4; ++i) handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);  // "dia"
+        handleChar('M');
+        SCHECK(creativeQuery_ == "diaM" && !paletteItems().empty());
+        const ItemId firstHit = paletteItems()[0];
+        clickAt(invLayout().palettePos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.id == firstHit);
+        cursor_.clear();
+        for (int i = 0; i < 30; ++i) handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        SCHECK(creativeQuery_.empty());
+        for (int i = 0; i < 40; ++i) handleChar('a');
+        SCHECK(creativeQuery_.size() == 20);  // Laenge begrenzt
+        // zurueck zu einem Themenreiter: Tasten wirken wieder
+        clickAt(invLayout().tabPos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        handleKey(GLFW_KEY_E, GLFW_PRESS, 0);
+        SCHECK(!inventoryOpen_);
+        // Survival-Inventar hat keine Reiter
+        creative_ = false;
+        openInventory();
+        SCHECK(!paletteWindow_ && invLayout().hitTab(invLayout().panelPos + glm::vec2(20.0f, 20.0f)) == -1);
+        closeInventory();
+        creative_ = true;
+        // GUI-Groesse im Einstellungsmenue
+        paused_ = true;
+        screen_ = MenuScreen::Settings;
+        auto clickMenu = [&](int id) {
+            const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
+            for (size_t i = 0; i < menu.widgets.size(); ++i)
+                if (menu.widgets[i].id == id) {
+                    activateWidget(static_cast<int>(i), menu, glm::vec2(0.0f));
+                    return true;
+                }
+            return false;
+        };
+        SCHECK(settings_.guiSize == 0);
+        SCHECK(clickMenu(W_GUI_SIZE) && settings_.guiSize == 1 && guiSizeSetting() == 1);
+        for (int i = 0; i < 4; ++i) clickMenu(W_GUI_SIZE);
+        SCHECK(settings_.guiSize == 0 && guiSizeSetting() == 0);
+        setPaused(false);
+    }
+
 #undef SCHECK
     std::printf("Selbsttest: %d Pruefungen, %d fehlgeschlagen\n", checks, failed);
     return failed;
@@ -3505,6 +3683,10 @@ void Game::render() {
         h.invPreview = skinPreviewEd_->preview(static_cast<float>(glfwGetTime()) * 0.7f, 0.12f);
     }
     h.paletteOpen = paletteWindow_;
+    h.creativeTab = creativeTab_;
+    h.creativeScroll = creativeScroll_;
+    h.creativeQuery = creativeQuery_;
+    h.paletteItems = &paletteItems();
     h.furnaceOpen = furnaceWindow_;
     h.chestOpen = chestWindow_;
     h.tradeOpen = tradeWindow_;

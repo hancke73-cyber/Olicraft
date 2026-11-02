@@ -1,43 +1,54 @@
 #include "Items.h"
 
+#include <cctype>
+
 namespace oc {
 
 static const ItemInfo BLOCK_ITEM_NONE = {"", 0, false, TILE_STONE, TILE_STONE, TOOL_NONE, 0, 0, 1.0f, 2};
 
-static const ItemId CREATIVE_LIST[] = {
-    // Bloecke
-    GRASS, DIRT, FARMLAND, STONE, COBBLE, SAND, GRAVEL, CLAY, SNOW, SANDSTONE, BRICKS, STONE_BRICKS, OBSIDIAN, BEDROCK,
-    LOG, BIRCH_LOG, SPRUCE_LOG, PLANKS, LEAVES, BIRCH_LEAVES, SPRUCE_LEAVES, GLASS,
-    WOOL_WHITE, WOOL_RED, WOOL_BLUE, WOOL_GREEN, WOOL_YELLOW, WOOL_BLACK,
-    IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, COAL_BLOCK, BOOKSHELF, LAMP, PUMPKIN, CACTUS,
-    WATER, LAVA, TORCH,
-    // Bauteile
-    STAIRS_BASE, STAIRS_BASE + 4, STAIRS_BASE + 8, STAIRS_BASE + 12, STAIRS_BASE + 16,
-    SLAB_BASE, SLAB_BASE + 2, SLAB_BASE + 4, SLAB_BASE + 6, SLAB_BASE + 8,
-    FENCE, WALL_COBBLE, WALL_BRICKS, GLASS_PANE, IRON_BARS, LANTERN, GATE_BASE, GATE_BASE + 4,
-    ITEM_DOOR_WOOD, ITEM_DOOR_IRON,
-    // Stationen
-    CRAFTING_TABLE, FURNACE, CHEST, BED, LADDER_BASE,
+// Reihenfolge der Reiter: Gelaende, Baumaterial, Dekoration, Pflanzen, Stationen, Werkzeuge, Rohstoffe, Essen
+static const std::vector<ItemId> TAB_ITEMS[CREATIVE_TAB_COUNT] = {
+    // Gelaende
+    {GRASS, DIRT, FARMLAND, STONE, COBBLE, SAND, GRAVEL, CLAY, SNOW, SANDSTONE, OBSIDIAN, BEDROCK,
+     COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, LOG, BIRCH_LOG, SPRUCE_LOG, LEAVES, BIRCH_LEAVES, SPRUCE_LEAVES, WATER, LAVA},
+    // Baumaterial
+    {PLANKS, BRICKS, STONE_BRICKS, GLASS, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, COAL_BLOCK,
+     STAIRS_BASE, STAIRS_BASE + 4, STAIRS_BASE + 8, STAIRS_BASE + 12, STAIRS_BASE + 16,
+     SLAB_BASE, SLAB_BASE + 2, SLAB_BASE + 4, SLAB_BASE + 6, SLAB_BASE + 8,
+     FENCE, WALL_COBBLE, WALL_BRICKS, GATE_BASE, GATE_BASE + 4, ITEM_DOOR_WOOD, ITEM_DOOR_IRON},
+    // Dekoration
+    {WOOL_WHITE, WOOL_RED, WOOL_BLUE, WOOL_GREEN, WOOL_YELLOW, WOOL_BLACK, GLASS_PANE, IRON_BARS, LANTERN, TORCH, LAMP,
+     BOOKSHELF, LADDER_BASE, PUMPKIN},
     // Pflanzen
-    TALL_GRASS, FERN, FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE, MUSHROOM_RED, MUSHROOM_BROWN, DEAD_BUSH,
-    SUGAR_CANE, BERRY_BUSH,
-    // Erze
-    COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
-    // Werkzeuge
-    ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD,
-    ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD,
-    ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD,
-    ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD,
-    ITEM_GOLD_PICKAXE, ITEM_GOLD_AXE, ITEM_GOLD_SHOVEL, ITEM_GOLD_SWORD,
-    ITEM_HOE_WOOD, ITEM_HOE_STONE, ITEM_HOE_IRON, ITEM_HOE_GOLD, ITEM_HOE_DIAMOND,
-    // Material und Essen
-    ITEM_STICK, ITEM_COAL, ITEM_IRON_INGOT, ITEM_GOLD_INGOT, ITEM_DIAMOND, ITEM_CLAY_BALL, ITEM_BRICK, ITEM_PAPER, ITEM_BOOK,
-    ITEM_DYE_RED, ITEM_DYE_YELLOW, ITEM_DYE_BLUE, ITEM_DYE_GREEN, ITEM_DYE_BLACK,
-    ITEM_SEEDS, ITEM_WHEAT, ITEM_BREAD, ITEM_CARROT, ITEM_LEATHER,
-    ITEM_ARMOR_BASE, ITEM_ARMOR_BASE + 1, ITEM_ARMOR_BASE + 2, ITEM_ARMOR_BASE + 3, ITEM_ARMOR_BASE + 4, ITEM_ARMOR_BASE + 5, ITEM_ARMOR_BASE + 6,
-    ITEM_ARMOR_BASE + 7, ITEM_ARMOR_BASE + 8, ITEM_ARMOR_BASE + 9, ITEM_ARMOR_BASE + 10, ITEM_ARMOR_BASE + 11, ITEM_ARMOR_BASE + 12,
-    ITEM_ARMOR_BASE + 13, ITEM_ARMOR_BASE + 14, ITEM_ARMOR_BASE + 15,
-    ITEM_MEAT, ITEM_COOKED_MEAT, ITEM_BERRIES};
+    {TALL_GRASS, FERN, FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE, MUSHROOM_RED, MUSHROOM_BROWN, DEAD_BUSH,
+     SUGAR_CANE, BERRY_BUSH, CACTUS, ITEM_SEEDS},
+    // Stationen
+    {CRAFTING_TABLE, FURNACE, CHEST, BED},
+    // Werkzeuge und Ruestung
+    {ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD, ITEM_HOE_WOOD,
+     ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD, ITEM_HOE_STONE,
+     ITEM_IRON_PICKAXE, ITEM_IRON_AXE, ITEM_IRON_SHOVEL, ITEM_IRON_SWORD, ITEM_HOE_IRON,
+     ITEM_GOLD_PICKAXE, ITEM_GOLD_AXE, ITEM_GOLD_SHOVEL, ITEM_GOLD_SWORD, ITEM_HOE_GOLD,
+     ITEM_DIAMOND_PICKAXE, ITEM_DIAMOND_AXE, ITEM_DIAMOND_SHOVEL, ITEM_DIAMOND_SWORD, ITEM_HOE_DIAMOND,
+     ITEM_ARMOR_BASE, ITEM_ARMOR_BASE + 1, ITEM_ARMOR_BASE + 2, ITEM_ARMOR_BASE + 3,
+     ITEM_ARMOR_BASE + 4, ITEM_ARMOR_BASE + 5, ITEM_ARMOR_BASE + 6, ITEM_ARMOR_BASE + 7,
+     ITEM_ARMOR_BASE + 8, ITEM_ARMOR_BASE + 9, ITEM_ARMOR_BASE + 10, ITEM_ARMOR_BASE + 11,
+     ITEM_ARMOR_BASE + 12, ITEM_ARMOR_BASE + 13, ITEM_ARMOR_BASE + 14, ITEM_ARMOR_BASE + 15},
+    // Rohstoffe
+    {ITEM_STICK, ITEM_COAL, ITEM_IRON_INGOT, ITEM_GOLD_INGOT, ITEM_DIAMOND, ITEM_CLAY_BALL, ITEM_BRICK, ITEM_PAPER, ITEM_BOOK,
+     ITEM_DYE_RED, ITEM_DYE_YELLOW, ITEM_DYE_BLUE, ITEM_DYE_GREEN, ITEM_DYE_BLACK, ITEM_LEATHER},
+    // Essen
+    {ITEM_WHEAT, ITEM_BREAD, ITEM_CARROT, ITEM_MEAT, ITEM_COOKED_MEAT, ITEM_BERRIES},
+};
+
+static const std::vector<ItemId>& creativeFlat() {
+    static const std::vector<ItemId> flat = [] {
+        std::vector<ItemId> v;
+        for (const auto& t : TAB_ITEMS) v.insert(v.end(), t.begin(), t.end());
+        return v;
+    }();
+    return flat;
+}
 
 bool itemValid(ItemId id) {
     if (id == ITEM_MEAT || (id >= ITEM_STICK && id <= ITEM_LAST)) return true;
@@ -161,7 +172,37 @@ float miningSeconds(BlockId b, const ItemStack& held) {
 
 int attackDamage(const ItemStack& held) { return held.empty() ? 2 : itemInfo(held.id).attack; }
 
-int creativeItemCount() { return static_cast<int>(sizeof(CREATIVE_LIST) / sizeof(CREATIVE_LIST[0])); }
-ItemId creativeItem(int index) { return CREATIVE_LIST[index]; }
+int creativeItemCount() { return static_cast<int>(creativeFlat().size()); }
+ItemId creativeItem(int index) { return creativeFlat()[static_cast<size_t>(index)]; }
+
+const char* creativeTabName(int tab) {
+    static const char* NAMES[CREATIVE_TAB_COUNT + 1] = {"Gelaende", "Baumaterial", "Dekoration", "Pflanzen", "Stationen",
+                                                         "Werkzeuge", "Rohstoffe", "Essen", "Suche"};
+    return tab >= 0 && tab <= CREATIVE_TAB_COUNT ? NAMES[tab] : "";
+}
+
+ItemId creativeTabIcon(int tab) {
+    static const ItemId ICONS[CREATIVE_TAB_COUNT] = {GRASS, BRICKS, LANTERN, FLOWER_RED, CRAFTING_TABLE, ITEM_IRON_PICKAXE, ITEM_IRON_INGOT, ITEM_BREAD};
+    return tab >= 0 && tab < CREATIVE_TAB_COUNT ? ICONS[tab] : ITEM_NONE;
+}
+
+const std::vector<ItemId>& creativeTabItems(int tab) {
+    static const std::vector<ItemId> none;
+    return tab >= 0 && tab < CREATIVE_TAB_COUNT ? TAB_ITEMS[tab] : none;
+}
+
+static std::string searchNormalize(const std::string& in) {
+    std::string out;
+    for (char c : in) out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return out;
+}
+
+std::vector<ItemId> creativeSearch(const std::string& query) {
+    const std::string q = searchNormalize(query);
+    std::vector<ItemId> out;
+    for (ItemId id : creativeFlat())
+        if (q.empty() || searchNormalize(itemInfo(id).name).find(q) != std::string::npos) out.push_back(id);
+    return out;
+}
 
 }  // namespace oc

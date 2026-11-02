@@ -114,6 +114,10 @@ private:
     void applySave(const SaveFile& sf);
     void createWorld();
     void selectWorld(int index);
+    const std::vector<ItemId>& paletteItems() const;  // Eintraege des gewaehlten Reiters (oder die Suchtreffer)
+    void setCreativeTab(int tab);
+    void scrollPalette(int rows);
+    void updateSearch();
     bool menuAtStart() const;
     // Ruestungsteil anlegen (tauscht mit dem getragenen Teil); true, wenn es eine Ruestung war
     bool equipArmor(ItemStack& from);
@@ -176,6 +180,10 @@ private:
     ItemStack craft_[9];
     int craftSize_ = 0;          // 0, 2 (Inventar) oder 3 (Werkbank)
     bool paletteWindow_ = false;  // Kreativ-Auswahl im Inventarfenster
+    int creativeTab_ = 0;         // gewaehlter Reiter (CREATIVE_SEARCH_TAB: Suche)
+    int creativeScroll_ = 0;      // erste sichtbare Reihe des Auswahlfelds
+    std::string creativeQuery_;   // Suchtext
+    std::vector<ItemId> searchResults_;
     bool furnaceWindow_ = false;  // Ofenfenster (craftSize_ == 3 belegt den Platz)
     glm::ivec3 furnacePos_{0};
     bool chestWindow_ = false;    // Truhenfenster

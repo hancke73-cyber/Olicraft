@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+#include <vector>
 #include <cstdint>
 
 #include "Block.h"
@@ -113,5 +115,14 @@ ItemId blockDropItem(BlockId b);
 // Auswahlliste fuer das Kreativ-Inventar
 int creativeItemCount();
 ItemId creativeItem(int index);
+
+// Kreativ-Inventar mit Reitern nach Themen. Reiter 0..CREATIVE_TAB_COUNT-1 sind Themen, CREATIVE_SEARCH_TAB ist die Suche.
+constexpr int CREATIVE_TAB_COUNT = 8;
+constexpr int CREATIVE_SEARCH_TAB = CREATIVE_TAB_COUNT;
+const char* creativeTabName(int tab);                    // Gelaende, Baumaterial, Dekoration, Pflanzen, Stationen, Werkzeuge, Rohstoffe, Essen, Suche
+ItemId creativeTabIcon(int tab);                         // Symbol des Reiters (ITEM_NONE bei der Suche)
+const std::vector<ItemId>& creativeTabItems(int tab);    // jeder Gegenstand steht in genau einem Themenreiter
+// Alle Gegenstaende, deren Name den Suchtext enthaelt (ohne Gross/Klein, Umlaute als ae, oe, ue); leerer Text: alle
+std::vector<ItemId> creativeSearch(const std::string& query);
 
 }  // namespace oc

@@ -18,6 +18,7 @@ struct Settings {
     bool particles = true;
     int texFilter = 0;          // 0 Pixel (scharf), 1 Weich (linear)
     int anisotropy = 8;         // 1, 2, 4, 8, 16
+    int guiSize = 0;            // Oberflaeche: 0 automatisch, 1 bis 4 feste Stufe
 
     static constexpr int MIN_DISTANCE = 4, MAX_DISTANCE = 24;
     static constexpr float MIN_SENS = 0.02f, MAX_SENS = 0.25f, DEFAULT_SENS = 0.09f;

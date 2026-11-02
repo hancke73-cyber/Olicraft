@@ -42,7 +42,12 @@ public:
     void itemIcon(ItemId id, float cx, float cy, float size);
 };
 
+// Oberflaechengroesse: 0 automatisch (Fensterhoehe / 360), 1 bis 4 feste Stufe (nie groesser, als das Fenster hergibt)
+void setGuiSize(int size);
+int guiSizeSetting();
 float guiScale(int windowHeight);
+// Groesste ganze Stufe bis zur gewuenschten, bei der Inhalt der Hoehe 'units' (in Einheiten bei Stufe 1) noch ins Fenster passt
+float guiScaleFit(int windowHeight, float units, float wanted);
 
 // Anordnung des Inventar-Fensters (Survival: Rucksack, Kreativ: zusaetzlich Auswahl aller Bloecke)
 struct InvLayout {
@@ -62,13 +67,22 @@ struct InvLayout {
     glm::vec2 storageTop{0.0f};  // linke obere Ecke der Rucksack-Reihen
     glm::vec2 hotbarTop{0.0f};   // linke obere Ecke der Hotbar im Fenster
     static constexpr int PALETTE_COLS = 9;
+    static constexpr int PALETTE_ROWS = 5;  // sichtbare Reihen; mehr Eintraege werden gescrollt
+    static constexpr int PALETTE_PAGE = PALETTE_COLS * PALETTE_ROWS;
+    glm::vec2 tabsTop{0.0f};   // linke obere Ecke der Reiterleiste (Kreativ)
+    glm::vec2 titlePos{0.0f};  // Titel bzw. Suchzeile
 
     static InvLayout make(int w, int h, bool creative, int craftSize = 0, bool furnace = false, bool chest = false, int tradeRows = 0);
     float pitch() const { return 18.0f * s; }
     glm::vec2 slotPos(int index) const;     // Inventar-Slot 0..35
-    glm::vec2 palettePos(int index) const;  // Auswahlfeld (Kreativ)
+    glm::vec2 palettePos(int index) const;  // sichtbares Feld 0..PALETTE_PAGE-1 des Auswahlfelds (Kreativ)
+    glm::vec2 tabPos(int tab) const;        // Reiter 0..CREATIVE_TAB_COUNT (letzter: Suche)
+    int hitTab(glm::vec2 m) const;          // -1: kein Reiter
+    bool hitScrollbar(glm::vec2 m) const;   // Bildlaufleiste rechts vom Auswahlfeld
+    float scrollbarTop() const { return paletteTop.y; }
+    float scrollbarHeight() const { return PALETTE_ROWS * pitch(); }
     int hitSlot(glm::vec2 m) const;         // -1: kein Slot
-    int hitPalette(glm::vec2 m) const;      // -1: kein Eintrag
+    int hitPalette(glm::vec2 m) const;      // sichtbares Feld oder -1
     int hitCraft(glm::vec2 m) const;        // Feld im Handwerksraster, -1: keins
     bool hitResult(glm::vec2 m) const;      // Ergebnisfeld
     glm::vec2 furnaceSlotPos(int which) const;  // 0 Eingabe, 1 Brennstoff, 2 Ausgabe
@@ -124,6 +138,10 @@ struct HudState {
     int selectedSlot = 0;
     bool inventoryOpen = false;
     bool paletteOpen = false;      // Kreativ-Auswahl statt Handwerk
+    int creativeTab = 0;           // gewaehlter Reiter (CREATIVE_SEARCH_TAB: Suche)
+    int creativeScroll = 0;        // erste sichtbare Reihe
+    std::string creativeQuery;     // Suchtext
+    const std::vector<ItemId>* paletteItems = nullptr;  // Eintraege des gewaehlten Reiters
     bool furnaceOpen = false;
     bool chestOpen = false;
     const Chest* chest = nullptr;

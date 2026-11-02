@@ -74,53 +74,82 @@ void HudBatch::itemIcon(ItemId id, float cx, float cy, float s) {
     }
 }
 
-float guiScale(int windowHeight) { return std::max(1.0f, std::floor(static_cast<float>(windowHeight) / 360.0f)); }
+static int g_guiSize = 0;
+void setGuiSize(int size) { g_guiSize = std::max(0, std::min(4, size)); }
+int guiSizeSetting() { return g_guiSize; }
+
+float guiScale(int windowHeight) {
+    const float autoScale = std::max(1.0f, std::floor(static_cast<float>(windowHeight) / 360.0f));
+    if (g_guiSize == 0) return autoScale;
+    // feste Stufe, aber nie so gross, dass ein kleines Fenster nur noch Oberflaeche zeigt
+    return std::max(1.0f, std::min(static_cast<float>(g_guiSize), std::floor(static_cast<float>(windowHeight) / 180.0f)));
+}
+
+float guiScaleFit(int windowHeight, float units, float wanted) {
+    const float fit = std::floor((static_cast<float>(windowHeight) - 8.0f) / std::max(1.0f, units));
+    return std::max(1.0f, std::min(wanted, fit));
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Layout des Inventarfensters
 // ---------------------------------------------------------------------------------------------------------------
 
-InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furnace, bool chest, int tradeRows) {
+// Layout bei der Stufe s (s = 1 liefert die Masse in Einheiten)
+static InvLayout layoutAt(float s, int w, int h, bool creative, int craftSize, bool furnace, bool chest, int tradeRows) {
     InvLayout l;
     l.furnace = furnace;
     l.chest = chest;
     l.tradeRows = tradeRows;
     if (chest || tradeRows > 0) craftSize = 0;
-    l.s = guiScale(h);
+    l.s = s;
     l.creative = creative;
     l.craftSize = craftSize;
-    const float s = l.s, pad = 7.0f * s, title = 12.0f * s;
-    const float width = 9.0f * 18.0f * s + 2.0f * pad;
-    const int paletteRows = (creativeItemCount() + PALETTE_COLS - 1) / PALETTE_COLS;
-    float height = pad + title;
+    const float pad = 7.0f * s, title = 12.0f * s, pt = 18.0f * s;
+    const float width = 9.0f * pt + 2.0f * pad;
+    float height = pad;
+    if (creative) height += pt + 2.0f * s;  // Reiterleiste
+    height += title;
     float craftOffset = 0.0f;
-    if (creative) height += paletteRows * 18.0f * s + 8.0f * s;
+    if (creative) height += InvLayout::PALETTE_ROWS * pt + 8.0f * s;
     l.armor = craftSize > 0 && !furnace && !chest && tradeRows == 0 && !creative;
     if (craftSize > 0) {
         craftOffset = height;
-        height += std::max(craftSize, l.armor ? 4 : 0) * 18.0f * s + 8.0f * s;
+        height += std::max(craftSize, l.armor ? 4 : 0) * pt + 8.0f * s;
     }
     float chestOffset = 0.0f;
     if (chest) {
         chestOffset = height;
-        height += 3.0f * 18.0f * s + 8.0f * s;
+        height += 3.0f * pt + 8.0f * s;
     } else if (tradeRows > 0) {
         chestOffset = height;
-        height += static_cast<float>(tradeRows) * 18.0f * s + 8.0f * s;
+        height += static_cast<float>(tradeRows) * pt + 8.0f * s;
     }
     const float storageOffset = height;
-    height += 3.0f * 18.0f * s + 4.0f * s + 18.0f * s + pad;
+    height += 3.0f * pt + 4.0f * s + pt + pad;
 
     l.panelSize = glm::vec2(width, height);
     l.panelPos = glm::vec2(std::floor((w - width) * 0.5f), std::floor((h - height) * 0.5f));
-    l.paletteTop = l.panelPos + glm::vec2(pad, pad + title);
-    l.craftTop = l.panelPos + glm::vec2(pad + 18.0f * s, craftOffset);
-    l.resultPos = l.panelPos + glm::vec2(pad + 6.0f * 18.0f * s, craftOffset + (craftSize - 1) * 9.0f * s);
+    l.tabsTop = l.panelPos + glm::vec2(pad, pad);
+    l.titlePos = l.panelPos + glm::vec2(pad, creative ? pad + pt + 2.0f * s + 2.0f * s : 6.0f * s);
+    l.paletteTop = l.panelPos + glm::vec2(pad, pad + title + (creative ? pt + 2.0f * s : 0.0f));
+    l.craftTop = l.panelPos + glm::vec2(pad + pt, craftOffset);
+    l.resultPos = l.panelPos + glm::vec2(pad + 6.0f * pt, craftOffset + (craftSize - 1) * 9.0f * s);
     l.chestTop = l.panelPos + glm::vec2(pad, chestOffset);
     l.storageTop = l.panelPos + glm::vec2(pad, storageOffset);
-    if (l.armor && craftSize == 2) l.figure = glm::vec4(l.craftTop.x, l.craftTop.y + 2.0f * 18.0f * s, 2.0f * 18.0f * s, 2.0f * 18.0f * s);
-    l.hotbarTop = l.storageTop + glm::vec2(0.0f, 3.0f * 18.0f * s + 4.0f * s);
+    if (l.armor && craftSize == 2) l.figure = glm::vec4(l.craftTop.x, l.craftTop.y + 2.0f * pt, 2.0f * pt, 2.0f * pt);
+    l.hotbarTop = l.storageTop + glm::vec2(0.0f, 3.0f * pt + 4.0f * s);
     return l;
+}
+
+// Eigener Skalierungsfaktor fuer die Inventarfenster: groesser als die uebrige Oberflaeche (1,5-fach), soweit es ins Fenster passt
+InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furnace, bool chest, int tradeRows) {
+    const InvLayout unit = layoutAt(1.0f, w, h, creative, craftSize, furnace, chest, tradeRows);
+    const float hud = guiScale(h);
+    const float wanted = std::max(hud, std::floor(hud * 1.5f + 0.5f));
+    float s = guiScaleFit(h, unit.panelSize.y, wanted);
+    const float fitW = std::floor((static_cast<float>(w) - 8.0f) / unit.panelSize.x);
+    s = std::max(1.0f, std::min(s, fitW));
+    return layoutAt(s, w, h, creative, craftSize, furnace, chest, tradeRows);
 }
 
 glm::vec2 InvLayout::slotPos(int index) const {
@@ -132,6 +161,8 @@ glm::vec2 InvLayout::slotPos(int index) const {
 glm::vec2 InvLayout::palettePos(int index) const {
     return paletteTop + glm::vec2((index % PALETTE_COLS) * pitch(), (index / PALETTE_COLS) * pitch());
 }
+
+glm::vec2 InvLayout::tabPos(int tab) const { return tabsTop + glm::vec2(tab * pitch(), 0.0f); }
 
 static bool inRect(glm::vec2 m, glm::vec2 p, float w, float h) {
     return m.x >= p.x && m.x < p.x + w && m.y >= p.y && m.y < p.y + h;
@@ -145,9 +176,21 @@ int InvLayout::hitSlot(glm::vec2 m) const {
 
 int InvLayout::hitPalette(glm::vec2 m) const {
     if (!creative) return -1;
-    for (int i = 0; i < creativeItemCount(); ++i)
+    for (int i = 0; i < PALETTE_PAGE; ++i)
         if (inRect(m, palettePos(i), pitch(), pitch())) return i;
     return -1;
+}
+
+int InvLayout::hitTab(glm::vec2 m) const {
+    if (!creative) return -1;
+    for (int t = 0; t <= CREATIVE_TAB_COUNT; ++t)
+        if (inRect(m, tabPos(t), pitch(), pitch())) return t;
+    return -1;
+}
+
+bool InvLayout::hitScrollbar(glm::vec2 m) const {
+    if (!creative) return false;
+    return inRect(m, paletteTop + glm::vec2(PALETTE_COLS * pitch(), 0.0f), 7.0f * s, scrollbarHeight());
 }
 
 glm::vec2 InvLayout::craftPos(int index) const {
@@ -274,7 +317,10 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     std::string title = st.windowTitle;
     if (title.empty())
         title = st.paletteOpen ? "Kreativ-Inventar" : (st.chestOpen ? "Truhe" : (st.furnaceOpen ? "Ofen" : (st.craftSize == 3 ? "Werkbank" : "Inventar")));
-    b.text(L.panelPos.x + 7 * s, L.panelPos.y + 6 * s, s, title, glm::vec4(1.0f));
+    if (st.paletteOpen) {
+        title = st.creativeTab == CREATIVE_SEARCH_TAB ? "Suche: " + st.creativeQuery + "_" : creativeTabName(st.creativeTab);
+    }
+    b.text(L.titlePos.x, L.titlePos.y, s, title, glm::vec4(1.0f));
 
     const glm::vec4 slotBg(0.12f, 0.12f, 0.15f, 1.0f);
     const glm::vec4 hoverFx(1, 1, 1, 0.3f);
@@ -286,12 +332,49 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
         if (hover) b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, hoverFx);
     };
 
-    // Auswahlfeld (Kreativ)
+    // Auswahlfeld (Kreativ): Reiterleiste, 9 x 5 Felder mit Bildlauf
+    const int hoverTab = L.hitTab(st.mouse);
+    const std::vector<ItemId> noItems;
+    const std::vector<ItemId>& palItems = st.paletteItems ? *st.paletteItems : noItems;
     if (st.paletteOpen) {
-        for (int i = 0; i < creativeItemCount(); ++i) {
-            glm::vec2 p = L.palettePos(i);
-            slotRect(p, i == hoverPal);
-            b.itemIcon(creativeItem(i), p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+        for (int t = 0; t <= CREATIVE_TAB_COUNT; ++t) {
+            const glm::vec2 p = L.tabPos(t);
+            const bool sel = t == st.creativeTab;
+            b.rect(p.x, p.y, p.x + pt, p.y + pt, glm::vec4(0.05f, 0.05f, 0.07f, 1.0f));
+            glm::vec4 fill = sel ? glm::vec4(0.38f, 0.41f, 0.50f, 1.0f) : glm::vec4(0.18f, 0.19f, 0.23f, 1.0f);
+            if (t == hoverTab && !sel) fill += glm::vec4(0.10f, 0.10f, 0.12f, 0.0f);
+            b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - (sel ? 0.0f : s), fill);
+            if (t == CREATIVE_SEARCH_TAB) {
+                // Lupe aus Rechtecken
+                const float cx = p.x + pt * 0.5f, cy = p.y + pt * 0.5f;
+                const glm::vec4 lc(0.92f, 0.94f, 1.0f, 1.0f);
+                b.rect(cx - 4 * s, cy - 4.5f * s, cx + 2 * s, cy - 3.5f * s, lc);
+                b.rect(cx - 4 * s, cy + 0.5f * s, cx + 2 * s, cy + 1.5f * s, lc);
+                b.rect(cx - 4 * s, cy - 4.5f * s, cx - 3 * s, cy + 1.5f * s, lc);
+                b.rect(cx + 1 * s, cy - 4.5f * s, cx + 2 * s, cy + 1.5f * s, lc);
+                b.rect(cx + 2 * s, cy + 1.5f * s, cx + 3 * s, cy + 2.5f * s, lc);
+                b.rect(cx + 3 * s, cy + 2.5f * s, cx + 4.5f * s, cy + 4 * s, lc);
+            } else {
+                b.itemIcon(creativeTabIcon(t), p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+            }
+        }
+        for (int vi = 0; vi < InvLayout::PALETTE_PAGE; ++vi) {
+            const glm::vec2 p = L.palettePos(vi);
+            const size_t idx = static_cast<size_t>(st.creativeScroll * InvLayout::PALETTE_COLS + vi);
+            const bool has = idx < palItems.size();
+            slotRect(p, has && vi == hoverPal);
+            if (has) b.itemIcon(palItems[idx], p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+        }
+        // Bildlaufleiste
+        {
+            const int totalRows = static_cast<int>((palItems.size() + InvLayout::PALETTE_COLS - 1) / InvLayout::PALETTE_COLS);
+            const int maxScroll = std::max(0, totalRows - InvLayout::PALETTE_ROWS);
+            const float bx = L.paletteTop.x + InvLayout::PALETTE_COLS * pt + 2.0f * s, bw = 4.0f * s;
+            const float top = L.scrollbarTop(), hh = L.scrollbarHeight();
+            b.rect(bx, top, bx + bw, top + hh, glm::vec4(0.12f, 0.12f, 0.15f, 1.0f));
+            const float handle = maxScroll > 0 ? std::max(6.0f * s, hh * InvLayout::PALETTE_ROWS / static_cast<float>(totalRows)) : hh;
+            const float hy = maxScroll > 0 ? top + (hh - handle) * static_cast<float>(st.creativeScroll) / static_cast<float>(maxScroll) : top;
+            b.rect(bx, hy, bx + bw, hy + handle, maxScroll > 0 ? glm::vec4(0.75f, 0.78f, 0.88f, 1.0f) : glm::vec4(0.28f, 0.29f, 0.34f, 1.0f));
         }
         float sepY = L.storageTop.y - 5.0f * s;
         b.rect(L.panelPos.x + 7 * s, sepY, L.panelPos.x + L.panelSize.x - 7 * s, sepY + s, glm::vec4(0, 0, 0, 0.5f));
@@ -445,8 +528,12 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
 
     // Tooltip
     ItemId hoverItem = ITEM_NONE;
-    if (hoverPal >= 0) hoverItem = creativeItem(hoverPal);
-    else if (hoverSlot >= 0 && inv && !inv->slots[hoverSlot].empty()) hoverItem = inv->slots[hoverSlot].id;
+    std::string hoverName;
+    if (hoverTab >= 0) hoverName = creativeTabName(hoverTab);
+    else if (hoverPal >= 0) {
+        const size_t idx = static_cast<size_t>(st.creativeScroll * InvLayout::PALETTE_COLS + hoverPal);
+        if (idx < palItems.size()) hoverItem = palItems[idx];
+    } else if (hoverSlot >= 0 && inv && !inv->slots[hoverSlot].empty()) hoverItem = inv->slots[hoverSlot].id;
     else if (hoverCraft >= 0 && !st.craftCells[hoverCraft].empty()) hoverItem = st.craftCells[hoverCraft].id;
     else if (hoverArmor >= 0 && !st.armorSlots[static_cast<size_t>(hoverArmor)].empty()) hoverItem = st.armorSlots[static_cast<size_t>(hoverArmor)].id;
     else if (hoverChest >= 0 && st.chest && !st.chest->slots[static_cast<size_t>(hoverChest)].empty())
@@ -455,8 +542,8 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     else if (hoverFurnace == 1 && !st.furnaceFuel.empty()) hoverItem = st.furnaceFuel.id;
     else if (hoverFurnace == 2 && !st.furnaceOut.empty()) hoverItem = st.furnaceOut.id;
     else if (hoverResult && !st.craftResult.empty()) hoverItem = st.craftResult.id;
-    if (hoverItem != ITEM_NONE && st.cursor.empty()) {
-        std::string name = itemInfo(hoverItem).name;
+    if ((hoverItem != ITEM_NONE || !hoverName.empty()) && st.cursor.empty()) {
+        std::string name = hoverItem != ITEM_NONE ? std::string(itemInfo(hoverItem).name) : hoverName;
         float tw = textWidthPx(name) * s;
         float tx = st.mouse.x + 10 * s, ty = st.mouse.y - 12 * s;
         b.rect(tx - 3 * s, ty - 3 * s, tx + tw + 3 * s, ty + 8 * s + 3 * s, glm::vec4(0.08f, 0.0f, 0.12f, 0.92f));
@@ -704,15 +791,16 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
     if (st.inventory && !st.dead) {
         const float slot = 20.0f * s, total = slot * Inventory::HOTBAR;
         const float x0 = std::floor((W - total) * 0.5f), y0 = H - slot - 4.0f * s;
-        b.rect(x0 - 2 * s, y0 - 2 * s, x0 + total + 2 * s, y0 + slot + 2 * s, glm::vec4(0, 0, 0, 0.55f));
-        for (int i = 0; i < Inventory::HOTBAR; ++i) {
+        // Im Inventarfenster steht die Hotbar schon im Fenster selbst
+        if (!st.inventoryOpen) b.rect(x0 - 2 * s, y0 - 2 * s, x0 + total + 2 * s, y0 + slot + 2 * s, glm::vec4(0, 0, 0, 0.55f));
+        for (int i = 0; i < Inventory::HOTBAR && !st.inventoryOpen; ++i) {
             const float sx = x0 + i * slot;
             const bool sel = i == st.selectedSlot;
             if (sel) b.rect(sx - 2 * s, y0 - 2 * s, sx + slot + 2 * s, y0 + slot + 2 * s, glm::vec4(1, 1, 1, 0.95f));
             b.rect(sx + s, y0 + s, sx + slot - s, y0 + slot - s,
                    sel ? glm::vec4(0.25f, 0.25f, 0.25f, 0.9f) : glm::vec4(0.12f, 0.12f, 0.12f, 0.75f));
         }
-        for (int i = 0; i < Inventory::HOTBAR; ++i) {
+        for (int i = 0; i < Inventory::HOTBAR && !st.inventoryOpen; ++i) {
             const ItemStack& stack = st.inventory->slots[i];
             if (stack.empty()) continue;
             b.itemIcon(stack.id, x0 + i * slot + slot * 0.5f, y0 + slot * 0.5f, 7.0f * s);

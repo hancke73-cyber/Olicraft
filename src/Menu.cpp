@@ -31,7 +31,18 @@ Widget slider(int id, const std::string& text, float fraction, float x, float y,
 MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     MenuLayout m;
     if (screen == MenuScreen::None) return m;
-    const float s = guiScale(h);
+    // Stufe der Oberflaeche, aber so, dass der Inhalt des Bildschirms ins Fenster passt (Einheiten bei Stufe 1)
+    const float wantedS = guiScale(h);
+    float s = wantedS;
+    const float H = static_cast<float>(h);
+    switch (screen) {
+        // Weltliste beginnt bei 36 % der Hoehe und braucht darunter 165 Einheiten, "Neue Welt" beginnt bei 30 % und braucht 128
+        case MenuScreen::Main: s = std::max(1.0f, std::min(wantedS, std::floor((0.64f * H - 8.0f) / 165.0f))); break;
+        case MenuScreen::NewWorld: s = std::max(1.0f, std::min(wantedS, std::floor((0.70f * H - 8.0f) / 128.0f))); break;
+        case MenuScreen::Pause: s = guiScaleFit(h, 150.0f, wantedS); break;
+        case MenuScreen::Graphics: s = guiScaleFit(h, 170.0f, wantedS); break;
+        default: s = guiScaleFit(h, 14 * 24.0f + 20.0f, wantedS); break;  // Einstellungen: 14 Zeilen
+    }
     m.scale = s;
     const float bw = 200.0f * s, bh = 20.0f * s, gap = 4.0f * s;
     const float x = std::floor((w - bw) * 0.5f);
@@ -144,7 +155,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     }
 
     m.title = "Einstellungen";
-    const int rows = 13;
+    const int rows = 14;
     const float total = rows * bh + (rows - 1) * gap + 24.0f * s;
     float y = std::floor((h - total) * 0.5f) + 24.0f * s;
     m.titlePos = {0.0f, y - 22.0f * s};
@@ -173,6 +184,11 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
             m.widgets.push_back(slider(v.id, buf, v.v, x, y, bw, bh));
             y += bh + gap;
         }
+    }
+    {
+        static const char* GS[5] = {"Auto", "1x", "2x", "3x", "4x"};
+        m.widgets.push_back(button(W_GUI_SIZE, std::string("GUI-Groesse: ") + GS[st.guiSize < 0 || st.guiSize > 4 ? 0 : st.guiSize], x, y, bw, bh));
+        y += bh + gap;
     }
     std::snprintf(buf, sizeof(buf), "Spieler-Skin: %s (%d/%d)", playerSkinName(st.skinSlot), st.skinSlot + 1, PLAYER_SKIN_SLOTS);
     m.widgets.push_back(button(W_SKIN, buf, x, y, bw, bh));
