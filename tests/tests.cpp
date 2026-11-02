@@ -2545,7 +2545,7 @@ static void testVillages() {
     const Village* v2 = tg2.villages().nearest(0, 0, 4);
     CHECK(v2 && v2->center == v->center && v2->buildings.size() == v->buildings.size() && v2->pathCells.size() == v->pathCells.size());
     CHECK(v->buildings.size() >= 4 && v->buildings[0].kind == VillageBuilding::Well && v->houseCount() >= 3);
-    CHECK(!v->chests.empty() && !v->villagerSpawns.empty() && v->villagerSpawns.size() <= 6);
+    CHECK(!v->chests.empty() && !v->villagerSpawns.empty() && v->villagerSpawns.size() <= 8);
     // Gebaeude ueberlappen nicht und liegen im Umkreis
     for (size_t i = 0; i < v->buildings.size(); ++i) {
         const VillageBuilding& a = v->buildings[i];
@@ -2569,11 +2569,12 @@ static void testVillages() {
         return it->second->get(x & 15, y, z & 15);
     };
     CHECK(at(v->center.x, v->groundY, v->center.y) == WATER);                              // Brunnen
-    CHECK(at(v->center.x + 2, v->groundY + 2, v->center.y + 2) == LOG && at(v->center.x, v->groundY + 4, v->center.y) == PLANKS);
+    CHECK(at(v->center.x + 2, v->groundY + 2, v->center.y + 2) == FENCE && at(v->center.x, v->groundY + 4, v->center.y) == PLANKS);
+    int kinds[9] = {};
     for (size_t i = 1; i < v->buildings.size(); ++i) {
         const VillageBuilding& b = v->buildings[i];
+        ++kinds[b.kind];
         const int g = b.groundY, xc = (b.x0 + b.x1) / 2, zc = (b.z0 + b.z1) / 2;
-        // Tuer frei, Wand daneben fest, Dach da, Boden fest
         int dx = 0, dz = 0;
         switch (b.facing) {
             case 0: dx = 1; break;
@@ -2582,9 +2583,60 @@ static void testVillages() {
             default: dz = -1; break;
         }
         const int doorX = dx > 0 ? b.x1 : (dx < 0 ? b.x0 : xc), doorZ = dz > 0 ? b.z1 : (dz < 0 ? b.z0 : zc);
-        CHECK(at(doorX, g + 1, doorZ) == AIR && at(doorX, g + 2, doorZ) == AIR);
-        CHECK(isSolid(at(xc, g, zc)) && isOpaque(at(xc, g + 4, zc)) && at(b.x0, g + 1, b.z0) != AIR);
+        switch (b.kind) {
+            case VillageBuilding::House:
+            case VillageBuilding::Library:
+            case VillageBuilding::Smithy:
+            case VillageBuilding::Tower: {
+                const BlockId lo = at(doorX, g + 1, doorZ), up = at(doorX, g + 2, doorZ);
+                CHECK(isDoor(lo) && isDoor(up) && !doorUpper(lo) && doorUpper(up) && doorFacing(lo) == b.facing && !doorOpen(lo));
+                CHECK(doorMaterial(lo) == (b.kind == VillageBuilding::Tower ? 1 : 0));
+                CHECK(isSolid(at(xc, g, zc)) && at(b.x0, g + 1, b.z0) != AIR);
+                const int roofY = b.kind == VillageBuilding::Tower ? g + 10 : g + 4;
+                CHECK(isSolid(at(xc, roofY, zc)));
+                bool hasPane = false;
+                for (int y = g + 1; y <= g + 9; ++y)
+                    for (int x = b.x0; x <= b.x1; ++x)
+                        for (int z = b.z0; z <= b.z1; ++z) hasPane = hasPane || isPane(at(x, y, z));
+                CHECK(hasPane);
+                CHECK(isStairs(at(b.x0 - 1, roofY, b.z0 - 1)) || isStairs(at(b.x0 - 1, roofY, zc)) || isStairs(at(xc, roofY, b.z0 - 1)));
+                break;
+            }
+            case VillageBuilding::Barn:
+                for (int o = -1; o <= 1; ++o)
+                    for (int y = 1; y <= 3; ++y) {
+                        const BlockId gt = at(dx != 0 ? doorX : doorX + o, g + y, dx != 0 ? doorZ + o : doorZ);
+                        CHECK(isGate(gt) && !gateOpen(gt));
+                    }
+                CHECK(isSolid(at(doorX, g + 4, doorZ)));
+                break;
+            case VillageBuilding::Farm: {
+                int crops = 0, farmland = 0, water = 0;
+                for (int x = b.x0 + 1; x < b.x1; ++x)
+                    for (int z = b.z0 + 1; z < b.z1; ++z) {
+                        crops += isCrop(at(x, g + 1, z));
+                        farmland += at(x, g, z) == FARMLAND;
+                        water += at(x, g, z) == WATER;
+                    }
+                CHECK(crops >= 35 && farmland >= 35 && water == 7);
+                CHECK(isGate(at(doorX, g + 1, doorZ)) && at(b.x0, g + 1, b.z0) == FENCE);
+                break;
+            }
+            case VillageBuilding::Market: {
+                bool wool = at(xc, g + 4, zc) == WOOL_RED || at(xc, g + 4, zc) == WOOL_WHITE;
+                CHECK(wool && at(b.x0, g + 2, b.z0) == FENCE);
+                break;
+            }
+            case VillageBuilding::GateHouse:
+                for (int o = -1; o <= 1; ++o)
+                    for (int y = 1; y <= 3; ++y) CHECK(isGate(at(dx != 0 ? b.x0 : xc + o, g + y, dx != 0 ? zc + o : b.z0)));
+                CHECK(at(dx != 0 ? b.x0 : xc + 2, g + 6, dx != 0 ? zc + 2 : b.z0) == LANTERN);
+                CHECK(isWall(at(dx != 0 ? b.x0 : xc + 3, g + 1, dx != 0 ? zc + 3 : b.z0)));
+                break;
+            default: break;
+        }
     }
+    CHECK(kinds[VillageBuilding::House] >= 1);
     for (const glm::ivec3& c : v->chests) CHECK(at(c.x, c.y, c.z) == CHEST);
     int gravel = 0;
     for (const glm::ivec3& p : v->pathCells) gravel += at(p.x, p.y, p.z) == GRAVEL;
@@ -2637,6 +2689,11 @@ static void testVillages() {
             profs = profs && m.profession >= 0 && m.profession < PROF_COUNT;
         }
     CHECK(villagers == static_cast<int>(v->villagerSpawns.size()) && homes && profs);
+    {   // Tiere im Stall
+        int animals = 0;
+        for (const Mob& m : em.mobs()) animals += m.type == MobType::Pig || m.type == MobType::Cow || m.type == MobType::Sheep;
+        CHECK(animals >= static_cast<int>(v->animalSpawns.size()));
+    }
     CHECK(em.countMobs(false) <= 12);  // Dorfbewohner zaehlen nicht mit
     for (int i = 0; i < 60; ++i) em.update(0.05f, w, pl, inv, env);
     int villagers2 = 0;
@@ -2653,7 +2710,7 @@ static void testVillages() {
 
     // Handel
     for (int p = 0; p < PROF_COUNT; ++p) {
-        CHECK(std::string(professionName(p)).size() > 3 && tradesFor(p).size() >= 4);
+        CHECK(std::string(professionName(p)).size() > 3 && tradesFor(p).size() >= 4 && tradesFor(p).size() <= 8);
         for (const Trade& t : tradesFor(p)) {
             CHECK(itemValid(t.cost.id) && itemValid(t.result.id) && t.cost.count >= 1 && t.result.count >= 1 && t.cost.id != t.result.id);
             CHECK(t.cost.id == ITEM_GOLD_INGOT || t.result.id == ITEM_GOLD_INGOT);

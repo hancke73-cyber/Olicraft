@@ -452,6 +452,8 @@ void EntityManager::spawnVillagers(World& world, const Player& player) {
         bool ready = true;
         for (const glm::ivec3& sp : v->villagerSpawns)
             ready = ready && world.isChunkLoaded(floorDiv(sp.x, CHUNK_W), floorDiv(sp.z, CHUNK_W));
+        for (const Village::AnimalSpawn& a : v->animalSpawns)
+            ready = ready && world.isChunkLoaded(floorDiv(a.pos.x, CHUNK_W), floorDiv(a.pos.z, CHUNK_W));
         if (!ready) continue;
         villageDone_.push_back(id);
         int index = 0;
@@ -464,6 +466,11 @@ void EntityManager::spawnVillagers(World& world, const Player& player) {
             m.homeZ = v->center.y;
             m.villageId = v->id;
             m.profession = professionFor(v->id, index++);
+        }
+        // Tiere im Stall
+        for (const Village::AnimalSpawn& a : v->animalSpawns) {
+            static const MobType kinds[3] = {MobType::Pig, MobType::Cow, MobType::Sheep};
+            spawnMob(kinds[a.type % 3], glm::vec3(a.pos.x + 0.5f, static_cast<float>(a.pos.y), a.pos.z + 0.5f));
         }
     }
 }

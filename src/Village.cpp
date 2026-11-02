@@ -70,39 +70,51 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
     well.groundY = cc.height;
     v.buildings.push_back(well);
 
-    static const VillageBuilding::Kind order[8] = {VillageBuilding::House,   VillageBuilding::Library, VillageBuilding::House,
-                                                   VillageBuilding::Smithy,  VillageBuilding::House,   VillageBuilding::House,
-                                                   VillageBuilding::Library, VillageBuilding::House};
-    int accepted = 0;
-    for (int attempt = 0; attempt < 60 && accepted < 8; ++attempt) {
-        const float ang = rng.uniform() * 6.2831853f;
-        const float dist = 12.0f + rng.uniform() * 18.0f;
+    using K = VillageBuilding;
+    static const K::Kind order[10] = {K::House, K::Library, K::Farm,  K::House, K::Smithy,
+                                      K::Barn,  K::Market,  K::House, K::Tower, K::Farm};
+    // Ausdehnung (Tiefe entlang der Tuerachse, Breite quer dazu)
+    auto dims = [&](K::Kind k, int& depth, int& width) {
+        switch (k) {
+            case K::Library: depth = 7; width = 9; break;
+            case K::Farm: depth = 9; width = 9; break;
+            case K::Barn: depth = 11; width = 9; break;
+            case K::Market: depth = 5; width = 9; break;
+            case K::Tower: depth = 5; width = 5; break;
+            case K::GateHouse: depth = 1; width = 9; break;
+            case K::House: depth = width = rng.range(0, 3) == 0 ? 5 : 7; break;
+            default: depth = width = 7; break;
+        }
+    };
+    auto tryPlace = [&](K::Kind kind, float ang, float dist) -> bool {
         const int px = cx + static_cast<int>(std::lround(std::cos(ang) * dist));
         const int pz = cz + static_cast<int>(std::lround(std::sin(ang) * dist));
         const int dx = px - cx, dz = pz - cz;
         const bool alongX = std::abs(dx) >= std::abs(dz);  // Tuer zeigt entlang dieser Achse zum Zentrum
         VillageBuilding b;
-        b.kind = order[accepted];
-        int depth = 7, width = 7;  // depth: Ausdehnung entlang der Tuerachse
-        if (b.kind == VillageBuilding::Library) width = 9;
-        else if (b.kind == VillageBuilding::House && rng.range(0, 3) == 0) depth = width = 5;
+        b.kind = kind;
+        int depth, width;
+        dims(kind, depth, width);
         const int ex = alongX ? depth : width, ez = alongX ? width : depth;
         b.x0 = px - ex / 2;
         b.x1 = b.x0 + ex - 1;
         b.z0 = pz - ez / 2;
         b.z1 = b.z0 + ez - 1;
         b.facing = alongX ? (dx > 0 ? 1 : 0) : (dz > 0 ? 3 : 2);
-        bool ok = true;
-        for (const VillageBuilding& o : v.buildings) ok = ok && !overlaps(o, b.x0, b.z0, b.x1, b.z1, o.kind == VillageBuilding::Well ? 4 : 3);
-        if (!ok) continue;
+        for (const VillageBuilding& o : v.buildings)
+            if (overlaps(o, b.x0, b.z0, b.x1, b.z1, o.kind == VillageBuilding::Well ? 4 : 3)) return false;
         const int hc = height(px, pz);
-        if (hc < SEA_LEVEL + 1 || std::abs(hc - v.groundY) > 5) continue;
+        if (hc < SEA_LEVEL + 1 || std::abs(hc - v.groundY) > 5) return false;
+        const int tol = kind == K::GateHouse ? 2 : 3;
         for (int z : {b.z0 - 1, b.z1 + 1})
             for (int x : {b.x0 - 1, b.x1 + 1}) {
                 const int h = height(x, z);
-                ok = ok && h >= SEA_LEVEL + 1 && std::abs(h - hc) <= 3;
+                if (h < SEA_LEVEL + 1 || std::abs(h - hc) > tol) return false;
             }
-        if (!ok) continue;
+        if (kind == K::GateHouse)  // die ganze Reihe muss einigermassen eben sein
+            for (int z = b.z0; z <= b.z1; ++z)
+                for (int x = b.x0; x <= b.x1; ++x)
+                    if (std::abs(height(x, z) - hc) > 2 || height(x, z) < SEA_LEVEL + 1) return false;
         b.groundY = hc;
         const int xc = (b.x0 + b.x1) / 2, zc = (b.z0 + b.z1) / 2;
         switch (b.facing) {
@@ -112,17 +124,27 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
             default: b.door = {xc, b.z0 - 1}; break;
         }
         v.buildings.push_back(b);
-        ++accepted;
+        return true;
+    };
+
+    int accepted = 0;
+    for (int attempt = 0; attempt < 120 && accepted < 10; ++attempt) {
+        const float ang = rng.uniform() * 6.2831853f;
+        const float dist = 12.0f + rng.uniform() * 19.0f;
+        if (tryPlace(order[accepted], ang, dist)) ++accepted;
     }
     if (accepted < 3) return v;
+    // Dorftor am Rand
+    for (int attempt = 0; attempt < 16; ++attempt)
+        if (tryPlace(K::GateHouse, rng.uniform() * 6.2831853f, 34.0f)) break;
 
     // Wege: von jeder Tuer zum Zentrum, erst entlang der Tuerachse, dann quer
     std::vector<std::pair<int, int>> seen;
     auto inBuilding = [&](int x, int z) {
-        for (const VillageBuilding& o : v.buildings)
-            if (x >= o.x0 - (o.kind == VillageBuilding::Well ? 1 : 0) && x <= o.x1 + (o.kind == VillageBuilding::Well ? 1 : 0) &&
-                z >= o.z0 - (o.kind == VillageBuilding::Well ? 1 : 0) && z <= o.z1 + (o.kind == VillageBuilding::Well ? 1 : 0))
-                return true;
+        for (const VillageBuilding& o : v.buildings) {
+            const int m = o.kind == VillageBuilding::Well ? 1 : 0;
+            if (x >= o.x0 - m && x <= o.x1 + m && z >= o.z0 - m && z <= o.z1 + m) return true;
+        }
         return false;
     };
     auto addPath = [&](int x, int z) {
@@ -156,11 +178,14 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
                 addPath(x, z);
             }
         }
-        if (v.villagerSpawns.size() < 6) v.villagerSpawns.emplace_back(b.door.x, height(b.door.x, b.door.y) + 1, b.door.y);
+        if (v.villagerSpawns.size() < 8 && b.kind != K::GateHouse && b.kind != K::Tower && b.kind != K::Barn)
+            v.villagerSpawns.emplace_back(b.door.x, height(b.door.x, b.door.y) + 1, b.door.y);
     }
-    // Truhen
+    // Truhen, Tiere
+    int animal = 0;
     for (size_t i = 1; i < v.buildings.size(); ++i) {
         const VillageBuilding& b = v.buildings[i];
+        if (b.kind == K::Farm || b.kind == K::GateHouse) continue;
         const int xc = (b.x0 + b.x1) / 2, zc = (b.z0 + b.z1) / 2;
         int x = xc, z = zc;
         switch (b.facing) {
@@ -170,6 +195,13 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
             default: z = b.z1 - 1; break;
         }
         v.chests.emplace_back(x, b.groundY + 1, z);
+        if (b.kind == K::Barn) {
+            // drei Tiere auf der Mittellinie des Stalls
+            for (int k = -1; k <= 1; ++k) {
+                const int ax = b.facing <= 1 ? xc + k * 2 : xc, az = b.facing <= 1 ? zc : zc + k * 2;
+                v.animalSpawns.push_back({glm::ivec3(ax, b.groundY + 1, az), (animal++) % 3});
+            }
+        }
     }
     v.minX = cx - RADIUS;
     v.maxX = cx + RADIUS;
@@ -266,140 +298,358 @@ std::vector<VillageGenerator::Loot> VillageGenerator::lootFor(const Village& v, 
 // Bauen
 // ---------------------------------------------------------------------------------------------------------------
 
+namespace {
+
+struct Painter {
+    Chunk& chunk;
+    int ox, oz;
+    bool inside(int wx, int wz) const { return wx >= ox && wx < ox + CHUNK_W && wz >= oz && wz < oz + CHUNK_W; }
+    BlockId get(int wx, int y, int wz) const {
+        if (!inside(wx, wz) || y < 0 || y >= CHUNK_H) return AIR;
+        return chunk.get(wx - ox, y, wz - oz);
+    }
+    void set(int wx, int y, int wz, BlockId b) const {
+        if (!inside(wx, wz) || y < 1 || y >= CHUNK_H) return;
+        chunk.set(wx - ox, y, wz - oz, b);
+    }
+};
+
+// Dach als Stufenpyramide: der Rand jeder Lage besteht aus Treppen mit der hohen Seite nach innen, das Innere ist voll
+void roofPitched(const Painter& P, int rx0, int rz0, int rx1, int rz1, int y, int stairMat, BlockId solid) {
+    for (int k = 0;; ++k) {
+        const int x0 = rx0 + k, x1 = rx1 - k, z0 = rz0 + k, z1 = rz1 - k;
+        if (x0 > x1 || z0 > z1) break;
+        for (int z = z0; z <= z1; ++z)
+            for (int x = x0; x <= x1; ++x) {
+                const bool edgeX = x == x0 || x == x1, edgeZ = z == z0 || z == z1;
+                if (x0 == x1 || z0 == z1 || !(edgeX || edgeZ)) {
+                    P.set(x, y + k, z, solid);
+                    continue;
+                }
+                int facing;
+                if (x == x1 && edgeX) facing = 1;       // Ostkante: hohe Seite nach -X
+                else if (x == x0 && edgeX) facing = 0;  // Westkante: nach +X
+                else if (z == z1) facing = 3;
+                else facing = 2;
+                P.set(x, y + k, z, makeStairs(stairMat, facing));
+            }
+    }
+}
+
+int gateAxisFor(int facing) { return facing <= 1 ? 1 : 0; }  // Wand in Z-Richtung (Tuer an X-Seite): Tor spannt sich entlang Z
+
+}  // namespace
+
 void VillageGenerator::placeInChunk(Chunk& chunk) const {
     const int ox = chunk.cx * CHUNK_W, oz = chunk.cz * CHUNK_W;
     const std::vector<const Village*> vs = villagesIn(ox, oz, ox + CHUNK_W - 1, oz + CHUNK_W - 1);
     if (vs.empty()) return;
-
-    auto inside = [&](int wx, int wz) { return wx >= ox && wx < ox + CHUNK_W && wz >= oz && wz < oz + CHUNK_W; };
-    auto get = [&](int wx, int y, int wz) -> BlockId {
-        if (!inside(wx, wz) || y < 0 || y >= CHUNK_H) return AIR;
-        return chunk.get(wx - ox, y, wz - oz);
-    };
-    auto set = [&](int wx, int y, int wz, BlockId b) {
-        if (!inside(wx, wz) || y < 1 || y >= CHUNK_H) return;
-        chunk.set(wx - ox, y, wz - oz, b);
-    };
+    const Painter P{chunk, ox, oz};
     auto height = [&](int x, int z) { return terrain_.column(x, z).height; };
+    using K = VillageBuilding;
 
     for (const Village* vp : vs) {
         const Village& v = *vp;
 
-        // Wege (zuerst, Gebaeude und Brunnen ueberschreiben sie nicht, weil Wegzellen dort ausgelassen sind)
+        // Wege (zuerst; Gebaeude und Brunnen ueberschreiben sie nicht, weil Wegzellen dort ausgelassen sind)
         for (size_t i = 0; i < v.pathCells.size(); ++i) {
             const glm::ivec3& c = v.pathCells[i];
-            if (!inside(c.x, c.z)) continue;
-            const BlockId top = get(c.x, c.y, c.z);
-            if (top == GRASS || top == DIRT || top == SAND || top == SANDSTONE) set(c.x, c.y, c.z, GRAVEL);
+            if (!P.inside(c.x, c.z)) continue;
+            const BlockId top = P.get(c.x, c.y, c.z);
+            if (top == GRASS || top == DIRT || top == SAND || top == SANDSTONE) P.set(c.x, c.y, c.z, GRAVEL);
             for (int y = c.y + 1; y <= c.y + 3; ++y) {
-                const BlockId b = get(c.x, y, c.z);
-                if (isPlant(b) || isLeaves(b) || isLogBlock(b)) set(c.x, y, c.z, AIR);
+                const BlockId b = P.get(c.x, y, c.z);
+                if (isPlant(b) || isLeaves(b) || isLogBlock(b)) P.set(c.x, y, c.z, AIR);
             }
-            if (i % 7 == 3 && get(c.x, c.y, c.z) == GRAVEL) set(c.x, c.y + 1, c.z, TORCH);
+            // Laternenpfahl: zwei Zaunstuecke und eine Laterne
+            if (i % 8 == 4 && P.get(c.x, c.y, c.z) == GRAVEL) {
+                P.set(c.x, c.y + 1, c.z, FENCE);
+                P.set(c.x, c.y + 2, c.z, FENCE);
+                P.set(c.x, c.y + 3, c.z, LANTERN);
+            }
         }
 
         for (const VillageBuilding& b : v.buildings) {
             const int g = b.groundY;
-            const bool well = b.kind == VillageBuilding::Well;
+            const bool farm = b.kind == K::Farm;
             // Gelaende: Fundament auffuellen, Ueberstehendes abtragen, Baeume und Pflanzen im Umfeld entfernen
+            const int roofRoom = b.kind == K::Tower ? 18 : 14;
             for (int z = b.z0 - 1; z <= b.z1 + 1; ++z)
                 for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) {
-                    if (!inside(x, z)) continue;
+                    if (!P.inside(x, z)) continue;
                     const int h = height(x, z);
                     const bool core = x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1;
                     if (core) {
-                        for (int y = h + 1; y < g; ++y) set(x, y, z, COBBLE);
-                        for (int y = g + 1; y <= std::max(h, g) + 12 && y < CHUNK_H; ++y) set(x, y, z, AIR);
+                        for (int y = h + 1; y < g; ++y) P.set(x, y, z, farm ? DIRT : COBBLE);
+                        for (int y = g + 1; y <= std::max(h, g) + roofRoom && y < CHUNK_H; ++y) P.set(x, y, z, AIR);
                         if (h > g)
-                            for (int y = g; y <= h; ++y) set(x, y, z, AIR);
+                            for (int y = g; y <= h; ++y) P.set(x, y, z, AIR);
                     } else {
-                        for (int y = h + 1; y <= g + 12 && y < CHUNK_H; ++y) set(x, y, z, AIR);
+                        for (int y = h + 1; y <= g + roofRoom && y < CHUNK_H; ++y) P.set(x, y, z, AIR);
                     }
                 }
 
-            if (well) {
-                for (int z = b.z0; z <= b.z1; ++z)
-                    for (int x = b.x0; x <= b.x1; ++x) {
-                        const bool rim = x == b.x0 || x == b.x1 || z == b.z0 || z == b.z1;
-                        const bool post = rim && (x == b.x0 || x == b.x1) && (z == b.z0 || z == b.z1);
-                        set(x, g, z, rim ? COBBLE : WATER);
-                        if (rim) set(x, g + 1, z, COBBLE);
-                        if (post) {
-                            set(x, g + 2, z, LOG);
-                            set(x, g + 3, z, LOG);
-                        }
-                        set(x, g + 4, z, PLANKS);
-                    }
-                continue;
-            }
-
-            const bool smithy = b.kind == VillageBuilding::Smithy, library = b.kind == VillageBuilding::Library;
-            const BlockId wall = smithy ? COBBLE : PLANKS;
-            const BlockId corner = smithy ? SPRUCE_LOG : (library ? BIRCH_LOG : LOG);
-            const BlockId roof = smithy ? STONE_BRICKS : (library ? PLANKS : BRICKS);
             const int xc = (b.x0 + b.x1) / 2, zc = (b.z0 + b.z1) / 2;
             const bool doorAlongX = b.facing <= 1;
-            for (int z = b.z0; z <= b.z1; ++z)
-                for (int x = b.x0; x <= b.x1; ++x) {
-                    if (!inside(x, z)) continue;
-                    const bool edgeX = x == b.x0 || x == b.x1, edgeZ = z == b.z0 || z == b.z1;
-                    const bool perim = edgeX || edgeZ, isCorner = edgeX && edgeZ;
-                    set(x, g, z, perim ? COBBLE : PLANKS);
-                    for (int y = g + 1; y <= g + 3; ++y) {
-                        if (!perim) {
-                            set(x, y, z, AIR);
-                            continue;
+            const int fx = b.facing == 0 ? 1 : (b.facing == 1 ? -1 : 0), fz = b.facing == 2 ? 1 : (b.facing == 3 ? -1 : 0);  // Richtung nach aussen
+            auto onDoorWall = [&](int x, int z) {
+                return (b.facing == 0 && x == b.x1) || (b.facing == 1 && x == b.x0) || (b.facing == 2 && z == b.z1) || (b.facing == 3 && z == b.z0);
+            };
+            // Versatz entlang der Wand relativ zur Mitte
+            auto wallOff = [&](int x, int z) { return doorAlongX ? z - zc : x - xc; };
+            // Zelle im Gebaeude: u = Tiefe vom Eingang aus (0 = Tuerwand), w = Abstand von der Mittellinie
+            auto cellAt = [&](int u, int w, int& x, int& z) {
+                if (b.facing == 0) { x = b.x1 - u; z = zc + w; }
+                else if (b.facing == 1) { x = b.x0 + u; z = zc + w; }
+                else if (b.facing == 2) { z = b.z1 - u; x = xc + w; }
+                else { z = b.z0 + u; x = xc + w; }
+            };
+            (void)fx;
+            (void)fz;
+
+            switch (b.kind) {
+                case K::Well: {
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            const bool rim = x == b.x0 || x == b.x1 || z == b.z0 || z == b.z1;
+                            const bool post = (x == b.x0 || x == b.x1) && (z == b.z0 || z == b.z1);
+                            P.set(x, g, z, rim ? COBBLE : WATER);
+                            if (rim) P.set(x, g + 1, z, post ? static_cast<BlockId>(WALL_COBBLE) : makeSlab(1, false));
+                            if (post) {
+                                P.set(x, g + 2, z, FENCE);
+                                P.set(x, g + 3, z, FENCE);
+                            }
+                            P.set(x, g + 4, z, PLANKS);
                         }
-                        BlockId bl = isCorner ? corner : wall;
-                        if (!isCorner) {
-                            // Lage entlang der Wand relativ zur Mitte, und ob es die Tuerwand ist
-                            const bool onDoorWall = (b.facing == 0 && x == b.x1) || (b.facing == 1 && x == b.x0) ||
-                                                    (b.facing == 2 && z == b.z1) || (b.facing == 3 && z == b.z0);
-                            const int off = edgeX ? z - zc : x - xc;
-                            if (onDoorWall && off == 0 && y <= g + 2) bl = AIR;  // Tuer
-                            else if (y == g + 2 && ((onDoorWall && std::abs(off) == 2) || (!onDoorWall && (off == 0 || std::abs(off) == 2))))
-                                bl = GLASS;
-                        }
-                        set(x, y, z, bl);
-                    }
+                    P.set(xc, g + 3, zc, LANTERN_HANG);
+                    break;
                 }
-            // Dach: Stufenpyramide mit Ueberstand
-            for (int k = 0;; ++k) {
-                const int rx0 = b.x0 - 1 + k, rx1 = b.x1 + 1 - k, rz0 = b.z0 - 1 + k, rz1 = b.z1 + 1 - k;
-                if (rx0 > rx1 || rz0 > rz1) break;
-                for (int z = rz0; z <= rz1; ++z)
-                    for (int x = rx0; x <= rx1; ++x) set(x, g + 4 + k, z, roof);
-            }
-            // Einrichtung
-            const int bx = b.facing == 1 ? b.x1 - 1 : b.x0 + 1, bz = b.facing == 3 ? b.z1 - 1 : b.z0 + 1;  // hintere Ecke
-            const int tx = doorAlongX ? bx : b.x1 - 1, tz = doorAlongX ? b.z1 - 1 : bz;                      // andere hintere Ecke
-            if (b.kind == VillageBuilding::House) {
-                set(bx, g + 1, bz, BED);
-                set(tx, g + 1, tz, CRAFTING_TABLE);
-            } else if (library) {
-                set(tx, g + 1, tz, CRAFTING_TABLE);
-                // Buecherregale an der Rueckwand (zwei Hoehen), Truhe bleibt frei
-                for (int z = b.z0 + 1; z <= b.z1 - 1; ++z)
-                    for (int x = b.x0 + 1; x <= b.x1 - 1; ++x) {
-                        const bool back = (b.facing == 0 && x == b.x0 + 1) || (b.facing == 1 && x == b.x1 - 1) ||
-                                          (b.facing == 2 && z == b.z0 + 1) || (b.facing == 3 && z == b.z1 - 1);
-                        if (!back) continue;
-                        const bool isChest = false;
-                        (void)isChest;
-                        set(x, g + 1, z, BOOKSHELF);
-                        set(x, g + 2, z, BOOKSHELF);
+                case K::House:
+                case K::Library:
+                case K::Smithy: {
+                    const bool smithy = b.kind == K::Smithy, library = b.kind == K::Library;
+                    const BlockId wall = smithy ? COBBLE : PLANKS;
+                    const BlockId corner = smithy ? SPRUCE_LOG : (library ? BIRCH_LOG : LOG);
+                    const int roofMat = smithy ? 2 : (library ? 0 : 3);  // Steinziegel, Bretter, Ziegel
+                    const BlockId roofSolid = stairMaterialBlock(roofMat);
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            const bool edgeX = x == b.x0 || x == b.x1, edgeZ = z == b.z0 || z == b.z1;
+                            const bool perim = edgeX || edgeZ, isCorner = edgeX && edgeZ;
+                            P.set(x, g, z, perim ? COBBLE : PLANKS);
+                            for (int y = g + 1; y <= g + 3; ++y) {
+                                if (!perim) {
+                                    P.set(x, y, z, AIR);
+                                    continue;
+                                }
+                                BlockId bl = isCorner ? corner : wall;
+                                if (!isCorner) {
+                                    const bool dw = onDoorWall(x, z);
+                                    const int off = wallOff(x, z);
+                                    if (dw && off == 0 && y <= g + 2) bl = AIR;  // Tuer (wird unten eingesetzt)
+                                    else if (y == g + 2 && ((dw && std::abs(off) == 2) || (!dw && (off == 0 || std::abs(off) == 2)))) bl = GLASS_PANE;
+                                }
+                                P.set(x, y, z, bl);
+                            }
+                        }
+                    // Tuer
+                    {
+                        int dx0, dz0;
+                        cellAt(0, 0, dx0, dz0);
+                        P.set(dx0, g + 1, dz0, makeDoor(0, false, false, b.facing));
+                        P.set(dx0, g + 2, dz0, makeDoor(0, true, false, b.facing));
                     }
-            } else {
-                set(bx, g + 1, bz, FURNACE);
-                set(tx, g + 1, tz, CRAFTING_TABLE);
+                    // Dach mit Ueberstand
+                    for (int z = b.z0 - 1; z <= b.z1 + 1; ++z)
+                        for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) P.set(x, g + 4, z, roofSolid);  // Decke, Ueberstand wird gleich ueberbaut
+                    roofPitched(P, b.x0 - 1, b.z0 - 1, b.x1 + 1, b.z1 + 1, g + 4, roofMat, roofSolid);
+                    // Einrichtung
+                    const int bx = b.facing == 1 ? b.x1 - 1 : b.x0 + 1, bz = b.facing == 3 ? b.z1 - 1 : b.z0 + 1;  // hintere Ecke
+                    const int tx = doorAlongX ? bx : b.x1 - 1, tz = doorAlongX ? b.z1 - 1 : bz;                      // andere hintere Ecke
+                    if (b.kind == K::House) {
+                        P.set(bx, g + 1, bz, BED);
+                        P.set(tx, g + 1, tz, CRAFTING_TABLE);
+                    } else if (library) {
+                        P.set(tx, g + 1, tz, CRAFTING_TABLE);
+                        for (int z = b.z0 + 1; z <= b.z1 - 1; ++z)
+                            for (int x = b.x0 + 1; x <= b.x1 - 1; ++x) {
+                                const bool back = (b.facing == 0 && x == b.x0 + 1) || (b.facing == 1 && x == b.x1 - 1) ||
+                                                  (b.facing == 2 && z == b.z0 + 1) || (b.facing == 3 && z == b.z1 - 1);
+                                if (!back) continue;
+                                P.set(x, g + 1, z, BOOKSHELF);
+                                P.set(x, g + 2, z, BOOKSHELF);
+                            }
+                    } else {
+                        P.set(bx, g + 1, bz, FURNACE);
+                        P.set(tx, g + 1, tz, CRAFTING_TABLE);
+                    }
+                    for (const glm::ivec3& c : v.chests)
+                        if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);
+                    P.set(xc, g + 3, zc, LANTERN_HANG);
+                    break;
+                }
+                case K::Farm: {
+                    // Zaun, Tor, Acker mit Wasserrinne in der Mitte
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            const bool perim = x == b.x0 || x == b.x1 || z == b.z0 || z == b.z1;
+                            const bool isCorner = (x == b.x0 || x == b.x1) && (z == b.z0 || z == b.z1);
+                            if (perim) {
+                                P.set(x, g, z, DIRT);
+                                P.set(x, g + 1, z, FENCE);
+                                if (isCorner) P.set(x, g + 2, z, LANTERN);
+                                continue;
+                            }
+                            // u: Tiefe von der Tuerwand, w: seitlich
+                            // Die Wasserrinne verlaeuft in der Mitte quer zur Tuerachse (der Eingang liegt am Rinnenrand)
+                            const int lane = doorAlongX ? x - xc : z - zc;  // Abstand von der Mittellinie quer zur Tuerachse
+                            if (lane == 0) {
+                                P.set(x, g, z, WATER);
+                                continue;
+                            }
+                            P.set(x, g, z, FARMLAND);
+                            const uint32_t hv = hash3(x, g, z, 0xFA2Au);
+                            const int stage = hv % 10u < 7u ? 3 : 1 + static_cast<int>(hv % 3u);
+                            P.set(x, g + 1, z, static_cast<BlockId>((lane < 0 ? WHEAT_0 : CARROT_0) + stage));
+                        }
+                    // Tor in der Zaunmitte
+                    {
+                        int gx, gz;
+                        cellAt(0, 0, gx, gz);
+                        P.set(gx, g + 1, gz, makeGate(0, false, gateAxisFor(b.facing)));
+                    }
+                    break;
+                }
+                case K::Barn: {
+                    const int sMat = 0;
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            const bool edgeX = x == b.x0 || x == b.x1, edgeZ = z == b.z0 || z == b.z1;
+                            const bool perim = edgeX || edgeZ, isCorner = edgeX && edgeZ;
+                            P.set(x, g, z, perim ? COBBLE : GRAVEL);
+                            for (int y = g + 1; y <= g + 4; ++y) {
+                                if (!perim) {
+                                    P.set(x, y, z, AIR);
+                                    continue;
+                                }
+                                BlockId bl = isCorner ? SPRUCE_LOG : PLANKS;
+                                if (!isCorner) {
+                                    const bool dw = onDoorWall(x, z);
+                                    const int off = wallOff(x, z);
+                                    if (dw && std::abs(off) <= 1 && y <= g + 3) bl = makeGate(0, false, gateAxisFor(b.facing));  // grosses Tor 3 x 3
+                                    else if (!dw && y == g + 3 && std::abs(off) % 3 == 2) bl = GLASS_PANE;
+                                }
+                                P.set(x, y, z, bl);
+                            }
+                        }
+                    for (int z = b.z0 - 1; z <= b.z1 + 1; ++z)
+                        for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) P.set(x, g + 5, z, PLANKS);
+                    roofPitched(P, b.x0 - 1, b.z0 - 1, b.x1 + 1, b.z1 + 1, g + 5, sMat, PLANKS);
+                    // Heu, Truhe, Laternen, Boxentrenner
+                    for (int w = -3; w <= 3; w += 6) {
+                        int hx, hz;
+                        cellAt(b.facing <= 1 ? (b.x1 - b.x0 - 1) : (b.z1 - b.z0 - 1), w / 3 * 3, hx, hz);
+                        P.set(hx, g + 1, hz, WOOL_YELLOW);
+                        P.set(hx, g + 2, hz, WOOL_YELLOW);
+                    }
+                    for (int u = 2; u <= 8; u += 3) {
+                        int lx, lz;
+                        cellAt(u, 0, lx, lz);
+                        P.set(lx, g + 4, lz, LANTERN_HANG);
+                    }
+                    for (const glm::ivec3& c : v.chests)
+                        if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);
+                    break;
+                }
+                case K::Market: {
+                    // vier Pfosten, Markise aus rot-weisser Wolle, Theke mit Luecke, Truhe, Lampen
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            P.set(x, g, z, PLANKS);
+                            for (int y = g + 1; y <= g + 3; ++y) P.set(x, y, z, AIR);
+                            const bool isCorner = (x == b.x0 || x == b.x1) && (z == b.z0 || z == b.z1);
+                            if (isCorner)
+                                for (int y = g + 1; y <= g + 3; ++y) P.set(x, y, z, FENCE);
+                            const int off = wallOff(x, z);
+                            P.set(x, g + 4, z, std::abs(off) % 2 == 0 ? WOOL_RED : WOOL_WHITE);
+                            if (onDoorWall(x, z) && !isCorner && off != 0) {
+                                P.set(x, g + 1, z, PLANKS);
+                                P.set(x, g + 2, z, (std::abs(off) % 2 == 1) ? LANTERN : AIR);
+                            }
+                        }
+                    // Waren: Kuerbisse und Heu hinten
+                    {
+                        int px, pz;
+                        cellAt(b.facing <= 1 ? (b.x1 - b.x0 - 1) : (b.z1 - b.z0 - 1), -2, px, pz);
+                        P.set(px, g + 1, pz, PUMPKIN);
+                        cellAt(b.facing <= 1 ? (b.x1 - b.x0 - 1) : (b.z1 - b.z0 - 1), 2, px, pz);
+                        P.set(px, g + 1, pz, WOOL_YELLOW);
+                        cellAt(2, 0, px, pz);
+                        P.set(px, g + 3, pz, LANTERN_HANG);
+                    }
+                    for (const glm::ivec3& c : v.chests)
+                        if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);
+                    break;
+                }
+                case K::Tower: {
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            const bool edgeX = x == b.x0 || x == b.x1, edgeZ = z == b.z0 || z == b.z1;
+                            const bool perim = edgeX || edgeZ, isCorner = edgeX && edgeZ;
+                            P.set(x, g, z, perim ? COBBLE : PLANKS);
+                            for (int y = g + 1; y <= g + 9; ++y) {
+                                if (!perim) {
+                                    P.set(x, y, z, AIR);
+                                    continue;
+                                }
+                                BlockId bl = isCorner ? STONE_BRICKS : (y <= g + 2 ? COBBLE : STONE_BRICKS);
+                                if (!isCorner) {
+                                    const bool dw = onDoorWall(x, z);
+                                    const int off = wallOff(x, z);
+                                    if (dw && off == 0 && y <= g + 2) bl = AIR;
+                                    else if (off == 0 && (y == g + 4 || y == g + 7)) bl = IRON_BARS;
+                                    else if (off == 0 && y == g + 8 && !dw) bl = GLASS_PANE;
+                                }
+                                P.set(x, y, z, bl);
+                            }
+                        }
+                    {
+                        int dx0, dz0;
+                        cellAt(0, 0, dx0, dz0);
+                        P.set(dx0, g + 1, dz0, makeDoor(1, false, false, b.facing));
+                        P.set(dx0, g + 2, dz0, makeDoor(1, true, false, b.facing));
+                    }
+                    for (int z = b.z0 - 1; z <= b.z1 + 1; ++z)
+                        for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) P.set(x, g + 10, z, STONE_BRICKS);
+                    roofPitched(P, b.x0 - 1, b.z0 - 1, b.x1 + 1, b.z1 + 1, g + 10, 2, STONE_BRICKS);
+                    P.set(xc, g + 9, zc, LANTERN_HANG);
+                    P.set(b.x0 + 1, g + 1, b.z0 + 1, LANTERN);
+                    for (const glm::ivec3& c : v.chests)
+                        if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);
+                    break;
+                }
+                case K::GateHouse: {
+                    // eine Reihe quer zur Strasse: Pfeiler, Laternen, Mauerstuecke und ein grosses Tor (3 x 3)
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            const int off = wallOff(x, z);
+                            const int a = std::abs(off);
+                            P.set(x, g, z, a <= 1 ? GRAVEL : COBBLE);
+                            for (int y = g + 1; y <= g + 6; ++y) P.set(x, y, z, AIR);
+                            if (a <= 1) {
+                                for (int y = g + 1; y <= g + 3; ++y) P.set(x, y, z, makeGate(0, false, gateAxisFor(b.facing)));
+                                P.set(x, g + 4, z, STONE_BRICKS);
+                            } else if (a == 2) {
+                                for (int y = g + 1; y <= g + 5; ++y) P.set(x, y, z, STONE_BRICKS);
+                                P.set(x, g + 6, z, LANTERN);
+                            } else {
+                                P.set(x, g + 1, z, WALL_COBBLE);
+                                P.set(x, g + 2, z, WALL_COBBLE);
+                            }
+                        }
+                    break;
+                }
             }
-            for (const glm::ivec3& c : v.chests)
-                if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) set(c.x, c.y, c.z, CHEST);
-            // Fackeln an den vorderen Ecken
-            const int fx = b.facing == 0 ? b.x1 - 1 : b.x0 + 1, fz = b.facing == 2 ? b.z1 - 1 : b.z0 + 1;
-            set(fx, g + 1, fz, TORCH);
-            const int fx2 = doorAlongX ? fx : b.x1 - 1, fz2 = doorAlongX ? b.z1 - 1 : fz;
-            set(fx2, g + 1, fz2, TORCH);
         }
     }
 }

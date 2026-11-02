@@ -2744,6 +2744,114 @@ int Game::selfTest() {
         inventory_.clear();
     }
 
+    // 22. Bauteile setzen und benutzen: Treppe, Platte, Tor, Tuer, Laterne, Hacke, Samen
+    {
+        paused_ = false;
+        creative_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        entities_.clear();
+        for (int x = 6; x <= 16; ++x)
+            for (int z = -14; z <= -2; ++z) {
+                for (int y = gy; y <= gy + 6; ++y) world_->setBlock(x, y, z, AIR);
+                world_->setBlock(x, gy - 1, z, STONE);
+            }
+        player_.pos = glm::vec3(5.5f, static_cast<float>(gy), -8.5f);
+        player_.vel = glm::vec3(0.0f);
+        player_.yaw = 0.0f;  // Blick nach +x
+        player_.pitch = 0.0f;
+        slot_ = 0;
+        auto aim = [&](float x, float y, float z, float dx, float dy, float dz) {
+            target_ = world_->raycast(glm::vec3(x, y, z), glm::vec3(dx, dy, dz), 8.0f);
+            player_.yaw = 0.0f;  // Blickrichtung +x fuer die Ausrichtung; der Spieler steht abseits
+            player_.pitch = 0.0f;
+        };
+        // Treppe auf den Boden: hohe Seite in Blickrichtung (+x)
+        inventory_.slots[0] = {makeStairs(0, 0), 4};
+        aim(8.5f, gy + 2.0f, -12.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(8, gy, -13) == makeStairs(0, 0) && inventory_.slots[0].count == 3);
+        // Platte: von oben unten, von unten oben, zweite Platte ergibt einen Vollblock
+        inventory_.slots[0] = {makeSlab(1, false), 6};
+        aim(10.5f, gy + 2.0f, -12.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(10, gy, -13) == makeSlab(1, false));
+        aim(10.5f, gy + 2.0f, -12.5f, 0.0f, -1.0f, 0.0f);  // trifft die obere Plattenflaeche
+        SCHECK(target_.hit && target_.block == glm::ivec3(10, gy, -13) && target_.normal == glm::ivec3(0, 1, 0));
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(10, gy, -13) == COBBLE && inventory_.slots[0].count == 4);
+        world_->setBlock(12, gy + 3, -12, STONE);
+        aim(12.5f, gy + 1.0f, -11.5f, 0.0f, 1.0f, 0.0f);
+        SCHECK(target_.hit && target_.normal == glm::ivec3(0, -1, 0));
+        placeBlockOrUse();
+        SCHECK(isSlab(world_->getBlock(12, gy + 2, -12)) && slabIsTop(world_->getBlock(12, gy + 2, -12)));
+        world_->setBlock(12, gy + 3, -12, AIR);
+        world_->setBlock(12, gy + 2, -12, AIR);
+        // Tor: Blick +x, das Tor spannt sich quer dazu (Achse 1)
+        inventory_.slots[0] = {makeGate(0, false, 0), 3};
+        aim(8.5f, gy + 2.0f, -9.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(isGate(world_->getBlock(8, gy, -10)) && gateAxis(world_->getBlock(8, gy, -10)) == 1 && !gateOpen(world_->getBlock(8, gy, -10)));
+        // Tuer (zwei Bloecke)
+        inventory_.slots[0] = {ITEM_DOOR_WOOD, 2};
+        aim(11.5f, gy + 2.0f, -8.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(isDoor(world_->getBlock(11, gy, -9)) && isDoor(world_->getBlock(11, gy + 1, -9)) && doorUpper(world_->getBlock(11, gy + 1, -9)) &&
+               doorFacing(world_->getBlock(11, gy, -9)) == 0 && inventory_.slots[0].count == 1);
+        // Rechtsklick auf die Tuer oeffnet sie (Strahl von der Seite trifft die Platte bei x = 11.81)
+        inventory_.slots[0].clear();
+        aim(9.5f, gy + 0.5f, -8.5f, 1.0f, 0.0f, 0.0f);
+        SCHECK(target_.hit && target_.block == glm::ivec3(11, gy, -9));
+        placeBlockOrUse();
+        SCHECK(doorOpen(world_->getBlock(11, gy, -9)) && doorOpen(world_->getBlock(11, gy + 1, -9)));
+        // Laterne auf dem Boden und unter der Decke
+        inventory_.slots[0] = {LANTERN, 3};
+        aim(13.5f, gy + 2.0f, -9.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(13, gy, -10) == LANTERN && world_->lightAt(13, gy, -10) == 15);
+        world_->setBlock(14, gy + 3, -9, STONE);
+        aim(14.5f, gy + 1.0f, -8.5f, 0.0f, 1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(14, gy + 2, -9) == LANTERN_HANG);
+        world_->setBlock(14, gy + 3, -9, AIR);  // Halterung weg: die Laterne faellt ab
+        world_->setBlock(14, gy + 2, -9, AIR);
+        world_->takePlantDrops();
+        // Hacke macht aus Gras Acker, Samen werden darauf gepflanzt, Brot essen heilt
+        world_->setBlock(15, gy - 1, -5, GRASS);
+        inventory_.slots[0] = {ITEM_HOE_IRON, 1};
+        aim(15.5f, gy + 2.0f, -4.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(15, gy - 1, -5) == FARMLAND && inventory_.slots[0].damage == 1);
+        inventory_.slots[0] = {ITEM_SEEDS, 2};
+        aim(15.5f, gy + 2.0f, -4.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(15, gy, -5) == WHEAT_0 && inventory_.slots[0].count == 1);
+        inventory_.slots[0] = {ITEM_BREAD, 1};
+        health_ = 10;
+        eatTimer_ = 0.0f;
+        target_ = RayHit{};
+        placeBlockOrUse();
+        SCHECK(health_ == 15 && inventory_.slots[0].empty());
+        // Reifen Weizen abbauen: Weizen und Samen als Beute
+        world_->setBlock(15, gy, -5, WHEAT_3);
+        entities_.clear();
+        breakBlock(glm::ivec3(15, gy, -5));
+        bool gotWheat = false;
+        for (const ItemEntity& it : entities_.items()) gotWheat = gotWheat || it.stack.id == ITEM_WHEAT;
+        SCHECK(world_->getBlock(15, gy, -5) == AIR && gotWheat);
+        // Tuer abbauen (obere Haelfte): beide verschwinden, eine Tuer faellt als Gegenstand
+        entities_.clear();
+        breakBlock(glm::ivec3(11, gy + 1, -9));
+        SCHECK(world_->getBlock(11, gy, -9) == AIR && world_->getBlock(11, gy + 1, -9) == AIR);
+        bool gotDoor = false;
+        for (const ItemEntity& it : entities_.items()) gotDoor = gotDoor || it.stack.id == ITEM_DOOR_WOOD;
+        SCHECK(gotDoor);
+        entities_.clear();
+        inventory_.clear();
+        player_.pitch = 0.0f;
+        player_.yaw = -90.0f;
+    }
+
     // 11. Speichern: Inventar, Gesundheit, Modus
     const std::string path = "olicraft_selftest/world.dat";
     std::filesystem::remove_all("olicraft_selftest");

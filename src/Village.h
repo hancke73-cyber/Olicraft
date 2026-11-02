@@ -15,7 +15,7 @@ struct Chunk;
 
 // Dorf: deterministisch aus Seed und Rasterzelle, so passen Gebaeude ueber Chunkgrenzen hinweg zusammen.
 struct VillageBuilding {
-    enum Kind : uint8_t { House, Library, Smithy, Well } kind = House;
+    enum Kind : uint8_t { House, Library, Smithy, Well, Farm, Barn, Market, Tower, GateHouse } kind = House;
     int x0 = 0, z0 = 0, x1 = 0, z1 = 0;  // Grundflaeche (einschliesslich)
     int groundY = 0;                     // Hoehe des Fussbodens
     int facing = 0;                      // Tuerseite: 0 +X, 1 -X, 2 +Z, 3 -Z
@@ -30,6 +30,11 @@ struct Village {
     std::vector<glm::ivec3> pathCells;   // x, Hoehe der Oberflaeche, z
     std::vector<glm::ivec3> chests;      // Truhen (Position)
     std::vector<glm::ivec3> villagerSpawns;  // Fusspunkt, an dem Dorfbewohner erscheinen
+    struct AnimalSpawn {
+        glm::ivec3 pos;
+        int type;  // 0 Schwein, 1 Kuh, 2 Schaf
+    };
+    std::vector<AnimalSpawn> animalSpawns;  // Tiere im Stall
     int minX = 0, maxX = 0, minZ = 0, maxZ = 0;  // Umriss inkl. Rand
 
     int houseCount() const;
