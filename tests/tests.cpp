@@ -1087,7 +1087,7 @@ static void testSettingsAndMenu() {
     std::filesystem::remove_all("olicraft_test_settings");
 
     // Menue-Layouts: Widgets liegen im Fenster, ueberlappen nicht und sind per Mausposition treffbar
-    for (MenuScreen scr : {MenuScreen::Pause, MenuScreen::Settings}) {
+    for (MenuScreen scr : {MenuScreen::Pause, MenuScreen::Settings, MenuScreen::Main, MenuScreen::NewWorld}) {
         for (auto dim : {std::make_pair(1280, 720), std::make_pair(800, 600), std::make_pair(1920, 1080)}) {
             MenuState st;
             MenuLayout m = buildMenu(scr, st, dim.first, dim.second);

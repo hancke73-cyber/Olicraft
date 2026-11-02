@@ -6,7 +6,7 @@
 
 namespace oc {
 
-enum class MenuScreen { None, Pause, Settings, Editor };
+enum class MenuScreen { None, Pause, Settings, Editor, Main, NewWorld };
 
 enum WidgetId {
     W_NONE = 0,
@@ -22,6 +22,13 @@ enum WidgetId {
     W_VOL_EFFECTS,
     W_VOL_MUSIC,
     W_SKIN,
+    W_MAIN_PLAY,
+    W_MAIN_NEW,
+    W_NEW_MODE,
+    W_NEW_SEED,
+    W_NEW_CREATE,
+    W_NEW_BACK,
+    W_TO_MAIN,
     W_VSYNC,
     W_FULLSCREEN,
     W_MODE,
@@ -71,6 +78,9 @@ struct MenuLayout {
     std::string title;
     glm::vec2 titlePos{0.0f};
     float scale = 1.0f;
+    float titleScale = 2.0f;
+    std::string subtitle;
+    float dim = 0.6f;  // Abdunklung des Hintergrunds 0..1
     std::vector<Widget> widgets;
     glm::vec4 skinPreview{0.0f};  // x, y, Breite, Hoehe der Skin-Vorschau (Breite 0: keine)
 };
@@ -83,6 +93,9 @@ struct MenuState {
     bool vsync = true;
     float masterVolume = 0.8f, effectVolume = 1.0f, musicVolume = 0.5f;
     int skinSlot = 0;
+    bool hasSave = false;       // Hauptmenue: gibt es einen Spielstand
+    std::string seedText;       // Neue Welt: eingetippte Ziffern
+    bool newCreative = false;   // Neue Welt: Spielmodus
     bool fullscreen = false;
     bool creative = false;
 };

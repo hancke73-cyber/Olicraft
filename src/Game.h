@@ -51,6 +51,7 @@ struct Options {
     bool hasLook = false;
     float yaw = -90.0f, pitch = 0.0f;
     bool hasTime = false;
+    bool noMenu = false;       // --no-menu: ohne Hauptmenue direkt ins Spiel
     bool gotoVillage = false;  // --village: zum naechsten Dorf springen (Test)
     int villageSide = 0;       // --village-side N: Blickrichtung 0..3
     int moonPhase = -1;  // --moon N: feste Mondphase 0..7 (Test)
@@ -101,6 +102,9 @@ private:
     bool buyTrade(int index);
     InvLayout invLayout() const;
     void useBed(const glm::ivec3& pos);
+    void showMainMenu();
+    void resetWorld(int32_t seed, bool creative);
+    void refreshHasSave();
     // Ruestungsteil anlegen (tauscht mit dem getragenen Teil); true, wenn es eine Ruestung war
     bool equipArmor(ItemStack& from);
     // Rezeptbuch
@@ -170,6 +174,10 @@ private:
     glm::ivec3 chestPos_{0};
     int bookScroll_ = 0;          // erste sichtbare Zeile des Rezeptbuchs
     bool bookOnlyCraftable_ = false;
+    MenuScreen settingsFrom_ = MenuScreen::Pause;  // Hauptmenue oder Pause: wohin "Zurueck" fuehrt
+    std::string newSeedText_;
+    bool newCreative_ = false;
+    bool hasSave_ = false;
 
     bool creative_ = false;
     int health_ = 20;

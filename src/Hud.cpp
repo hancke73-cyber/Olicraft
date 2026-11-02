@@ -564,10 +564,14 @@ static void drawWidget(HudBatch& b, const Widget& wd, bool hot, float s) {
 
 static void drawMenu(HudBatch& b, const MenuLayout& m, const std::vector<PreviewQuad>& preview, int hover, int w, int h) {
     const float s = m.scale;
-    b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.6f));
-    const float ts = 2.0f * s;
+    b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, m.dim));
+    const float ts = m.titleScale * s;
     const float tw = textWidthPx(m.title) * ts;
     b.text(std::floor((w - tw) * 0.5f), m.titlePos.y, ts, m.title);
+    if (!m.subtitle.empty()) {
+        const float ss = 1.5f * s;
+        b.text(std::floor((w - textWidthPx(m.subtitle) * ss) * 0.5f), m.titlePos.y + 9.0f * ts + 6.0f * s, ss, m.subtitle, glm::vec4(0.85f, 0.88f, 0.95f, 1.0f));
+    }
     for (size_t i = 0; i < m.widgets.size(); ++i) drawWidget(b, m.widgets[i], static_cast<int>(i) == hover, s);
     if (m.skinPreview.z > 0.0f) {
         const float px = m.skinPreview.x, py = m.skinPreview.y, pw = m.skinPreview.z, ph = m.skinPreview.w;

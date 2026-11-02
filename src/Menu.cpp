@@ -37,9 +37,53 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     const float x = std::floor((w - bw) * 0.5f);
     char buf[96];
 
+    if (screen == MenuScreen::Main) {
+        m.title = "OliCraft";
+        m.titleScale = 5.0f;
+        m.subtitle = "Ein Minecraft-Klon in C++";
+        m.dim = 0.28f;
+        const float total = 5 * bh + 4 * gap;
+        float y = std::floor(h * 0.42f);
+        (void)total;
+        m.titlePos = {0.0f, std::floor(h * 0.14f)};
+        m.widgets.push_back(button(W_MAIN_PLAY, st.hasSave ? "Spiel fortsetzen" : "Spielen", x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_MAIN_NEW, "Neue Welt ...", x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_SETTINGS, "Einstellungen", x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_EDITOR, "Textur-Editor", x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_QUIT, "Beenden", x, y, bw, bh));
+        return m;
+    }
+    if (screen == MenuScreen::NewWorld) {
+        m.title = "Neue Welt";
+        m.titleScale = 3.0f;
+        m.dim = 0.5f;
+        float y = std::floor(h * 0.30f);
+        m.titlePos = {0.0f, std::floor(h * 0.14f)};
+        m.widgets.push_back(button(W_NEW_MODE, std::string("Spielmodus: ") + (st.newCreative ? "Kreativ" : "Survival"), x, y, bw, bh));
+        y += bh + gap;
+        const std::string seedLabel = st.seedText.empty() ? std::string("Seed: zufaellig (Ziffern tippen)") : "Seed: " + st.seedText + "_";
+        m.widgets.push_back(button(W_NEW_SEED, seedLabel, x, y, bw, bh));
+        y += bh + gap;
+        if (st.hasSave) {
+            Widget warn = button(W_NONE, "Achtung: ersetzt den alten Spielstand", x, y, bw, bh);
+            warn.enabled = false;
+            m.widgets.push_back(warn);
+            y += bh + gap;
+        }
+        y += gap;
+        m.widgets.push_back(button(W_NEW_CREATE, "Welt erstellen", x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_NEW_BACK, "Zurueck", x, y, bw, bh));
+        return m;
+    }
+
     if (screen == MenuScreen::Pause) {
         m.title = "Spiel pausiert";
-        const float total = 4 * bh + 3 * gap + 24.0f * s;
+        const float total = 5 * bh + 4 * gap + 24.0f * s;
         float y = std::floor((h - total) * 0.5f) + 24.0f * s;
         m.titlePos = {0.0f, y - 22.0f * s};
         m.widgets.push_back(button(W_RESUME, "Weiter", x, y, bw, bh));
@@ -47,6 +91,8 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
         m.widgets.push_back(button(W_SETTINGS, "Einstellungen", x, y, bw, bh));
         y += bh + gap;
         m.widgets.push_back(button(W_SAVE, "Spiel speichern", x, y, bw, bh));
+        y += bh + gap;
+        m.widgets.push_back(button(W_TO_MAIN, "Hauptmenue", x, y, bw, bh));
         y += bh + gap;
         m.widgets.push_back(button(W_QUIT, "Beenden", x, y, bw, bh));
         return m;

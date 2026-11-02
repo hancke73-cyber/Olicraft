@@ -290,6 +290,10 @@ bool Game::init() {
         curX_ = winW_cur_ * 0.5;
         curY_ = winH_cur_ * 0.5;
     }
+    refreshHasSave();
+    if (!opt_.noMenu && !opt_.selfTest && opt_.screenshotPath.empty() && opt_.benchFrames == 0 && opt_.demo.empty() && !opt_.hasPos && !opt_.gotoVillage)
+        showMainMenu();
+    if (opt_.demo == "mainmenu") showMainMenu();
     if (opt_.demo == "menu" || opt_.demo == "settings") {
         setPaused(true);
         if (opt_.demo == "settings") screen_ = MenuScreen::Settings;
@@ -341,6 +345,61 @@ glm::vec2 Game::mousePx() const {
     return glm::vec2(static_cast<float>(curX_ * sx), static_cast<float>(curY_ * sy));
 }
 
+void Game::refreshHasSave() {
+    std::error_code ec;
+    hasSave_ = !opt_.noSave && std::filesystem::exists(opt_.savePath, ec);
+}
+
+void Game::showMainMenu() {
+    inventoryOpen_ = false;
+    furnaceWindow_ = chestWindow_ = tradeWindow_ = false;
+    craftSize_ = 0;
+    paused_ = true;
+    screen_ = MenuScreen::Main;
+    dragWidget_ = W_NONE;
+    firstMouse_ = true;
+    refreshHasSave();
+    glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    glfwGetWindowSize(window_, &winW_cur_, &winH_cur_);
+    curX_ = winW_cur_ * 0.5;
+    curY_ = winH_cur_ * 0.5;
+    glfwSetCursorPos(window_, curX_, curY_);
+    camMode_ = CameraMode::First;
+    player_.flying = true;  // Kamera schwebt, solange das Menue offen ist
+}
+
+// Beginnt eine neue Welt (der alte Spielstand wird erst beim naechsten Speichern ersetzt)
+void Game::resetWorld(int32_t seed, bool creative) {
+    world_.reset();  // GL-Objekte der Chunks freigeben
+    world_ = std::make_unique<World>(seed);
+    entities_ = EntityManager(static_cast<uint32_t>(seed) ^ 0xA5A5u);
+    inventory_ = Inventory();
+    cursor_.clear();
+    for (ItemStack& c : craft_) c.clear();
+    creative_ = creative;
+    health_ = 20;
+    dead_ = false;
+    air_ = MAX_AIR;
+    burnTimer_ = lavaTimer_ = drownTimer_ = 0.0f;
+    invulnerable_ = sinceDamage_ = 0.0f;
+    damageFlash_ = 0.0f;
+    timeOfDay_ = 0.30f;
+    dayCount_ = 0;
+    slot_ = 0;
+    player_.vel = glm::vec3(0.0f);
+    player_.pos = world_->findSpawn();
+    player_.yaw = -90.0f;
+    player_.pitch = -10.0f;
+    player_.flying = false;
+    spawnPoint_ = player_.pos;
+    if (creative_)
+        for (int i = 0; i < Inventory::HOTBAR; ++i) inventory_.slots[i] = {DEFAULT_HOTBAR[i], 64};
+    world_->loadAround(player_.pos, 3);
+    breaking_ = false;
+    target_ = RayHit{};
+    std::printf("Neue Welt, Seed: %d\n", seed);
+}
+
 void Game::setPaused(bool p) {
     paused_ = p;
     screen_ = p ? MenuScreen::Pause : MenuScreen::None;
@@ -365,6 +424,9 @@ MenuState Game::menuState() const {
     s.fov = settings_.fov;
     s.vsync = settings_.vsync;
     s.skinSlot = settings_.playerSkin;
+    s.hasSave = hasSave_;
+    s.seedText = newSeedText_;
+    s.newCreative = newCreative_;
     s.masterVolume = settings_.masterVolume;
     s.effectVolume = settings_.effectVolume;
     s.musicVolume = settings_.musicVolume;
@@ -414,11 +476,37 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
     const int id = menu.widgets[index].id;
     switch (id) {
         case W_RESUME: setPaused(false); break;
-        case W_SETTINGS: screen_ = MenuScreen::Settings; break;
+        case W_SETTINGS:
+            settingsFrom_ = screen_ == MenuScreen::Main ? MenuScreen::Main : MenuScreen::Pause;
+            screen_ = MenuScreen::Settings;
+            break;
+        case W_MAIN_PLAY:
+            setPaused(false);  // die geladene oder frisch erzeugte Welt
+            player_.flying = false;
+            break;
+        case W_MAIN_NEW:
+            screen_ = MenuScreen::NewWorld;
+            newSeedText_.clear();
+            newCreative_ = false;
+            break;
+        case W_NEW_MODE: newCreative_ = !newCreative_; break;
+        case W_NEW_BACK: screen_ = MenuScreen::Main; break;
+        case W_NEW_CREATE: {
+            int32_t seed = static_cast<int32_t>(std::random_device{}() & 0x7FFFFFFFu);
+            if (!newSeedText_.empty()) seed = static_cast<int32_t>(std::strtoll(newSeedText_.c_str(), nullptr, 10) & 0x7FFFFFFF);
+            resetWorld(seed, newCreative_);
+            setPaused(false);
+            player_.flying = false;
+            break;
+        }
+        case W_TO_MAIN:
+            if (!opt_.noSave) saveWorld();
+            showMainMenu();
+            break;
         case W_SAVE: wantSave_ = true; break;
         case W_QUIT: glfwSetWindowShouldClose(window_, GLFW_TRUE); break;
         case W_BACK:
-            screen_ = MenuScreen::Pause;
+            screen_ = settingsFrom_;
             persistSettings();
             break;
         case W_DISTANCE:
@@ -878,6 +966,17 @@ void Game::setCreative(bool on) {
 void Game::handleKey(int key, int action, int mods) {
     if (action != GLFW_PRESS) return;
     if (paused_ && screen_ == MenuScreen::Editor && key != GLFW_KEY_ESCAPE && editorKey(key, mods)) return;
+    if (paused_ && screen_ == MenuScreen::NewWorld) {  // Seed eintippen
+        if (key >= GLFW_KEY_0 && key <= GLFW_KEY_9 && newSeedText_.size() < 9) newSeedText_ += static_cast<char>('0' + (key - GLFW_KEY_0));
+        else if (key >= GLFW_KEY_KP_0 && key <= GLFW_KEY_KP_9 && newSeedText_.size() < 9) newSeedText_ += static_cast<char>('0' + (key - GLFW_KEY_KP_0));
+        else if (key == GLFW_KEY_BACKSPACE && !newSeedText_.empty()) newSeedText_.pop_back();
+        else if (key == GLFW_KEY_ENTER) {
+            const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
+            for (size_t i = 0; i < menu.widgets.size(); ++i)
+                if (menu.widgets[i].id == W_NEW_CREATE) activateWidget(static_cast<int>(i), menu, glm::vec2(0.0f));
+            return;
+        }
+    }
     switch (key) {
         case GLFW_KEY_ESCAPE:
             if (inventoryOpen_) closeInventory();
@@ -886,12 +985,16 @@ void Game::handleKey(int key, int action, int mods) {
                 dragWidget_ = W_NONE;
                 painting_ = false;
             } else if (paused_ && screen_ == MenuScreen::Settings) {
-                screen_ = MenuScreen::Pause;
+                screen_ = settingsFrom_;
                 persistSettings();
+            } else if (paused_ && screen_ == MenuScreen::NewWorld) {
+                screen_ = MenuScreen::Main;
+            } else if (paused_ && screen_ == MenuScreen::Main) {
+                // Esc im Hauptmenue tut nichts (Beenden ueber den Knopf)
             } else setPaused(!paused_);
             return;
         case GLFW_KEY_Q:
-            if (paused_) glfwSetWindowShouldClose(window_, GLFW_TRUE);
+            if (paused_ && screen_ != MenuScreen::NewWorld) glfwSetWindowShouldClose(window_, GLFW_TRUE);
             else if (!inventoryOpen_ && !dead_) dropSelected((mods & GLFW_MOD_CONTROL) != 0);
             return;
         case GLFW_KEY_F1:
@@ -1284,6 +1387,12 @@ void Game::update(float dt) {
     } else {
         target_ = RayHit{};
         if (screen_ == MenuScreen::Editor && editorUi_.rotate) editorUi_.previewYaw += dt * 0.9f;
+        if (screen_ == MenuScreen::Main || screen_ == MenuScreen::NewWorld) {  // Kamerafahrt als Hintergrund
+            player_.yaw += dt * 5.0f;
+            player_.pitch = -8.0f;
+            timeOfDay_ += dt / DAY_SECONDS * 0.5f;
+            timeOfDay_ -= std::floor(timeOfDay_);
+        }
     }
 
     // Anzeige des gewaehlten Gegenstands
@@ -3001,6 +3110,44 @@ int Game::selfTest() {
     SCHECK(sf.player.hasSpawn && sf.player.spawn == spawnPoint_);
     std::filesystem::remove_all("olicraft_selftest");
 
+    // 24. Hauptmenue: neue Welt mit eigenem Seed und Spielmodus, Hauptmenue aus dem Pausemenue
+    {
+        auto clickId = [&](int id) {
+            const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
+            for (size_t i = 0; i < menu.widgets.size(); ++i)
+                if (menu.widgets[i].id == id) {
+                    activateWidget(static_cast<int>(i), menu, glm::vec2(0.0f));
+                    return true;
+                }
+            return false;
+        };
+        opt_.noSave = true;  // keine Dateien mehr anfassen
+        showMainMenu();
+        SCHECK(paused_ && screen_ == MenuScreen::Main && !hasSave_);
+        SCHECK(clickId(W_MAIN_NEW) && screen_ == MenuScreen::NewWorld);
+        for (int k : {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4, GLFW_KEY_BACKSPACE, GLFW_KEY_7}) handleKey(k, GLFW_PRESS, 0);
+        SCHECK(newSeedText_ == "1237");
+        SCHECK(clickId(W_NEW_MODE) && newCreative_);
+        const int oldSeed = world_->seed();
+        SCHECK(clickId(W_NEW_CREATE) && !paused_ && screen_ == MenuScreen::None);
+        SCHECK(world_->seed() == 1237 && world_->seed() != oldSeed && creative_ && inventory_.slots[0].id == DEFAULT_HOTBAR[0]);
+        SCHECK(health_ == 20 && !dead_ && entities_.mobs().empty());
+        // Esc im Seed-Bildschirm geht zurueck, Einstellungen aus dem Hauptmenue fuehren auch dorthin zurueck
+        showMainMenu();
+        SCHECK(clickId(W_SETTINGS) && screen_ == MenuScreen::Settings);
+        SCHECK(clickId(W_BACK) && screen_ == MenuScreen::Main);
+        SCHECK(clickId(W_MAIN_NEW) && screen_ == MenuScreen::NewWorld);
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(screen_ == MenuScreen::Main);
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(screen_ == MenuScreen::Main && paused_);  // Esc tut im Hauptmenue nichts
+        SCHECK(clickId(W_MAIN_PLAY) && !paused_);
+        // Pausemenue -> Hauptmenue
+        setPaused(true);
+        SCHECK(clickId(W_TO_MAIN) && screen_ == MenuScreen::Main);
+        setPaused(false);
+    }
+
 #undef SCHECK
     std::printf("Selbsttest: %d Pruefungen, %d fehlgeschlagen\n", checks, failed);
     return failed;
@@ -3231,7 +3378,7 @@ int Game::run() {
         last = now;
 
         glfwPollEvents();
-        if (paused_ && (opt_.benchFrames > 0 || shotMode) && opt_.demo != "menu" && opt_.demo != "settings" && opt_.demo.rfind("editor", 0) != 0) setPaused(false);
+        if (paused_ && (opt_.benchFrames > 0 || shotMode) && opt_.demo != "menu" && opt_.demo != "mainmenu" && opt_.demo != "settings" && opt_.demo.rfind("editor", 0) != 0) setPaused(false);
         update(dt);
         render();
         ++frameCounter_;

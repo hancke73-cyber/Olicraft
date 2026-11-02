@@ -27,6 +27,7 @@ static void printHelp() {
         "  --sounds PFAD     Ordner mit Klangdateien (Standard: sounds, Musik in sounds/music)\n"
         "  --no-sound        Ton aus\n"
         "  --village         Beim Start zum naechsten Dorf springen\n"
+        "  --no-menu         Ohne Hauptmenue direkt ins Spiel\n"
         "  --list-sounds     Alle benoetigten Klangdateien mit Beschreibung und Vorschlag fuer die Erzeugung ausgeben\n"
         "  --help            Diese Hilfe\n"
         "\n"
@@ -116,6 +117,8 @@ int main(int argc, char** argv) {
             need(1);
             opt.hasTime = true;
             opt.timeOfDay = static_cast<float>(std::atof(argv[++i]));
+        } else if (a == "--no-menu") {
+            opt.noMenu = true;
         } else if (a == "--village") {
             opt.gotoVillage = true;
         } else if (a == "--moon") {
