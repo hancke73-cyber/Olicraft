@@ -24,6 +24,9 @@ enum WidgetId {
     W_SKIN,
     W_MAIN_PLAY,
     W_MAIN_NEW,
+    W_WORLD_UP,
+    W_WORLD_DOWN,
+    W_NEW_NAME,
     W_NEW_MODE,
     W_NEW_SEED,
     W_NEW_CREATE,
@@ -65,6 +68,7 @@ enum WidgetId {
     W_ED_LIST_DOWN,
     W_ED_SWATCH_BASE = 1000,  // + Index der Farbfelder
     W_ED_LIST_BASE = 2000,    // + Index des Eintrags
+    W_WORLD_BASE = 3000,      // + Zeile in der sichtbaren Weltliste
 };
 
 struct Widget {
@@ -99,7 +103,11 @@ struct MenuState {
     bool vsync = true;
     float masterVolume = 0.8f, effectVolume = 1.0f, musicVolume = 0.5f;
     int skinSlot = 0;
-    bool hasSave = false;       // Hauptmenue: gibt es einen Spielstand
+    std::vector<std::string> worldLabels;  // Hauptmenue: eine Zeile je Welt
+    int worldSel = -1;                     // gewaehlte Welt
+    int worldScroll = 0;                   // erste sichtbare Zeile
+    std::string newName;        // Neue Welt: Name
+    bool nameFocus = true;      // Tastatureingabe geht in den Namen (sonst in den Seed)
     std::string seedText;       // Neue Welt: eingetippte Ziffern
     bool newCreative = false;   // Neue Welt: Spielmodus
     int shadows = 1;
@@ -108,6 +116,8 @@ struct MenuState {
     bool fullscreen = false;
     bool creative = false;
 };
+
+constexpr int WORLD_ROWS = 5;  // sichtbare Zeilen der Weltliste
 
 MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h);
 int hitWidget(const MenuLayout& m, glm::vec2 p);  // Index in widgets oder -1

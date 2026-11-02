@@ -21,6 +21,7 @@
 #include "Settings.h"
 #include "TextureStore.h"
 #include "World.h"
+#include "Worlds.h"
 
 struct GLFWwindow;
 
@@ -31,7 +32,8 @@ struct Options {
     int32_t seed = 0;
     bool newWorld = false;
     bool noSave = false;
-    std::string savePath = "saves/world.dat";
+    std::string savePath = "saves/world.dat";  // Datei fuer --no-menu, --screenshot usw.
+    std::string savesDir = "saves";            // Ordner der Welten (Hauptmenue)
     std::string settingsPath = "settings.cfg";
     std::string texturesDir = "textures";
     bool distanceCli = false;  // --distance gegeben: ueberschreibt die gespeicherte Einstellung
@@ -77,6 +79,7 @@ private:
     void shutdown();
 
     void handleKey(int key, int action, int mods);
+    void handleChar(unsigned int codepoint);
     void handleScroll(double dy);
     void handleMouseButton(int button, int action, int mods);
     void handleCursor(double x, double y);
@@ -105,8 +108,13 @@ private:
     InvLayout invLayout() const;
     void useBed(const glm::ivec3& pos);
     void showMainMenu();
-    void resetWorld(int32_t seed, bool creative);
-    void refreshHasSave();
+    void resetWorld(int32_t seed, bool creative, bool findSpawn = true);  // findSpawn=false: Welt bleibt leer (vor applySave)
+    void refreshWorlds();
+    bool loadWorld(const WorldEntry& e);
+    void applySave(const SaveFile& sf);
+    void createWorld();
+    void selectWorld(int index);
+    bool menuAtStart() const;
     // Ruestungsteil anlegen (tauscht mit dem getragenen Teil); true, wenn es eine Ruestung war
     bool equipArmor(ItemStack& from);
     // Rezeptbuch
@@ -178,8 +186,14 @@ private:
     bool bookOnlyCraftable_ = false;
     MenuScreen settingsFrom_ = MenuScreen::Pause;  // Hauptmenue oder Pause: wohin "Zurueck" fuehrt
     std::string newSeedText_;
+    std::string newName_;
+    bool newNameFocus_ = true;
+    bool newNameFresh_ = false;  // Vorgabe im Namensfeld: der erste Tastendruck ersetzt sie
     bool newCreative_ = false;
-    bool hasSave_ = false;
+    std::vector<WorldEntry> worlds_;  // Welten im Ordner (Hauptmenue)
+    int worldSel_ = -1, worldScroll_ = 0;
+    double lastWorldClick_ = -10.0;
+    std::string currentWorld_;        // Name der geladenen Welt (leer: Hintergrundwelt des Hauptmenues)
 
     bool creative_ = false;
     int health_ = 20;

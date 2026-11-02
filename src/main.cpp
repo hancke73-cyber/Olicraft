@@ -21,7 +21,8 @@ static void printHelp() {
         "  --creative        Kreativmodus erzwingen (Standard: Survival, im Spiel mit G umschaltbar)\n"
         "  --survival        Survival erzwingen\n"
         "  --no-mobs         Keine Tiere und Monster\n"
-        "  --save-path PFAD  Speicherdatei (Standard: saves/world.dat)\n"
+        "  --save-path PFAD  Speicherdatei fuer --no-menu usw. (Standard: saves/world.dat)\n"
+        "  --saves-dir PFAD  Ordner der Welten im Hauptmenue (Standard: saves, je Welt eine Datei <Name>.dat)\n"
         "  --settings PFAD   Einstellungsdatei (Standard: settings.cfg)\n"
         "  --textures PFAD   Ordner mit eigenen Texturen (Standard: textures)\n"
         "  --sounds PFAD     Ordner mit Klangdateien (Standard: sounds, Musik in sounds/music)\n"
@@ -63,6 +64,9 @@ int main(int argc, char** argv) {
         } else if (a == "--save-path") {
             need(1);
             opt.savePath = argv[++i];
+        } else if (a == "--saves-dir") {
+            need(1);
+            opt.savesDir = argv[++i];
         } else if (a == "--settings") {
             need(1);
             opt.settingsPath = argv[++i];

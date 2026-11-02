@@ -38,10 +38,10 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Tag-Nacht-Zyklus (10 Minuten): Himmelsverlauf mit Abendrot und Glanz um die Sonne, Sonne mit Strahlen (tief am Horizont größer und orange), Mond mit 8 Phasen und Kratern (wechselt jede Nacht), funkelnde Sterne in drei Größen und leichten Farbtönen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
 - Blocklicht (0 bis 15, Ausbreitung wie in Minecraft, warmes Licht): Fackeln (Stufe 14), Lava (15) und brennende Öfen (13) beleuchten ihre Umgebung, Licht läuft über Chunkgrenzen und wird beim Entfernen korrekt nachgefüllt. Fackeln stehen auf dem Boden oder hängen an Wänden (nie an der Decke), fallen ab, wenn der Träger fehlt, brechen sofort und halten Zombies fern (sie erscheinen nur bei Licht 6 oder weniger)
-- Hauptmenü beim Start: "Spielen" bzw. "Spiel fortsetzen" (falls ein Spielstand da ist), "Neue Welt" (Spielmodus, Seed per Ziffern, leer ist zufällig) und Einstellungen. Das Pause-Menü hat "Hauptmenü". Mit `--no-menu` startet das Spiel direkt
+- Hauptmenü beim Start: Titel "OliCraft" in großer Schrift, dahinter dreht sich langsam eine Beispielwelt. Darunter die Weltliste (neueste zuerst, Mausrad, Pfeiltasten, Doppelklick oder Enter startet) mit den Knöpfen Spielen, Neue Welt, Einstellungen, Beenden. Jede Welt ist eine eigene Datei `saves/<Name>.dat`, die alte `saves/world.dat` erscheint als Welt "world". Neue Welt: Name (nur Buchstaben, Ziffern, Leerzeichen, - und _, höchstens 24 Zeichen, doppelte Namen bekommen " 2"), Seed (leer ist zufällig) und Spielmodus. Das Pause-Menü hat "Hauptmenü" (speichert die Welt). Mit `--no-menu` startet das Spiel direkt
 - Grafik (Einstellungen, Grafik): Schatten als Shadow-Map (aus, mittel, hoch), Wolken (zwei Schichten, ziehen mit dem Wind), animiertes Wasser (leichte Wellen und fließende Textur), Partikel (Block-Bruchstücke beim Abbauen, Spritzer, Rauch und Flammen an Fackeln und Öfen, Funken über Lava, Blut und Staub bei Mobs), Texturfilter (Pixel scharf oder weich) und anisotrope Filterung (1x bis 16x, nur wenn die Grafikkarte sie bietet)
 - Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, drei Lautstärkeregler, VSync, Vollbild, Spielmodus, Textur-Editor. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
-- Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
+- Speichern und Laden je Welt: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
 
 Texturformate: Kacheln sind 16x16 (`textures/block_<name>.png`), die Skins `skin_player.png` und `skin_zombie.png` 64x32 im Minecraft-Layout (Kopf 0,0, Körper 16,16, Arm 40,16, Bein 0,16; linke Gliedmaßen werden gespiegelt; Minecraft-Skins im Format 64x64 werden akzeptiert, die obere Hälfte zählt), `skin_pig.png`, `skin_cow.png` und `skin_sheep.png` 64x64. Dateien mit falscher Größe werden beim Start ignoriert und gemeldet. Der Block-Export ist ein 64x48-Kreuznetz (4 x 3 Kacheln).
@@ -140,7 +140,8 @@ cmake --build build -j
 --no-vsync         VSync aus
 --no-save          Nichts laden oder speichern
 --no-menu          Ohne Hauptmenü direkt ins Spiel
---save-path PFAD   Speicherdatei (Standard: saves/world.dat)
+--save-path PFAD   Speicherdatei für --no-menu und die Entwicklungsoptionen (Standard: saves/world.dat)
+--saves-dir PFAD   Ordner der Welten im Hauptmenü (Standard: saves)
 --settings PFAD    Einstellungsdatei (Standard: settings.cfg)
 --textures PFAD    Ordner mit eigenen Texturen (Standard: textures)
 --sounds PFAD      Ordner mit Klangdateien (Standard: sounds, Musik in sounds/music)
@@ -179,6 +180,7 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Menu.*`, `src/Settings.*` | Pause- und Einstellungsmenü, `settings.cfg` |
 | `src/TextureStore.*`, `src/TextureEditor.*`, `src/EditorUi.*`, `src/Image.*` | Texturspeicher mit PNG-Dateien, Editor-Logik (Werkzeuge, Rückgängig, Netze, Vorschau), Editor-Oberfläche |
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
+| `src/Worlds.*` | Weltliste (Dateien im Ordner), Namen prüfen, eindeutige Namen |
 | `src/Save.*` | Speicherformat Version 6 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Rüstung, Öfen, Truhen, Wiedereinstiegspunkt, Gesundheit, Modus; ältere Versionen bleiben lesbar) |
 | `src/BlockShape.h` | Boxen der Teilformen (Kollision, Strahl, Darstellung) |
 | `src/Village.*`, `src/Trades.*` | Dörfer (Lage, Gebäude, Wege, Beute) und Handelsangebote der Dorfbewohner |

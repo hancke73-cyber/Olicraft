@@ -21,6 +21,7 @@
 #include "Models.h"
 #include "Skins.h"
 #include "Particles.h"
+#include "Worlds.h"
 #include "Sky.h"
 #include <array>
 
@@ -1112,7 +1113,11 @@ static void testSettingsAndMenu() {
     // Menue-Layouts: Widgets liegen im Fenster, ueberlappen nicht und sind per Mausposition treffbar
     for (MenuScreen scr : {MenuScreen::Pause, MenuScreen::Settings, MenuScreen::Main, MenuScreen::NewWorld, MenuScreen::Graphics}) {
         for (auto dim : {std::make_pair(1280, 720), std::make_pair(800, 600), std::make_pair(1920, 1080)}) {
+          for (int nWorlds : {0, 1, 3, 9}) {
             MenuState st;
+            for (int k = 0; k < nWorlds; ++k) st.worldLabels.push_back("Welt " + std::to_string(k));
+            st.worldSel = nWorlds > 0 ? nWorlds - 1 : -1;
+            st.worldScroll = nWorlds > WORLD_ROWS ? nWorlds - WORLD_ROWS : 0;
             MenuLayout m = buildMenu(scr, st, dim.first, dim.second);
             CHECK(!m.widgets.empty());
             for (size_t i = 0; i < m.widgets.size(); ++i) {
@@ -1127,6 +1132,19 @@ static void testSettingsAndMenu() {
                 }
             }
             CHECK(hitWidget(m, glm::vec2(1.0f, 1.0f)) == -1);
+            if (scr == MenuScreen::Main) {  // Zeilen, Bildlaufknoepfe und Knoepfe vorhanden, "Spielen" nur mit gewaehlter Welt
+                int rows = 0, play = 0, up = 0, down = 0;
+                bool playEnabled = false;
+                for (const Widget& w : m.widgets) {
+                    if (w.id >= W_WORLD_BASE && w.id < W_WORLD_BASE + WORLD_ROWS) ++rows;
+                    if (w.id == W_MAIN_PLAY) { ++play; playEnabled = w.enabled; }
+                    if (w.id == W_WORLD_UP) ++up;
+                    if (w.id == W_WORLD_DOWN) ++down;
+                }
+                CHECK(rows == std::min(nWorlds, WORLD_ROWS) && play == 1 && playEnabled == (nWorlds > 0));
+                CHECK((nWorlds > WORLD_ROWS) == (up == 1 && down == 1));
+            }
+          }
         }
     }
     CHECK(buildMenu(MenuScreen::None, MenuState(), 1280, 720).widgets.empty());
@@ -3162,6 +3180,76 @@ static void testLaddersBedsWater() {
     }
 }
 
+static void testWorlds() {
+    // Namen
+    CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
+    CHECK(sanitizeWorldName("  a/b\\c:d*e?  ") == "abcde");
+    CHECK(sanitizeWorldName("../../etc") == "etc");
+    CHECK(sanitizeWorldName("???").empty() && sanitizeWorldName("   ").empty() && sanitizeWorldName("").empty());
+    CHECK(sanitizeWorldName("Welt-1_x") == "Welt-1_x");
+    CHECK(sanitizeWorldName("aeoe\xc3\xa4").size() == 4);  // Umlaute fallen weg
+    CHECK(sanitizeWorldName(std::string(60, 'x')).size() == MAX_WORLD_NAME);
+    CHECK(sanitizeWorldName("CON") == "CON_" && sanitizeWorldName("nul") == "nul_" && sanitizeWorldName("Lpt1") == "Lpt1_");
+    CHECK(sanitizeWorldName("Console") == "Console");
+    CHECK(worldNameChar('a') && worldNameChar('Z') && worldNameChar('5') && worldNameChar(' ') && worldNameChar('-') && worldNameChar('_'));
+    CHECK(!worldNameChar('/') && !worldNameChar('.') && !worldNameChar(0xE4) && !worldNameChar(0));
+    CHECK(worldPathFor("saves", "A B") == "saves/A B.dat");
+
+    // Dateien: Liste, Kopf lesen, eindeutige Namen
+    const std::string dir = "olicraft_test_worlds";
+    std::filesystem::remove_all(dir);
+    CHECK(listWorlds(dir).empty());  // Ordner fehlt
+    std::filesystem::create_directories(dir);
+    CHECK(uniqueWorldName(dir, "Welt") == "Welt");
+    CHECK(uniqueWorldName(dir, "///") == "Neue Welt");
+    auto make = [&](const std::string& name, int32_t seed, bool creative) {
+        SaveFile sf;
+        sf.seed = seed;
+        sf.player.creative = creative;
+        sf.player.health = 14;
+        sf.player.hasInventory = true;
+        std::string err;
+        return writeSaveFile(worldPathFor(dir, name), sf, &err);
+    };
+    CHECK(make("Alpha", 111, false));
+    CHECK(make("beta", 222, true));
+    {
+        std::ofstream f(dir + "/kaputt.dat", std::ios::binary);
+        f << "kein Spielstand";
+    }
+    {
+        std::ofstream f(dir + "/notiz.txt");
+        f << "x";
+    }
+    SaveInfo info;
+    CHECK(readSaveInfo(worldPathFor(dir, "Alpha"), info) && info.seed == 111 && !info.creative && info.health == 14);
+    CHECK(readSaveInfo(worldPathFor(dir, "beta"), info) && info.seed == 222 && info.creative);
+    CHECK(!readSaveInfo(dir + "/kaputt.dat", info) && !readSaveInfo(dir + "/gibtsnicht.dat", info));
+    std::vector<WorldEntry> list = listWorlds(dir);
+    CHECK(list.size() == 2);  // kaputte Datei und .txt fehlen
+    bool a = false, b = false;
+    for (const WorldEntry& w : list) {
+        if (w.name == "Alpha" && w.seed == 111 && !w.creative && w.path == dir + "/Alpha.dat") a = true;
+        if (w.name == "beta" && w.seed == 222 && w.creative) b = true;
+    }
+    CHECK(a && b);
+    CHECK(list.size() == 2 && list[0].modified >= list[1].modified);
+    CHECK(uniqueWorldName(dir, "Alpha") == "Alpha 2");
+    CHECK(uniqueWorldName(dir, "ALPHA") == "ALPHA 2");  // Windows unterscheidet nicht nach Gross/Klein
+    CHECK(make("Alpha 2", 5, false));
+    CHECK(uniqueWorldName(dir, "Alpha") == "Alpha 3");
+    const std::string longName(MAX_WORLD_NAME, 'q');
+    CHECK(make(longName, 9, false));
+    const std::string u = uniqueWorldName(dir, longName);
+    CHECK(u.size() <= MAX_WORLD_NAME && u != longName && u.size() >= MAX_WORLD_NAME - 1);
+    // die alte Datei saves/world.dat erscheint als Welt "world"
+    CHECK(make("world", 3, false));
+    bool hasWorld = false;
+    for (const WorldEntry& w : listWorlds(dir)) hasWorld = hasWorld || w.name == "world";
+    CHECK(hasWorld);
+    std::filesystem::remove_all(dir);
+}
+
 static void testParticlesAndGraphics() {
     // Grafik-Einstellungen: Rundreise und Begrenzung
     std::filesystem::create_directories("olicraft_test_gfx");
@@ -3328,6 +3416,7 @@ int main() {
     testLaddersBedsWater();
     testArmor();
     testParticlesAndGraphics();
+    testWorlds();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

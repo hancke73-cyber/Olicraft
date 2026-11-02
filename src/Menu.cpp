@@ -39,22 +39,44 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
 
     if (screen == MenuScreen::Main) {
         m.title = "OliCraft";
-        m.titleScale = 5.0f;
+        m.titleScale = 6.0f;
         m.subtitle = "Ein Minecraft-Klon in C++";
-        m.dim = 0.28f;
-        const float total = 5 * bh + 4 * gap;
-        float y = std::floor(h * 0.42f);
-        (void)total;
-        m.titlePos = {0.0f, std::floor(h * 0.14f)};
-        m.widgets.push_back(button(W_MAIN_PLAY, st.hasSave ? "Spiel fortsetzen" : "Spielen", x, y, bw, bh));
+        m.dim = 0.22f;
+        m.titlePos = {0.0f, std::floor(h * 0.07f)};
+        const float lw = std::floor(std::min(bw * 1.7f, w - 16.0f * s)), lx = std::floor((w - lw) * 0.5f);
+        const float rowH = bh, rowGap = 2.0f * s;
+        float y = std::floor(h * 0.36f);
+        const int n = static_cast<int>(st.worldLabels.size());
+        if (n == 0) {
+            Widget e = button(W_NONE, "Noch keine Welt. Lege mit Neue Welt eine an.", lx, y, lw, rowH);
+            e.enabled = false;
+            m.widgets.push_back(e);
+        }
+        const int maxScroll = std::max(0, n - WORLD_ROWS);
+        const int scroll = std::max(0, std::min(maxScroll, st.worldScroll));
+        for (int r = 0; r < WORLD_ROWS && scroll + r < n; ++r) {
+            Widget row = button(W_WORLD_BASE + r, st.worldLabels[static_cast<size_t>(scroll + r)], lx, y + r * (rowH + rowGap), lw - (n > WORLD_ROWS ? rowH + rowGap : 0.0f), rowH);
+            row.left = true;
+            row.selected = scroll + r == st.worldSel;
+            m.widgets.push_back(row);
+        }
+        if (n > WORLD_ROWS) {
+            Widget up = button(W_WORLD_UP, "^", lx + lw - rowH, y, rowH, rowH);
+            up.enabled = scroll > 0;
+            Widget dn = button(W_WORLD_DOWN, "v", lx + lw - rowH, y + (WORLD_ROWS - 1) * (rowH + rowGap), rowH, rowH);
+            dn.enabled = scroll < maxScroll;
+            m.widgets.push_back(up);
+            m.widgets.push_back(dn);
+        }
+        y += WORLD_ROWS * (rowH + rowGap) + 6.0f * s;
+        const float cw = std::floor((lw - gap) * 0.5f);
+        Widget play = button(W_MAIN_PLAY, "Spielen", lx, y, cw, bh);
+        play.enabled = st.worldSel >= 0 && st.worldSel < n;
+        m.widgets.push_back(play);
+        m.widgets.push_back(button(W_MAIN_NEW, "Neue Welt ...", lx + cw + gap, y, cw, bh));
         y += bh + gap;
-        m.widgets.push_back(button(W_MAIN_NEW, "Neue Welt ...", x, y, bw, bh));
-        y += bh + gap;
-        m.widgets.push_back(button(W_SETTINGS, "Einstellungen", x, y, bw, bh));
-        y += bh + gap;
-        m.widgets.push_back(button(W_EDITOR, "Textur-Editor", x, y, bw, bh));
-        y += bh + gap;
-        m.widgets.push_back(button(W_QUIT, "Beenden", x, y, bw, bh));
+        m.widgets.push_back(button(W_SETTINGS, "Einstellungen", lx, y, cw, bh));
+        m.widgets.push_back(button(W_QUIT, "Beenden", lx + cw + gap, y, cw, bh));
         return m;
     }
     if (screen == MenuScreen::NewWorld) {
@@ -63,17 +85,18 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
         m.dim = 0.5f;
         float y = std::floor(h * 0.30f);
         m.titlePos = {0.0f, std::floor(h * 0.14f)};
+        const std::string nameLabel = "Name: " + st.newName + (st.nameFocus ? "_" : "");
+        Widget nm = button(W_NEW_NAME, nameLabel, x, y, bw, bh);
+        nm.selected = st.nameFocus;
+        m.widgets.push_back(nm);
+        y += bh + gap;
+        const std::string seedLabel = st.seedText.empty() ? std::string(st.nameFocus ? "Seed: zufaellig (anklicken)" : "Seed: zufaellig (Ziffern tippen)") : "Seed: " + st.seedText + (st.nameFocus ? "" : "_");
+        Widget sd = button(W_NEW_SEED, seedLabel, x, y, bw, bh);
+        sd.selected = !st.nameFocus;
+        m.widgets.push_back(sd);
+        y += bh + gap;
         m.widgets.push_back(button(W_NEW_MODE, std::string("Spielmodus: ") + (st.newCreative ? "Kreativ" : "Survival"), x, y, bw, bh));
         y += bh + gap;
-        const std::string seedLabel = st.seedText.empty() ? std::string("Seed: zufaellig (Ziffern tippen)") : "Seed: " + st.seedText + "_";
-        m.widgets.push_back(button(W_NEW_SEED, seedLabel, x, y, bw, bh));
-        y += bh + gap;
-        if (st.hasSave) {
-            Widget warn = button(W_NONE, "Achtung: ersetzt den alten Spielstand", x, y, bw, bh);
-            warn.enabled = false;
-            m.widgets.push_back(warn);
-            y += bh + gap;
-        }
         y += gap;
         m.widgets.push_back(button(W_NEW_CREATE, "Welt erstellen", x, y, bw, bh));
         y += bh + gap;

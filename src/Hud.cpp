@@ -567,7 +567,13 @@ static void drawMenu(HudBatch& b, const MenuLayout& m, const std::vector<Preview
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, m.dim));
     const float ts = m.titleScale * s;
     const float tw = textWidthPx(m.title) * ts;
-    b.text(std::floor((w - tw) * 0.5f), m.titlePos.y, ts, m.title);
+    if (m.titleScale >= 5.0f) {  // Titelbild: grosse Schrift mit Schatten und warmer Farbe
+        const float tx = std::floor((w - tw) * 0.5f);
+        b.text(tx + ts * 0.7f, m.titlePos.y + ts * 0.7f, ts, m.title, glm::vec4(0.05f, 0.04f, 0.02f, 0.85f));
+        b.text(tx, m.titlePos.y, ts, m.title, glm::vec4(1.0f, 0.86f, 0.35f, 1.0f));
+    } else {
+        b.text(std::floor((w - tw) * 0.5f), m.titlePos.y, ts, m.title);
+    }
     if (!m.subtitle.empty()) {
         const float ss = 1.5f * s;
         b.text(std::floor((w - textWidthPx(m.subtitle) * ss) * 0.5f), m.titlePos.y + 9.0f * ts + 6.0f * s, ss, m.subtitle, glm::vec4(0.85f, 0.88f, 0.95f, 1.0f));

@@ -57,4 +57,12 @@ bool rleDecode(const std::vector<uint8_t>& rle, std::vector<BlockId>& out, size_
 bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* error);
 bool readSaveFile(const std::string& path, SaveFile& save, std::string* error);
 
+// Nur der Kopf einer Speicherdatei (fuer die Weltliste), ohne die Chunks zu lesen.
+struct SaveInfo {
+    int32_t seed = 0;
+    bool creative = false;
+    int health = 20;
+};
+bool readSaveInfo(const std::string& path, SaveInfo& info);
+
 }  // namespace oc

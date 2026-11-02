@@ -23,6 +23,10 @@
 namespace oc {
 
 namespace {
+constexpr int32_t MENU_BACKGROUND_SEED = 2;  // Hintergrundwelt im Hauptmenue
+}  // namespace
+
+namespace {
 
 constexpr float DAY_SECONDS = 600.0f;
 constexpr float REACH = 6.0f;
@@ -104,6 +108,7 @@ bool Game::init() {
     glfwSetKeyCallback(window_, [](GLFWwindow* win, int key, int, int action, int mods) {
         gameFrom(win)->handleKey(key, action, mods);
     });
+    glfwSetCharCallback(window_, [](GLFWwindow* win, unsigned int cp) { gameFrom(win)->handleChar(cp); });
     glfwSetScrollCallback(window_, [](GLFWwindow* win, double, double dy) { gameFrom(win)->handleScroll(dy); });
     glfwSetMouseButtonCallback(window_, [](GLFWwindow* win, int b, int a, int m) {
         gameFrom(win)->handleMouseButton(b, a, m);
@@ -140,7 +145,8 @@ bool Game::init() {
     // Welt laden oder neu erzeugen
     SaveFile sf;
     bool loaded = false;
-    if (!opt_.noSave && !opt_.newWorld && std::filesystem::exists(opt_.savePath)) {
+    const bool menuStart = menuAtStart();
+    if (!menuStart && !opt_.noSave && !opt_.newWorld && std::filesystem::exists(opt_.savePath)) {
         std::string err;
         if (readSaveFile(opt_.savePath, sf, &err)) {
             loaded = true;
@@ -152,31 +158,16 @@ bool Game::init() {
     int32_t seed;
     if (loaded) seed = sf.seed;
     else if (opt_.hasSeed) seed = opt_.seed;
+    else if (menuStart) seed = MENU_BACKGROUND_SEED;  // Hintergrund des Hauptmenues, wird nie gespeichert
     else seed = static_cast<int32_t>(std::random_device{}() & 0x7FFFFFFFu);
     std::printf("Welt-Seed: %d%s\n", seed, loaded ? " (Spielstand geladen)" : "");
+    if (menuStart) opt_.savePath.clear();  // die Hintergrundwelt wird nicht gespeichert
+    else if (!opt_.noSave) currentWorld_ = std::filesystem::path(opt_.savePath).stem().string();
 
     world_ = std::make_unique<World>(seed);
     entities_ = EntityManager(static_cast<uint32_t>(seed) ^ 0xA5A5u);
     if (loaded) {
-        world_->importChunks(sf.chunks);
-        world_->importFurnaces(sf.furnaces);
-        world_->importChests(sf.chests);
-        player_.pos = sf.player.pos;
-        player_.yaw = sf.player.yaw;
-        player_.pitch = sf.player.pitch;
-        player_.flying = sf.player.flying;
-        slot_ = std::max(0, std::min(Inventory::HOTBAR - 1, sf.player.slot));
-        timeOfDay_ = sf.player.timeOfDay;
-        health_ = sf.player.health;
-        if (sf.player.hasInventory) {
-            creative_ = sf.player.creative;
-            inventory_ = sf.player.inventory;
-        } else {
-            // Spielstand aus Version 1 (kreativ, feste Hotbar)
-            creative_ = true;
-            for (int i = 0; i < Inventory::HOTBAR; ++i) inventory_.slots[i] = {DEFAULT_HOTBAR[i], 64};
-        }
-        spawnPoint_ = sf.player.hasSpawn ? sf.player.spawn : player_.pos;
+        applySave(sf);
     } else {
         player_.pos = world_->findSpawn();
         player_.yaw = -90.0f;
@@ -290,10 +281,7 @@ bool Game::init() {
         curX_ = winW_cur_ * 0.5;
         curY_ = winH_cur_ * 0.5;
     }
-    refreshHasSave();
-    if (!opt_.noMenu && !opt_.selfTest && opt_.screenshotPath.empty() && opt_.benchFrames == 0 && opt_.demo.empty() && !opt_.hasPos && !opt_.gotoVillage)
-        showMainMenu();
-    if (opt_.demo == "mainmenu") showMainMenu();
+    if (menuAtStart()) showMainMenu();
     if (opt_.demo == "menu" || opt_.demo == "settings") {
         setPaused(true);
         if (opt_.demo == "settings") screen_ = MenuScreen::Settings;
@@ -408,9 +396,90 @@ glm::vec2 Game::mousePx() const {
     return glm::vec2(static_cast<float>(curX_ * sx), static_cast<float>(curY_ * sy));
 }
 
-void Game::refreshHasSave() {
-    std::error_code ec;
-    hasSave_ = !opt_.noSave && std::filesystem::exists(opt_.savePath, ec);
+bool Game::menuAtStart() const {
+    if (opt_.demo == "mainmenu") return true;
+    return !opt_.noMenu && !opt_.selfTest && opt_.screenshotPath.empty() && opt_.benchFrames == 0 && opt_.demo.empty() &&
+           !opt_.hasPos && !opt_.gotoVillage && !opt_.hasSeed && !opt_.newWorld;
+}
+
+void Game::selectWorld(int index) {
+    const int n = static_cast<int>(worlds_.size());
+    worldSel_ = n == 0 ? -1 : std::max(0, std::min(n - 1, index));
+    if (worldSel_ >= 0) {
+        if (worldSel_ < worldScroll_) worldScroll_ = worldSel_;
+        if (worldSel_ >= worldScroll_ + WORLD_ROWS) worldScroll_ = worldSel_ - WORLD_ROWS + 1;
+    }
+    worldScroll_ = std::max(0, std::min(std::max(0, n - WORLD_ROWS), worldScroll_));
+}
+
+// Liest die Welten im Ordner neu ein und waehlt die laufende (sonst die zuletzt gespielte)
+void Game::refreshWorlds() {
+    worlds_.clear();
+    if (!opt_.noSave) worlds_ = listWorlds(opt_.savesDir);
+    int sel = worlds_.empty() ? -1 : 0;
+    for (size_t i = 0; i < worlds_.size(); ++i)
+        if (worlds_[i].name == currentWorld_) sel = static_cast<int>(i);
+    worldScroll_ = 0;
+    selectWorld(sel);
+}
+
+// Uebernimmt Welt und Spieler aus einer Speicherdatei (World und Entities existieren bereits)
+void Game::applySave(const SaveFile& sf) {
+    world_->importChunks(sf.chunks);
+    world_->importFurnaces(sf.furnaces);
+    world_->importChests(sf.chests);
+    player_.pos = sf.player.pos;
+    player_.yaw = sf.player.yaw;
+    player_.pitch = sf.player.pitch;
+    player_.flying = sf.player.flying;
+    slot_ = std::max(0, std::min(Inventory::HOTBAR - 1, sf.player.slot));
+    timeOfDay_ = sf.player.timeOfDay;
+    health_ = sf.player.health;
+    if (sf.player.hasInventory) {
+        creative_ = sf.player.creative;
+        inventory_ = sf.player.inventory;
+    } else {
+        // Spielstand aus Version 1 (kreativ, feste Hotbar)
+        creative_ = true;
+        for (int i = 0; i < Inventory::HOTBAR; ++i) inventory_.slots[i] = {DEFAULT_HOTBAR[i], 64};
+    }
+    spawnPoint_ = sf.player.hasSpawn ? sf.player.spawn : player_.pos;
+}
+
+bool Game::loadWorld(const WorldEntry& e) {
+    SaveFile sf;
+    std::string err;
+    if (!readSaveFile(e.path, sf, &err)) {
+        showMessage("Welt nicht lesbar: " + err);
+        return false;
+    }
+    resetWorld(sf.seed, sf.player.creative, false);
+    applySave(sf);
+    world_->loadAround(player_.pos, 3);
+    opt_.savePath = e.path;
+    currentWorld_ = e.name;
+    return true;
+}
+
+// Legt aus dem Bildschirm "Neue Welt" eine Welt mit eigener Datei an und startet sie
+void Game::createWorld() {
+    int32_t seed = static_cast<int32_t>(std::random_device{}() & 0x7FFFFFFFu);
+    if (!newSeedText_.empty()) seed = static_cast<int32_t>(std::strtoll(newSeedText_.c_str(), nullptr, 10) & 0x7FFFFFFF);
+    std::string name = sanitizeWorldName(newName_);
+    if (name.empty()) name = "Neue Welt";
+    if (!opt_.noSave) {
+        std::error_code ec;
+        std::filesystem::create_directories(opt_.savesDir, ec);
+        name = uniqueWorldName(opt_.savesDir, name);
+        opt_.savePath = worldPathFor(opt_.savesDir, name);
+    } else {
+        opt_.savePath.clear();
+    }
+    resetWorld(seed, newCreative_);
+    currentWorld_ = name;
+    setPaused(false);
+    player_.flying = false;
+    if (!opt_.noSave) saveWorld();  // die Welt steht sofort in der Liste
 }
 
 void Game::showMainMenu() {
@@ -421,7 +490,7 @@ void Game::showMainMenu() {
     screen_ = MenuScreen::Main;
     dragWidget_ = W_NONE;
     firstMouse_ = true;
-    refreshHasSave();
+    refreshWorlds();
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     glfwGetWindowSize(window_, &winW_cur_, &winH_cur_);
     curX_ = winW_cur_ * 0.5;
@@ -429,10 +498,11 @@ void Game::showMainMenu() {
     glfwSetCursorPos(window_, curX_, curY_);
     camMode_ = CameraMode::First;
     player_.flying = true;  // Kamera schwebt, solange das Menue offen ist
+    if (currentWorld_.empty() && opt_.savePath.empty()) player_.pos.y += 14.0f;  // Hintergrundwelt: Kamera etwas hoeher, mehr Aussicht
 }
 
 // Beginnt eine neue Welt (der alte Spielstand wird erst beim naechsten Speichern ersetzt)
-void Game::resetWorld(int32_t seed, bool creative) {
+void Game::resetWorld(int32_t seed, bool creative, bool findSpawn) {
     world_.reset();  // GL-Objekte der Chunks freigeben
     world_ = std::make_unique<World>(seed);
     entities_ = EntityManager(static_cast<uint32_t>(seed) ^ 0xA5A5u);
@@ -450,14 +520,15 @@ void Game::resetWorld(int32_t seed, bool creative) {
     dayCount_ = 0;
     slot_ = 0;
     player_.vel = glm::vec3(0.0f);
-    player_.pos = world_->findSpawn();
+    // Beim Laden darf noch kein Chunk erzeugt sein: die gespeicherten muessen zuerst eingelesen werden
+    player_.pos = findSpawn ? world_->findSpawn() : glm::vec3(0.0f, 80.0f, 0.0f);
     player_.yaw = -90.0f;
     player_.pitch = -10.0f;
     player_.flying = false;
     spawnPoint_ = player_.pos;
     if (creative_)
         for (int i = 0; i < Inventory::HOTBAR; ++i) inventory_.slots[i] = {DEFAULT_HOTBAR[i], 64};
-    world_->loadAround(player_.pos, 3);
+    if (findSpawn) world_->loadAround(player_.pos, 3);
     breaking_ = false;
     target_ = RayHit{};
     std::printf("Neue Welt, Seed: %d\n", seed);
@@ -492,7 +563,12 @@ MenuState Game::menuState() const {
     s.particles = settings_.particles;
     s.texFilter = settings_.texFilter;
     s.anisotropy = settings_.anisotropy;
-    s.hasSave = hasSave_;
+    for (const WorldEntry& w : worlds_)
+        s.worldLabels.push_back(w.name + "  (" + (w.creative ? "Kreativ" : "Survival") + ", Seed " + std::to_string(w.seed) + ")");
+    s.worldSel = worldSel_;
+    s.worldScroll = worldScroll_;
+    s.newName = newName_;
+    s.nameFocus = newNameFocus_;
     s.seedText = newSeedText_;
     s.newCreative = newCreative_;
     s.masterVolume = settings_.masterVolume;
@@ -541,8 +617,23 @@ void Game::updateSlider(int widgetId, float mouseX) {
 
 void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
     if (index < 0 || index >= static_cast<int>(menu.widgets.size())) return;
+    if (!menu.widgets[index].enabled) return;
     const int id = menu.widgets[index].id;
+    if (id >= W_WORLD_BASE && id < W_WORLD_BASE + WORLD_ROWS) {  // Welt waehlen, Doppelklick startet sie
+        const int idx = worldScroll_ + (id - W_WORLD_BASE);
+        const double now = glfwGetTime();
+        const bool twice = idx == worldSel_ && now - lastWorldClick_ < 0.45;
+        selectWorld(idx);
+        lastWorldClick_ = twice ? -10.0 : now;
+        if (twice) {
+            for (size_t i = 0; i < menu.widgets.size(); ++i)
+                if (menu.widgets[i].id == W_MAIN_PLAY) activateWidget(static_cast<int>(i), menu, mouse);
+        }
+        return;
+    }
     switch (id) {
+        case W_WORLD_UP: worldScroll_ = std::max(0, worldScroll_ - 1); break;
+        case W_WORLD_DOWN: worldScroll_ = std::min(std::max(0, static_cast<int>(worlds_.size()) - WORLD_ROWS), worldScroll_ + 1); break;
         case W_RESUME: setPaused(false); break;
         case W_SETTINGS:
             settingsFrom_ = screen_ == MenuScreen::Main ? MenuScreen::Main : MenuScreen::Pause;
@@ -554,25 +645,29 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
         case W_GFX_PARTICLES: settings_.particles = !settings_.particles; persistSettings(); break;
         case W_GFX_FILTER: settings_.texFilter = 1 - settings_.texFilter; persistSettings(); break;
         case W_GFX_ANISO: settings_.anisotropy = settings_.anisotropy >= 16 ? 1 : settings_.anisotropy * 2; persistSettings(); break;
-        case W_MAIN_PLAY:
-            setPaused(false);  // die geladene oder frisch erzeugte Welt
-            player_.flying = false;
-            break;
-        case W_MAIN_NEW:
-            screen_ = MenuScreen::NewWorld;
-            newSeedText_.clear();
-            newCreative_ = false;
-            break;
-        case W_NEW_MODE: newCreative_ = !newCreative_; break;
-        case W_NEW_BACK: screen_ = MenuScreen::Main; break;
-        case W_NEW_CREATE: {
-            int32_t seed = static_cast<int32_t>(std::random_device{}() & 0x7FFFFFFFu);
-            if (!newSeedText_.empty()) seed = static_cast<int32_t>(std::strtoll(newSeedText_.c_str(), nullptr, 10) & 0x7FFFFFFF);
-            resetWorld(seed, newCreative_);
+        case W_MAIN_PLAY: {
+            if (worldSel_ < 0 || worldSel_ >= static_cast<int>(worlds_.size())) break;
+            const WorldEntry entry = worlds_[static_cast<size_t>(worldSel_)];
+            // Die Welt, die gerade im Speicher ist, wird einfach fortgesetzt, jede andere aus ihrer Datei geladen
+            const bool running = !opt_.savePath.empty() && entry.name == currentWorld_;
+            if (!running && !loadWorld(entry)) break;
             setPaused(false);
             player_.flying = false;
             break;
         }
+        case W_MAIN_NEW:
+            screen_ = MenuScreen::NewWorld;
+            newSeedText_.clear();
+            newName_ = "Neue Welt";
+            newNameFocus_ = true;
+            newNameFresh_ = true;
+            newCreative_ = false;
+            break;
+        case W_NEW_NAME: newNameFocus_ = true; break;
+        case W_NEW_SEED: newNameFocus_ = false; break;
+        case W_NEW_MODE: newCreative_ = !newCreative_; break;
+        case W_NEW_BACK: screen_ = MenuScreen::Main; break;
+        case W_NEW_CREATE: createWorld(); break;
         case W_TO_MAIN:
             if (!opt_.noSave) saveWorld();
             showMainMenu();
@@ -1040,14 +1135,26 @@ void Game::setCreative(bool on) {
 void Game::handleKey(int key, int action, int mods) {
     if (action != GLFW_PRESS) return;
     if (paused_ && screen_ == MenuScreen::Editor && key != GLFW_KEY_ESCAPE && editorKey(key, mods)) return;
-    if (paused_ && screen_ == MenuScreen::NewWorld) {  // Seed eintippen
-        if (key >= GLFW_KEY_0 && key <= GLFW_KEY_9 && newSeedText_.size() < 9) newSeedText_ += static_cast<char>('0' + (key - GLFW_KEY_0));
-        else if (key >= GLFW_KEY_KP_0 && key <= GLFW_KEY_KP_9 && newSeedText_.size() < 9) newSeedText_ += static_cast<char>('0' + (key - GLFW_KEY_KP_0));
-        else if (key == GLFW_KEY_BACKSPACE && !newSeedText_.empty()) newSeedText_.pop_back();
-        else if (key == GLFW_KEY_ENTER) {
+    if (paused_ && screen_ == MenuScreen::NewWorld) {  // Name und Seed eintippen (Zeichen kommen ueber handleChar)
+        std::string& field = newNameFocus_ ? newName_ : newSeedText_;
+        if (key == GLFW_KEY_BACKSPACE && !field.empty()) {
+            if (newNameFocus_ && newNameFresh_) field.clear();
+            else field.pop_back();
+            newNameFresh_ = false;
+        } else if (key == GLFW_KEY_TAB) {
+            newNameFocus_ = !newNameFocus_;
+        } else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+            createWorld();
+            return;
+        }
+    }
+    if (paused_ && screen_ == MenuScreen::Main) {  // Weltliste mit Pfeiltasten
+        if (key == GLFW_KEY_UP) selectWorld(worldSel_ - 1);
+        else if (key == GLFW_KEY_DOWN) selectWorld(worldSel_ + 1);
+        else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
             const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
             for (size_t i = 0; i < menu.widgets.size(); ++i)
-                if (menu.widgets[i].id == W_NEW_CREATE) activateWidget(static_cast<int>(i), menu, glm::vec2(0.0f));
+                if (menu.widgets[i].id == W_MAIN_PLAY) activateWidget(static_cast<int>(i), menu, glm::vec2(0.0f));
             return;
         }
     }
@@ -1123,7 +1230,24 @@ void Game::handleKey(int key, int action, int mods) {
     }
 }
 
+void Game::handleChar(unsigned int cp) {
+    if (!paused_ || screen_ != MenuScreen::NewWorld) return;
+    if (newNameFocus_) {
+        if (!worldNameChar(static_cast<int>(cp))) return;
+        if (newNameFresh_) newName_.clear();
+        newNameFresh_ = false;
+        if (newName_.size() < MAX_WORLD_NAME) newName_ += static_cast<char>(cp);
+    } else if (cp >= '0' && cp <= '9' && newSeedText_.size() < 9) {
+        newSeedText_ += static_cast<char>(cp);
+    }
+}
+
 void Game::handleScroll(double dy) {
+    if (paused_ && screen_ == MenuScreen::Main) {
+        worldScroll_ += dy > 0 ? -1 : (dy < 0 ? 1 : 0);
+        worldScroll_ = std::max(0, std::min(std::max(0, static_cast<int>(worlds_.size()) - WORLD_ROWS), worldScroll_));
+        return;
+    }
     if (paused_ && screen_ == MenuScreen::Editor) {
         editorScroll(dy);
         return;
@@ -3192,7 +3316,7 @@ int Game::selfTest() {
     SCHECK(sf.player.hasSpawn && sf.player.spawn == spawnPoint_);
     std::filesystem::remove_all("olicraft_selftest");
 
-    // 24. Hauptmenue: neue Welt mit eigenem Seed und Spielmodus, Hauptmenue aus dem Pausemenue
+    // 24. Hauptmenue und Weltverwaltung: mehrere Welten, jede mit Namen und eigener Datei
     {
         auto clickId = [&](int id) {
             const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
@@ -3203,19 +3327,76 @@ int Game::selfTest() {
                 }
             return false;
         };
-        opt_.noSave = true;  // keine Dateien mehr anfassen
+        auto typeText = [&](const std::string& t) {
+            for (char c : t) {  // wie GLFW: erst die Taste, dann das Zeichen
+                handleKey(std::toupper(static_cast<unsigned char>(c)), GLFW_PRESS, 0);
+                handleChar(static_cast<unsigned char>(c));
+            }
+        };
+        std::filesystem::remove_all("olicraft_selftest/saves");
+        opt_.savesDir = "olicraft_selftest/saves";
+        opt_.noSave = false;
+        opt_.savePath.clear();
+        currentWorld_.clear();
         showMainMenu();
-        SCHECK(paused_ && screen_ == MenuScreen::Main && !hasSave_);
-        SCHECK(clickId(W_MAIN_NEW) && screen_ == MenuScreen::NewWorld);
-        for (int k : {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4, GLFW_KEY_BACKSPACE, GLFW_KEY_7}) handleKey(k, GLFW_PRESS, 0);
+        SCHECK(paused_ && screen_ == MenuScreen::Main && worlds_.empty() && worldSel_ == -1);
+        SCHECK(!buildMenu(screen_, menuState(), fbW_, fbH_).widgets.empty());
+        SCHECK(clickId(W_MAIN_PLAY) && paused_);  // ohne Welt tut "Spielen" nichts
+        // Welt A: Name tippen (die Vorgabe wird beim ersten Zeichen ersetzt), Seed, Modus
+        SCHECK(clickId(W_MAIN_NEW) && screen_ == MenuScreen::NewWorld && newName_ == "Neue Welt");
+        const bool creativeBefore = creative_;
+        typeText("Gtef Alpha");  // Buchstaben, die im Spiel Funktionen haben, landen nur im Namen
+        SCHECK(newName_ == "gtef Alpha" || newName_ == "Gtef Alpha");
+        SCHECK(!inventoryOpen_ && creative_ == creativeBefore);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);
+        SCHECK(newName_.size() == 4);
+        handleChar('?');  // ungueltige Zeichen werden verworfen
+        handleChar(0x00e4);
+        SCHECK(newName_.size() == 4);
+        typeText("x");  // "Gtefx"
+        SCHECK(clickId(W_NEW_SEED) && !newNameFocus_);
+        handleChar('1'); handleChar('2'); handleChar('a'); handleChar('3'); handleChar('7');
         SCHECK(newSeedText_ == "1237");
         SCHECK(clickId(W_NEW_MODE) && newCreative_);
         const int oldSeed = world_->seed();
         SCHECK(clickId(W_NEW_CREATE) && !paused_ && screen_ == MenuScreen::None);
         SCHECK(world_->seed() == 1237 && world_->seed() != oldSeed && creative_ && inventory_.slots[0].id == DEFAULT_HOTBAR[0]);
         SCHECK(health_ == 20 && !dead_ && entities_.mobs().empty());
+        SCHECK(currentWorld_ == "Gtefx" && opt_.savePath == "olicraft_selftest/saves/Gtefx.dat" && std::filesystem::exists(opt_.savePath));
+        // in Welt A etwas bauen, zurueck ins Hauptmenue (speichert)
+        const int ax = 5, ay = 110, az = 5;
+        world_->loadAround(glm::vec3(ax + 0.5f, ay, az + 0.5f), 1);
+        world_->setBlock(ax, ay, az, DIAMOND_BLOCK);
+        setPaused(true);
+        SCHECK(clickId(W_TO_MAIN) && screen_ == MenuScreen::Main);
+        SCHECK(worlds_.size() == 1 && worlds_[0].name == "Gtefx" && worlds_[0].seed == 1237 && worlds_[0].creative && worldSel_ == 0);
+        // Welt B mit gleichem Namen: bekommt " 2", Survival, zufaelliger Seed
+        SCHECK(clickId(W_MAIN_NEW) && screen_ == MenuScreen::NewWorld);
+        typeText("gtefx");
+        SCHECK(clickId(W_NEW_CREATE) && !paused_);
+        SCHECK(currentWorld_ == "gtefx" || currentWorld_ == "Gtefx 2" || currentWorld_ == "gtefx 2");
+        SCHECK(!creative_ && std::filesystem::exists(opt_.savePath));
+        SCHECK(world_->getBlock(ax, ay, az) != DIAMOND_BLOCK);
+        setPaused(true);
+        SCHECK(clickId(W_TO_MAIN) && worlds_.size() == 2);
+        // Welt A wieder laden: der Block ist da, Modus Kreativ, Seed 1237
+        int idxA = -1;
+        for (size_t i = 0; i < worlds_.size(); ++i)
+            if (worlds_[i].seed == 1237) idxA = static_cast<int>(i);
+        SCHECK(idxA >= 0);
+        selectWorld(idxA);
+        SCHECK(clickId(W_MAIN_PLAY) && !paused_ && world_->seed() == 1237 && creative_);
+        SCHECK(currentWorld_ == "Gtefx" && opt_.savePath == "olicraft_selftest/saves/Gtefx.dat");
+        world_->loadAround(glm::vec3(ax + 0.5f, ay, az + 0.5f), 1);
+        SCHECK(world_->getBlock(ax, ay, az) == DIAMOND_BLOCK);
         // Esc im Seed-Bildschirm geht zurueck, Einstellungen aus dem Hauptmenue fuehren auch dorthin zurueck
-        showMainMenu();
+        setPaused(true);
+        SCHECK(clickId(W_TO_MAIN));
         SCHECK(clickId(W_SETTINGS) && screen_ == MenuScreen::Settings);
         SCHECK(clickId(W_BACK) && screen_ == MenuScreen::Main);
         SCHECK(clickId(W_MAIN_NEW) && screen_ == MenuScreen::NewWorld);
@@ -3223,11 +3404,21 @@ int Game::selfTest() {
         SCHECK(screen_ == MenuScreen::Main);
         handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
         SCHECK(screen_ == MenuScreen::Main && paused_);  // Esc tut im Hauptmenue nichts
-        SCHECK(clickId(W_MAIN_PLAY) && !paused_);
+        // Pfeiltasten waehlen, Enter startet die gewaehlte Welt (die laufende wird nur fortgesetzt)
+        handleKey(GLFW_KEY_DOWN, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_UP, GLFW_PRESS, 0);
+        SCHECK(worldSel_ >= 0 && worldSel_ < 2);
+        for (size_t i = 0; i < worlds_.size(); ++i)
+            if (worlds_[i].seed == 1237) idxA = static_cast<int>(i);  // die Reihenfolge wechselt mit dem Speichern
+        selectWorld(idxA);
+        handleKey(GLFW_KEY_ENTER, GLFW_PRESS, 0);
+        SCHECK(!paused_ && world_->seed() == 1237);
         // Pausemenue -> Hauptmenue
         setPaused(true);
         SCHECK(clickId(W_TO_MAIN) && screen_ == MenuScreen::Main);
         setPaused(false);
+        std::filesystem::remove_all("olicraft_selftest/saves");
+        opt_.noSave = true;  // keine Dateien mehr anfassen
     }
 
 #undef SCHECK
@@ -3397,7 +3588,7 @@ void Game::render() {
 }
 
 bool Game::saveWorld() {
-    if (opt_.noSave) return true;
+    if (opt_.noSave || opt_.savePath.empty()) return true;
     SaveFile sf;
     sf.seed = world_->seed();
     sf.player.pos = dead_ ? spawnPoint_ : player_.pos;
@@ -3508,7 +3699,7 @@ int Game::run() {
         }
     }
 
-    if (!shotMode) saveWorld();
+    if (!shotMode && !(paused_ && screen_ == MenuScreen::Main)) saveWorld();  // im Hauptmenue ist schon gespeichert
     return exitCode;
 }
 

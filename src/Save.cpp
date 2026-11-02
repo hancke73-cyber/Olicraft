@@ -195,6 +195,28 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
     }
 }
 
+bool readSaveInfo(const std::string& path, SaveInfo& info) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    Reader r(f);
+    if (r.u32() != MAGIC) return false;
+    const uint32_t version = r.u32();
+    if (version < 1 || version > VERSION) return false;
+    info = SaveInfo{};
+    info.seed = r.i32();
+    for (int i = 0; i < 5; ++i) r.f32();  // Position, Blickrichtung
+    r.f32();                              // Tageszeit
+    r.i32();                              // Hotbar-Platz
+    r.u8();                               // Flug
+    if (version >= 2) {
+        info.health = r.i32();
+        info.creative = r.u8() != 0;
+    } else {
+        info.creative = true;  // Version 1 war immer Kreativ
+    }
+    return r.ok();
+}
+
 bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {
