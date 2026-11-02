@@ -7,12 +7,15 @@
 
 #include "Block.h"
 #include "Camera.h"
+#include "EditorUi.h"
+#include "TextureEditor.h"
 #include "Entities.h"
 #include "Inventory.h"
 #include "Menu.h"
 #include "Player.h"
 #include "Renderer.h"
 #include "Settings.h"
+#include "TextureStore.h"
 #include "World.h"
 
 struct GLFWwindow;
@@ -26,6 +29,7 @@ struct Options {
     bool noSave = false;
     std::string savePath = "saves/world.dat";
     std::string settingsPath = "settings.cfg";
+    std::string texturesDir = "textures";
     bool distanceCli = false;  // --distance gegeben: ueberschreibt die gespeicherte Einstellung
     bool vsyncCli = false;
     int renderDistance = 10;  // Chunks
@@ -73,6 +77,14 @@ private:
     void activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse);
     void updateSlider(int widgetId, float mouseX);
     void persistSettings();
+    // Textur-Editor
+    void openEditor();
+    void editorMouse(int button, int action, int mods);
+    void editorCursor();
+    bool editorKey(int key, int mods);
+    void editorScroll(double dy);
+    void activateEditorWidget(int id, glm::vec2 mouse);
+    int hitEditorWidget(const EditorLayout& l, glm::vec2 m) const;
     MenuState menuState() const;
     void toggleFullscreen();
     void openInventory(bool table = false);
@@ -108,8 +120,13 @@ private:
     Renderer renderer_;
     Player player_;
     Settings settings_;
+    TextureStore textures_;
     MenuScreen screen_ = MenuScreen::None;
     int dragWidget_ = W_NONE;
+    std::unique_ptr<TextureEditor> editor_;
+    EditorUiState editorUi_;
+    glm::ivec2 lastPaint_{-1, -1};
+    bool painting_ = false;
     EntityManager entities_;
     Inventory inventory_;
     ItemStack cursor_;

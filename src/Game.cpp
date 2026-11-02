@@ -110,7 +110,14 @@ bool Game::init() {
     glfwSetWindowFocusCallback(window_, [](GLFWwindow* win, int f) { gameFrom(win)->handleFocus(f != 0); });
     glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* win, int fw, int fh) { gameFrom(win)->handleResize(fw, fh); });
 
-    if (!renderer_.init()) return false;
+    textures_.setDirectory(opt_.texturesDir);
+    if (!opt_.noSave) {
+        std::vector<std::string> msgs;
+        const int n = textures_.loadAllFromDirectory(&msgs);
+        if (n > 0) std::printf("%d eigene Texturen aus %s geladen\n", n, opt_.texturesDir.c_str());
+        for (const std::string& m : msgs) std::fprintf(stderr, "Textur ignoriert: %s\n", m.c_str());
+    }
+    if (!renderer_.init(textures_)) return false;
 
     // Welt laden oder neu erzeugen
     SaveFile sf;
@@ -213,6 +220,15 @@ bool Game::init() {
         craft_[0] = craft_[1] = craft_[2] = {COBBLE, 1};
         craft_[4] = craft_[7] = {ITEM_STICK, 1};
     }
+    if (opt_.demo.rfind("editor", 0) == 0) {  // editor, editorblock, editorpig ...
+        setPaused(true);
+        openEditor();
+        const std::string want = opt_.demo == "editorblock" ? "Gras" : (opt_.demo == "editorpig" ? "Schwein" : (opt_.demo == "editoritem" ? "Eisenspitzhacke" : "Spieler"));
+        for (size_t i = 0; i < editor_->entries().size(); ++i)
+            if (editor_->entries()[i].name == want) editor_->select(static_cast<int>(i));
+        curX_ = winW_cur_ * 0.5;
+        curY_ = winH_cur_ * 0.5;
+    }
     if (opt_.demo == "menu" || opt_.demo == "settings") {
         setPaused(true);
         if (opt_.demo == "settings") screen_ = MenuScreen::Settings;
@@ -278,6 +294,15 @@ void Game::persistSettings() {
 }
 
 void Game::updateSlider(int widgetId, float mouseX) {
+    if (screen_ == MenuScreen::Editor && editor_) {
+        const EditorLayout L = buildEditorLayout(fbW_, fbH_, *editor_, editorUi_);
+        for (const Widget& w : L.widgets)
+            if (w.id == widgetId) {
+                const int idx = widgetId - W_ED_R;
+                if (idx >= 0 && idx < 4) editor_->color[idx] = static_cast<uint8_t>(std::lround(sliderFraction(w, mouseX) * 255.0f));
+            }
+        return;
+    }
     const MenuLayout menu = buildMenu(screen_, menuState(), fbW_, fbH_);
     for (const Widget& w : menu.widgets) {
         if (w.id != widgetId) continue;
@@ -319,6 +344,7 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
             break;
         case W_FULLSCREEN: toggleFullscreen(); break;
         case W_MODE: setCreative(!creative_); break;
+        case W_EDITOR: openEditor(); break;
         default: break;
     }
 }
@@ -508,10 +534,15 @@ void Game::setCreative(bool on) {
 
 void Game::handleKey(int key, int action, int mods) {
     if (action != GLFW_PRESS) return;
+    if (paused_ && screen_ == MenuScreen::Editor && key != GLFW_KEY_ESCAPE && editorKey(key, mods)) return;
     switch (key) {
         case GLFW_KEY_ESCAPE:
             if (inventoryOpen_) closeInventory();
-            else if (paused_ && screen_ == MenuScreen::Settings) {
+            else if (paused_ && screen_ == MenuScreen::Editor) {
+                screen_ = MenuScreen::Settings;
+                dragWidget_ = W_NONE;
+                painting_ = false;
+            } else if (paused_ && screen_ == MenuScreen::Settings) {
                 screen_ = MenuScreen::Pause;
                 persistSettings();
             } else setPaused(!paused_);
@@ -570,12 +601,20 @@ void Game::handleKey(int key, int action, int mods) {
 }
 
 void Game::handleScroll(double dy) {
+    if (paused_ && screen_ == MenuScreen::Editor) {
+        editorScroll(dy);
+        return;
+    }
     if (paused_ || inventoryOpen_ || dead_) return;
     int d = dy > 0 ? -1 : (dy < 0 ? 1 : 0);
     slot_ = ((slot_ + d) % Inventory::HOTBAR + Inventory::HOTBAR) % Inventory::HOTBAR;
 }
 
 void Game::handleMouseButton(int button, int action, int mods) {
+    if (paused_ && screen_ == MenuScreen::Editor) {
+        editorMouse(button, action, mods);
+        return;
+    }
     if (paused_) {
         if (button != GLFW_MOUSE_BUTTON_LEFT) return;
         if (action == GLFW_RELEASE) {
@@ -601,6 +640,7 @@ void Game::handleCursor(double x, double y) {
     curY_ = y;
     if (paused_) {
         if (dragWidget_ != W_NONE) updateSlider(dragWidget_, mousePx().x);
+        if (screen_ == MenuScreen::Editor) editorCursor();
         return;
     }
     if (inventoryOpen_) return;
@@ -808,6 +848,7 @@ void Game::update(float dt) {
         world_->tick(dt);
     } else {
         target_ = RayHit{};
+        if (screen_ == MenuScreen::Editor && editorUi_.rotate) editorUi_.previewYaw += dt * 0.9f;
     }
 
     // Anzeige des gewaehlten Gegenstands
@@ -972,6 +1013,176 @@ void Game::updateInteraction(float dt) {
         }
     }
     prevMiddle_ = middle;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Textur-Editor
+// ---------------------------------------------------------------------------------------------------------------
+
+void Game::openEditor() {
+    if (!editor_) editor_ = std::make_unique<TextureEditor>(textures_);
+    screen_ = MenuScreen::Editor;
+    dragWidget_ = W_NONE;
+    painting_ = false;
+    editorUi_.status = "Texturen: " + textures_.directory() + "/   Export: " + textures_.directory() + "/export/";
+}
+
+int Game::hitEditorWidget(const EditorLayout& l, glm::vec2 m) const {
+    for (size_t i = 0; i < l.widgets.size(); ++i) {
+        const Widget& w = l.widgets[i];
+        if (!w.enabled || w.id == W_NONE) continue;
+        if (m.x >= w.pos.x && m.x < w.pos.x + w.size.x && m.y >= w.pos.y && m.y < w.pos.y + w.size.y) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+void Game::activateEditorWidget(int id, glm::vec2 mouse) {
+    TextureEditor& ed = *editor_;
+    std::string msg;
+    switch (id) {
+        case W_ED_PENCIL: ed.tool = Tool::Pencil; break;
+        case W_ED_ERASER: ed.tool = Tool::Eraser; break;
+        case W_ED_FILL: ed.tool = Tool::Fill; break;
+        case W_ED_PICKER: ed.tool = Tool::Picker; break;
+        case W_ED_BRUSH: ed.brush = ed.brush % 3 + 1; break;
+        case W_ED_UNDO: if (!ed.undo()) editorUi_.status = "Nichts rueckgaengig zu machen"; break;
+        case W_ED_REDO: if (!ed.redo()) editorUi_.status = "Nichts zu wiederholen"; break;
+        case W_ED_GRID: editorUi_.grid = !editorUi_.grid; break;
+        case W_ED_NET: editorUi_.net = !editorUi_.net; break;
+        case W_ED_ROTATE: editorUi_.rotate = !editorUi_.rotate; break;
+        case W_ED_ROT_LEFT: editorUi_.previewYaw -= 0.4f; break;
+        case W_ED_ROT_RIGHT: editorUi_.previewYaw += 0.4f; break;
+        case W_ED_SAVE: ed.save(&msg); editorUi_.status = msg; break;
+        case W_ED_EXPORT: ed.exportNet(&msg); editorUi_.status = msg; break;
+        case W_ED_IMPORT: ed.importNet(&msg); editorUi_.status = msg; break;
+        case W_ED_RESET: ed.resetToDefault(&msg); editorUi_.status = msg; break;
+        case W_ED_BACK:
+            screen_ = MenuScreen::Settings;
+            painting_ = false;
+            break;
+        case W_ED_R:
+        case W_ED_G:
+        case W_ED_B:
+        case W_ED_A:
+            dragWidget_ = id;
+            updateSlider(id, mouse.x);
+            break;
+        case W_ED_LIST_UP: editorUi_.listScroll = std::max(0, editorUi_.listScroll - 3); break;
+        case W_ED_LIST_DOWN: editorUi_.listScroll += 3; break;
+        default:
+            if (id >= W_ED_LIST_BASE) {
+                ed.select(id - W_ED_LIST_BASE);
+                editorUi_.status = std::string(ed.entry().name) + (ed.entry().kind == EditorEntry::Skin ? ": Netzblatt " : "");
+                editorUi_.status = ed.entry().name;
+            } else if (id >= W_ED_SWATCH_BASE) {
+                const auto& pal = editorPalette();
+                const size_t i = static_cast<size_t>(id - W_ED_SWATCH_BASE);
+                if (i < pal.size())
+                    for (int c = 0; c < 3; ++c) ed.color[c] = static_cast<uint8_t>(std::lround(pal[i][c] * 255.0f));
+            }
+            break;
+    }
+}
+
+void Game::editorMouse(int button, int action, int) {
+    if (!editor_) return;
+    TextureEditor& ed = *editor_;
+    const glm::vec2 m = mousePx();
+    const EditorLayout L = buildEditorLayout(fbW_, fbH_, ed, editorUi_);
+    if (action == GLFW_RELEASE) {
+        if (button == GLFW_MOUSE_BUTTON_LEFT) {
+            if (painting_) ed.endStroke();
+            painting_ = false;
+            dragWidget_ = W_NONE;
+        }
+        return;
+    }
+    if (action != GLFW_PRESS) return;
+
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        const int hit = hitEditorWidget(L, m);
+        if (hit >= 0) {
+            activateEditorWidget(L.widgets[static_cast<size_t>(hit)].id, m);
+            return;
+        }
+    }
+    int px, py;
+    if (!canvasPixel(L, ed, m, px, py)) return;
+    if (button == GLFW_MOUSE_BUTTON_RIGHT) {  // Rechtsklick: Farbe aufnehmen
+        const Tool keep = ed.tool;
+        ed.tool = Tool::Picker;
+        ed.paintAt(px, py);
+        ed.tool = keep;
+        return;
+    }
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        if (ed.tool == Tool::Pencil || ed.tool == Tool::Eraser) {
+            ed.beginStroke();
+            ed.paintAt(px, py);
+            painting_ = true;
+            lastPaint_ = {px, py};
+        } else {
+            ed.paintAt(px, py);
+        }
+    }
+}
+
+void Game::editorCursor() {
+    if (!editor_ || !painting_) return;
+    TextureEditor& ed = *editor_;
+    const EditorLayout L = buildEditorLayout(fbW_, fbH_, ed, editorUi_);
+    int px, py;
+    if (!canvasPixel(L, ed, mousePx(), px, py)) {
+        lastPaint_ = {-1, -1};
+        return;
+    }
+    if (lastPaint_.x < 0) ed.paintAt(px, py);
+    else ed.paintLine(lastPaint_.x, lastPaint_.y, px, py);
+    lastPaint_ = {px, py};
+}
+
+bool Game::editorKey(int key, int mods) {
+    if (!editor_) return false;
+    TextureEditor& ed = *editor_;
+    const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0, shift = (mods & GLFW_MOD_SHIFT) != 0;
+    std::string msg;
+    if (ctrl) {
+        if (key == GLFW_KEY_Z) {
+            if (shift) ed.redo();
+            else ed.undo();
+            return true;
+        }
+        if (key == GLFW_KEY_Y) {
+            ed.redo();
+            return true;
+        }
+        if (key == GLFW_KEY_S) {
+            ed.save(&msg);
+            editorUi_.status = msg;
+            return true;
+        }
+        return false;
+    }
+    switch (key) {
+        case GLFW_KEY_B: ed.tool = Tool::Pencil; return true;
+        case GLFW_KEY_E: ed.tool = Tool::Eraser; return true;
+        case GLFW_KEY_F: ed.tool = Tool::Fill; return true;
+        case GLFW_KEY_P: ed.tool = Tool::Picker; return true;
+        case GLFW_KEY_G: editorUi_.grid = !editorUi_.grid; return true;
+        case GLFW_KEY_N: editorUi_.net = !editorUi_.net; return true;
+        case GLFW_KEY_R: editorUi_.rotate = !editorUi_.rotate; return true;
+        case GLFW_KEY_1: ed.brush = 1; return true;
+        case GLFW_KEY_2: ed.brush = 2; return true;
+        case GLFW_KEY_3: ed.brush = 3; return true;
+        default: return false;
+    }
+}
+
+void Game::editorScroll(double dy) {
+    if (!editor_) return;
+    const EditorLayout L = buildEditorLayout(fbW_, fbH_, *editor_, editorUi_);
+    if (!insideRect(L.list, mousePx())) return;
+    editorUi_.listScroll = std::max(0, std::min(maxListScroll(L), editorUi_.listScroll + (dy > 0 ? -2 : 2)));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1373,6 +1584,107 @@ int Game::selfTest() {
         SCHECK(camMode_ == CameraMode::First);
     }
 
+    // 17. Textur-Editor ueber das Menue bedienen
+    {
+        dead_ = false;
+        inventoryOpen_ = false;
+        paused_ = false;
+        screen_ = MenuScreen::None;
+        textures_.setDirectory("olicraft_selftest/textures");
+        std::filesystem::remove_all("olicraft_selftest/textures");
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(paused_ && screen_ == MenuScreen::Pause);
+        auto toPx = [&](glm::vec2 fb) { return glm::vec2(static_cast<float>(fb.x * winW_cur_ / fbW_), static_cast<float>(fb.y * winH_cur_ / fbH_)); };
+        auto cursorTo = [&](glm::vec2 fb) {
+            const glm::vec2 w = toPx(fb);
+            curX_ = w.x;
+            curY_ = w.y;
+            handleCursor(curX_, curY_);
+        };
+        auto click = [&](glm::vec2 fb) {
+            cursorTo(fb);
+            handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+            handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+        };
+        auto clickMenu = [&](int id) {
+            const MenuLayout m = buildMenu(screen_, menuState(), fbW_, fbH_);
+            for (const Widget& w : m.widgets)
+                if (w.id == id) {
+                    click(w.pos + w.size * 0.5f);
+                    return true;
+                }
+            return false;
+        };
+        auto clickEditor = [&](int id) {
+            for (int scroll = 0; scroll < 80; ++scroll) {
+                const EditorLayout L = buildEditorLayout(fbW_, fbH_, *editor_, editorUi_);
+                for (const Widget& w : L.widgets)
+                    if (w.id == id && w.enabled) {
+                        click(w.pos + w.size * 0.5f);
+                        return true;
+                    }
+                if (id < W_ED_LIST_BASE) return false;
+                editorUi_.listScroll = scroll;  // Listeneintrag erst sichtbar scrollen
+            }
+            return false;
+        };
+        SCHECK(clickMenu(W_SETTINGS) && screen_ == MenuScreen::Settings);
+        SCHECK(clickMenu(W_EDITOR) && screen_ == MenuScreen::Editor && editor_);
+        int stickIndex = -1;
+        for (size_t i = 0; i < editor_->entries().size(); ++i)
+            if (editor_->entries()[i].name == "Stock") stickIndex = static_cast<int>(i);
+        SCHECK(stickIndex >= 0 && clickEditor(W_ED_LIST_BASE + stickIndex) && editor_->current() == stickIndex);
+        SCHECK(clickEditor(W_ED_SWATCH_BASE + 9));  // Farbe waehlen
+        const auto& pal = editorPalette();
+        SCHECK(editor_->color[0] == std::lround(pal[9].x * 255.0f));
+        SCHECK(clickEditor(W_ED_PENCIL));
+        // Mit gedrueckter Maus ueber die Leinwand ziehen
+        {
+            const EditorLayout L = buildEditorLayout(fbW_, fbH_, *editor_, editorUi_);
+            auto pixelCenter = [&](int x, int y) { return glm::vec2(L.canvas.x + (x + 0.5f) * L.zoom, L.canvas.y + (y + 0.5f) * L.zoom); };
+            cursorTo(pixelCenter(3, 3));
+            handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+            cursorTo(pixelCenter(8, 6));
+            handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+            const Image tile = textures_.tile(TILE_STICK);
+            SCHECK(tile.at(3, 3)[0] == editor_->color[0] && tile.at(8, 6)[0] == editor_->color[0] && tile.at(6, 5)[0] == editor_->color[0]);
+            SCHECK(editor_->canUndo());
+            // Strg+Z macht den ganzen Strich rueckgaengig
+            handleKey(GLFW_KEY_Z, GLFW_PRESS, GLFW_MOD_CONTROL);
+            SCHECK(textures_.tile(TILE_STICK).rgba == textures_.defaultTile(TILE_STICK).rgba);
+            handleKey(GLFW_KEY_Y, GLFW_PRESS, GLFW_MOD_CONTROL);
+            SCHECK(textures_.tile(TILE_STICK).at(3, 3)[0] == editor_->color[0]);
+            // Rechtsklick nimmt die Farbe auf
+            const uint8_t before0 = editor_->color[0];
+            editor_->color[0] = 1;
+            cursorTo(pixelCenter(3, 3));
+            handleMouseButton(GLFW_MOUSE_BUTTON_RIGHT, GLFW_PRESS, 0);
+            SCHECK(editor_->color[0] == before0);
+            // Schieber ziehen
+            for (const Widget& w : buildEditorLayout(fbW_, fbH_, *editor_, editorUi_).widgets)
+                if (w.id == W_ED_G) {
+                    cursorTo(w.pos + glm::vec2(w.size.x * 0.5f, w.size.y * 0.5f));
+                    handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
+                    SCHECK(std::abs(editor_->color[1] - 128) <= 2);
+                    handleMouseButton(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
+                }
+        }
+        SCHECK(clickEditor(W_ED_SAVE) && std::filesystem::exists(textures_.tilePath(TILE_STICK)));
+        SCHECK(clickEditor(W_ED_EXPORT) && std::filesystem::exists(editor_->exportPath()));
+        SCHECK(clickEditor(W_ED_RESET) && textures_.tile(TILE_STICK).rgba == textures_.defaultTile(TILE_STICK).rgba &&
+               !std::filesystem::exists(textures_.tilePath(TILE_STICK)));
+        SCHECK(clickEditor(W_ED_IMPORT) && textures_.tile(TILE_STICK).at(3, 3)[0] == static_cast<uint8_t>(std::lround(editorPalette()[9].x * 255.0f)));
+        renderer_.syncTextures(textures_);  // Hochladen ohne GL-Fehler
+        render();                           // Editor mit Vorschau zeichnen
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(paused_ && screen_ == MenuScreen::Settings);
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(!paused_);
+        textures_.resetTile(TILE_STICK);
+        std::filesystem::remove_all("olicraft_selftest");
+    }
+
     // 9. Inventar per Mausklick
     dead_ = false;
     health_ = 20;
@@ -1586,7 +1898,25 @@ void Game::render() {
     h.breakProgress = breakProgress_;
     h.damageFlash = damageFlash_;
     h.dead = dead_;
-    if (paused_ && screen_ != MenuScreen::None) {
+    if (paused_ && screen_ == MenuScreen::Editor && editor_) {
+        EditorHud& eh = h.editor;
+        eh.open = true;
+        eh.layout = buildEditorLayout(fbW_, fbH_, *editor_, editorUi_);
+        eh.hover = hitEditorWidget(eh.layout, mousePx());
+        eh.view = &editor_->view();
+        eh.regions = editor_->regions();
+        eh.grid = editorUi_.grid;
+        eh.net = editorUi_.net;
+        int hx, hy;
+        if (canvasPixel(eh.layout, *editor_, mousePx(), hx, hy)) {
+            eh.hoverPixel = {hx, hy};
+            eh.hoverEditable = editor_->editable(hx, hy);
+        }
+        eh.quads = editor_->preview(editorUi_.previewYaw, editorUi_.previewPitch);
+        eh.previewSkin = editor_->entry().kind == EditorEntry::Skin ? static_cast<int>(editor_->entry().skin) : -1;
+        eh.title = "Textur-Editor: " + editor_->entry().name + (editor_->modified() ? " *" : "");
+        eh.status = editorUi_.status;
+    } else if (paused_ && screen_ != MenuScreen::None) {
         h.menu = buildMenu(screen_, menuState(), fbW_, fbH_);
         h.menuHover = hitWidget(h.menu, mousePx());
     }
@@ -1595,6 +1925,7 @@ void Game::render() {
     h.messageAlpha = statusTimer_;
     h.itemName = shownItem_ == ITEM_NONE ? "" : itemInfo(shownItem_).name;
     h.itemNameAlpha = itemNameTimer_;
+    renderer_.syncTextures(textures_);
     renderer_.render(*world_, f);
 }
 
@@ -1669,7 +2000,7 @@ int Game::run() {
         last = now;
 
         glfwPollEvents();
-        if (paused_ && (opt_.benchFrames > 0 || shotMode) && opt_.demo != "menu" && opt_.demo != "settings") setPaused(false);
+        if (paused_ && (opt_.benchFrames > 0 || shotMode) && opt_.demo != "menu" && opt_.demo != "settings" && opt_.demo.rfind("editor", 0) != 0) setPaused(false);
         update(dt);
         render();
         ++frameCounter_;

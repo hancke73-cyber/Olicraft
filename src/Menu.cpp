@@ -52,7 +52,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     }
 
     m.title = "Einstellungen";
-    const int rows = 7;
+    const int rows = 8;
     const float total = rows * bh + (rows - 1) * gap + 24.0f * s;
     float y = std::floor((h - total) * 0.5f) + 24.0f * s;
     m.titlePos = {0.0f, y - 22.0f * s};
@@ -77,6 +77,8 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     m.widgets.push_back(button(W_FULLSCREEN, std::string("Vollbild: ") + (st.fullscreen ? "An" : "Aus"), x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_MODE, std::string("Spielmodus: ") + (st.creative ? "Kreativ" : "Survival"), x, y, bw, bh));
+    y += bh + gap;
+    m.widgets.push_back(button(W_EDITOR, "Textur-Editor", x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_BACK, "Zurueck", x, y, bw, bh));
     return m;

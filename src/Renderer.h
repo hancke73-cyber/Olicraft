@@ -10,6 +10,7 @@
 #include "Entities.h"
 #include "Hud.h"
 #include "Shader.h"
+#include "TextureStore.h"
 #include "World.h"
 
 namespace oc {
@@ -35,7 +36,9 @@ public:
     Renderer() = default;
     ~Renderer();
 
-    bool init();
+    bool init(const TextureStore& textures);
+    // Laedt geaenderte Texturen (Atlas, Skins) auf die Grafikkarte
+    void syncTextures(TextureStore& textures);
     void shutdown();
     void render(const World& world, const FrameInfo& f);
 
@@ -60,6 +63,8 @@ private:
     Shader chunkShader_, colorShader_, hudShader_;
     GLuint atlas_ = 0;
     GLuint guiTex_ = 0;
+    GLuint viewTex_ = 0;     // Bild der Editor-Leinwand
+    int previewSkin_ = -1;   // Skin fuer die Editor-Vorschau
     GpuMesh itemMesh_;
     GpuMesh skinMesh_[SKIN_COUNT], skinHurtMesh_[SKIN_COUNT];
     GLuint skinTex_[SKIN_COUNT] = {};

@@ -6,6 +6,7 @@
 
 #include "GuiTexture.h"
 #include "Inventory.h"
+#include "EditorUi.h"
 #include "Items.h"
 #include "Menu.h"
 
@@ -15,7 +16,7 @@ struct HudVertex {
     float x, y, u, v, r, g, b, a;
 };
 
-enum HudTex { HUD_TEX_GUI = 0, HUD_TEX_ATLAS = 1 };
+enum HudTex { HUD_TEX_GUI = 0, HUD_TEX_ATLAS = 1, HUD_TEX_VIEW = 2, HUD_TEX_SKIN = 3 };
 
 // Sammelt 2D-Geometrie (Pixelkoordinaten, y nach unten) in Zeichenreihenfolge.
 class HudBatch {
@@ -94,6 +95,7 @@ struct HudState {
     bool underwater = false;
     bool underLava = false;
     bool burning = false;
+    EditorHud editor; // Textur-Editor
     MenuLayout menu;  // Pause-/Einstellungsmenue (leer = geschlossen)
     int menuHover = -1;
     std::string message;

@@ -100,11 +100,17 @@ in vec2 vUV;
 in vec4 vColor;
 uniform sampler2D uAtlas;
 uniform sampler2D uGui;
-uniform int uUseAtlas;
+uniform sampler2D uView;
+uniform sampler2D uSkin;
+uniform int uTexMode;
 out vec4 FragColor;
 void main() {
     if (vUV.x < 0.0) { FragColor = vColor; return; }
-    vec4 t = uUseAtlas == 1 ? texture(uAtlas, vUV) : texture(uGui, vUV);
+    vec4 t;
+    if (uTexMode == 1) t = texture(uAtlas, vUV);
+    else if (uTexMode == 2) t = texture(uView, vUV);
+    else if (uTexMode == 3) t = texture(uSkin, vUV);
+    else t = texture(uGui, vUV);
     if (t.a < 0.1) discard;
     FragColor = vec4(t.rgb * vColor.rgb, t.a * vColor.a);
 }
@@ -147,13 +153,13 @@ Renderer::~Renderer() { shutdown(); }
 float Renderer::sunHeight(float t) { return std::sin(t * 2.0f * PI); }
 float Renderer::daylight(float t) { return smooth01(-0.12f, 0.22f, sunHeight(t)); }
 
-bool Renderer::init() {
+bool Renderer::init(const TextureStore& textures) {
     if (!chunkShader_.build(CHUNK_VS, CHUNK_FS, "chunk")) return false;
     if (!colorShader_.build(COLOR_VS, COLOR_FS, "color")) return false;
     if (!hudShader_.build(HUD_VS, HUD_FS, "hud")) return false;
 
     // Texturatlas
-    std::vector<uint8_t> px = generateAtlasPixels();
+    const std::vector<uint8_t>& px = textures.atlasPixels();
     glGenTextures(1, &atlas_);
     glBindTexture(GL_TEXTURE_2D, atlas_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ATLAS_PX, ATLAS_PX, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
@@ -167,7 +173,7 @@ bool Renderer::init() {
     // Skins der Figuren
     for (int i = 0; i < SKIN_COUNT; ++i) {
         const SkinInfo& si = skinInfo(static_cast<SkinId>(i));
-        std::vector<uint8_t> sp = generateSkinPixels(static_cast<SkinId>(i));
+        const std::vector<uint8_t>& sp = textures.skin(static_cast<SkinId>(i)).rgba;
         glGenTextures(1, &skinTex_[i]);
         glBindTexture(GL_TEXTURE_2D, skinTex_[i]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, si.width, si.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, sp.data());
@@ -256,12 +262,31 @@ bool Renderer::init() {
     return true;
 }
 
+void Renderer::syncTextures(TextureStore& textures) {
+    if (!initialized_) return;
+    if (textures.atlasDirty()) {
+        glBindTexture(GL_TEXTURE_2D, atlas_);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ATLAS_PX, ATLAS_PX, GL_RGBA, GL_UNSIGNED_BYTE, textures.atlasPixels().data());
+        glGenerateMipmap(GL_TEXTURE_2D);
+        textures.clearAtlasDirty();
+    }
+    for (int i = 0; i < SKIN_COUNT; ++i) {
+        const SkinId id = static_cast<SkinId>(i);
+        if (!textures.skinDirty(id)) continue;
+        const Image& img = textures.skin(id);
+        glBindTexture(GL_TEXTURE_2D, skinTex_[i]);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, img.w, img.h, GL_RGBA, GL_UNSIGNED_BYTE, img.rgba.data());
+        textures.clearSkinDirty(id);
+    }
+}
+
 void Renderer::shutdown() {
     if (!initialized_) return;
     initialized_ = false;
     destroySharedQuadIndexBuffer();
     if (atlas_) glDeleteTextures(1, &atlas_);
     if (guiTex_) glDeleteTextures(1, &guiTex_);
+    if (viewTex_) glDeleteTextures(1, &viewTex_);
     itemMesh_.release();
     for (int i = 0; i < SKIN_COUNT; ++i) {
         skinMesh_[i].release();
@@ -516,17 +541,23 @@ void Renderer::flushHud(const FrameInfo& f) {
     hudShader_.setVec2("uScreen", glm::vec2(static_cast<float>(f.width), static_cast<float>(f.height)));
     hudShader_.setInt("uAtlas", 0);
     hudShader_.setInt("uGui", 1);
+    hudShader_.setInt("uView", 2);
+    hudShader_.setInt("uSkin", 3);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, atlas_);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, guiTex_);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, viewTex_);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, previewSkin_ >= 0 ? skinTex_[previewSkin_] : skinTex_[0]);
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(hudVao_);
     glBindBuffer(GL_ARRAY_BUFFER, hudVbo_);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(hudBatch_.verts.size() * sizeof(HudVertex)),
                  hudBatch_.verts.data(), GL_STREAM_DRAW);
     for (const HudBatch::Cmd& cmd : hudBatch_.cmds) {
-        hudShader_.setInt("uUseAtlas", cmd.tex == HUD_TEX_ATLAS ? 1 : 0);
+        hudShader_.setInt("uTexMode", cmd.tex);
         glDrawArrays(GL_TRIANGLES, static_cast<GLint>(cmd.first), static_cast<GLsizei>(cmd.count));
     }
     glBindVertexArray(0);
@@ -539,6 +570,20 @@ void Renderer::drawHud(const FrameInfo& f) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     HudState st = f.hud;
+    if (st.editor.open && st.editor.view && st.editor.view->valid()) {
+        const Image& img = *st.editor.view;
+        if (!viewTex_) {
+            glGenTextures(1, &viewTex_);
+            glBindTexture(GL_TEXTURE_2D, viewTex_);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        glBindTexture(GL_TEXTURE_2D, viewTex_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, img.w, img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.rgba.data());
+    }
+    previewSkin_ = st.editor.open ? st.editor.previewSkin : -1;
     st.underwater = f.underwater;
     st.underLava = f.underLava;
     buildHud(hudBatch_, st, f.width, f.height);

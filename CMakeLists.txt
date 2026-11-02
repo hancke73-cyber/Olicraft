@@ -61,6 +61,10 @@ add_executable(OliCraft
   src/Entities.cpp
   src/Models.cpp
   src/Camera.cpp
+  src/Image.cpp
+  src/TextureStore.cpp
+  src/TextureEditor.cpp
+  src/EditorUi.cpp
   src/Skins.cpp
   src/Items.cpp
   src/Crafting.cpp
@@ -72,7 +76,7 @@ add_executable(OliCraft
   src/Menu.cpp
   src/Save.cpp)
 
-target_include_directories(OliCraft PRIVATE src)
+target_include_directories(OliCraft PRIVATE src third_party/stb)
 target_link_libraries(OliCraft PRIVATE glfw glad glm::glm)
 
 if(MSVC)
@@ -97,8 +101,8 @@ if(OLICRAFT_BUILD_TESTS)
   add_executable(olicraft_tests
     tests/tests.cpp
     src/Block.cpp src/Noise.cpp src/Chunk.cpp src/Mesher.cpp src/TerrainGen.cpp
-    src/World.cpp src/Player.cpp src/Physics.cpp src/Entities.cpp src/Models.cpp src/Camera.cpp src/Skins.cpp src/Items.cpp src/Crafting.cpp src/Inventory.cpp src/Save.cpp src/Atlas.cpp src/Hud.cpp src/GuiTexture.cpp src/Settings.cpp src/Menu.cpp)
-  target_include_directories(olicraft_tests PRIVATE src)
+    src/World.cpp src/Player.cpp src/Physics.cpp src/Entities.cpp src/Models.cpp src/Camera.cpp src/Image.cpp src/TextureStore.cpp src/TextureEditor.cpp src/EditorUi.cpp src/Skins.cpp src/Items.cpp src/Crafting.cpp src/Inventory.cpp src/Save.cpp src/Atlas.cpp src/Hud.cpp src/GuiTexture.cpp src/Settings.cpp src/Menu.cpp)
+  target_include_directories(olicraft_tests PRIVATE src third_party/stb)
   target_link_libraries(olicraft_tests PRIVATE glad glm::glm)
   add_test(NAME olicraft_tests COMMAND olicraft_tests)
 endif()

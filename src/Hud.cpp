@@ -323,27 +323,104 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     }
 }
 
+static void drawWidget(HudBatch& b, const Widget& wd, bool hot, float s) {
+    const float x0 = wd.pos.x, y0 = wd.pos.y, x1 = wd.pos.x + wd.size.x, y1 = wd.pos.y + wd.size.y;
+    b.rect(x0 - s, y0 - s, x1 + s, y1 + s, glm::vec4(0.02f, 0.02f, 0.03f, 0.95f));
+    if (wd.swatch) {
+        b.rect(x0, y0, x1, y1, wd.color);
+        if (wd.selected || hot) b.rect(x0 - s, y0 - s, x1 + s, y0, glm::vec4(1, 1, 1, 0.9f));
+        return;
+    }
+    glm::vec4 fill(0.30f, 0.31f, 0.36f, 1.0f);
+    if (!wd.enabled) fill = glm::vec4(0.16f, 0.16f, 0.20f, 1.0f);
+    else if (wd.selected) fill = glm::vec4(0.26f, 0.42f, 0.66f, 1.0f);
+    if (hot && wd.enabled) fill += glm::vec4(0.12f, 0.12f, 0.14f, 0.0f);
+    b.rect(x0, y0, x1, y1, fill);
+    if (wd.type == Widget::Slider) {
+        const float fx = x0 + wd.size.x * wd.fraction;
+        b.rect(x0, y0, fx, y1, hot ? glm::vec4(0.28f, 0.50f, 0.78f, 1.0f) : glm::vec4(0.22f, 0.42f, 0.68f, 1.0f));
+        b.rect(fx - s, y0, fx + s, y1, glm::vec4(0.9f, 0.9f, 0.95f, 1.0f));
+    }
+    const float tw = textWidthPx(wd.text) * s;
+    const float tx = wd.left ? x0 + 3.0f * s : std::floor(x0 + (wd.size.x - tw) * 0.5f);
+    const glm::vec4 tc = wd.enabled ? glm::vec4(1.0f) : glm::vec4(0.7f, 0.8f, 1.0f, 1.0f);
+    b.text(tx, std::floor(y0 + (wd.size.y - 8.0f * s) * 0.5f), s, wd.text, tc);
+}
+
 static void drawMenu(HudBatch& b, const MenuLayout& m, int hover, int w, int h) {
     const float s = m.scale;
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.6f));
     const float ts = 2.0f * s;
     const float tw = textWidthPx(m.title) * ts;
     b.text(std::floor((w - tw) * 0.5f), m.titlePos.y, ts, m.title);
-    for (size_t i = 0; i < m.widgets.size(); ++i) {
-        const Widget& wd = m.widgets[i];
-        const bool hot = static_cast<int>(i) == hover;
-        const float x0 = wd.pos.x, y0 = wd.pos.y, x1 = wd.pos.x + wd.size.x, y1 = wd.pos.y + wd.size.y;
-        b.rect(x0 - s, y0 - s, x1 + s, y1 + s, glm::vec4(0.02f, 0.02f, 0.03f, 0.95f));
-        b.rect(x0, y0, x1, y1, hot ? glm::vec4(0.42f, 0.44f, 0.52f, 1.0f) : glm::vec4(0.30f, 0.31f, 0.36f, 1.0f));
-        if (wd.type == Widget::Slider) {
-            const float fx = x0 + wd.size.x * wd.fraction;
-            b.rect(x0, y0, fx, y1, hot ? glm::vec4(0.28f, 0.50f, 0.78f, 1.0f) : glm::vec4(0.22f, 0.42f, 0.68f, 1.0f));
-            b.rect(fx - s, y0, fx + s, y1, glm::vec4(0.9f, 0.9f, 0.95f, 1.0f));
+    for (size_t i = 0; i < m.widgets.size(); ++i) drawWidget(b, m.widgets[i], static_cast<int>(i) == hover, s);
+}
+
+static void drawEditor(HudBatch& b, const EditorHud& e, int w, int h) {
+    const EditorLayout& L = e.layout;
+    const float s = L.s;
+    b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.09f, 0.09f, 0.11f, 1.0f));
+    b.text(L.titlePos.x, L.titlePos.y, s, e.title, glm::vec4(1.0f));
+
+    for (size_t i = 0; i < L.widgets.size(); ++i) drawWidget(b, L.widgets[i], static_cast<int>(i) == e.hover, s);
+
+    // Leinwand: Schachbrett fuer Transparenz, Bild, Raster, Netz
+    const float cx = L.canvas.x, cy = L.canvas.y, cw = L.canvas.z, ch = L.canvas.w, z = L.zoom;
+    if (e.view && e.view->valid()) {
+        const float cell = std::max(z * 2.0f, 4.0f * s);
+        for (float y = 0; y < ch; y += cell)
+            for (float x = 0; x < cw; x += cell) {
+                const bool dark = (static_cast<int>(x / cell) + static_cast<int>(y / cell)) % 2 == 0;
+                const float v = dark ? 0.30f : 0.42f;
+                b.rect(cx + x, cy + y, std::min(cx + x + cell, cx + cw), std::min(cy + y + cell, cy + ch), glm::vec4(v, v, v, 1.0f));
+            }
+        const glm::vec2 p[4] = {{cx, cy}, {cx + cw, cy}, {cx + cw, cy + ch}, {cx, cy + ch}};
+        const glm::vec2 uv[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+        b.quad(p, uv, glm::vec4(1.0f), HUD_TEX_VIEW);
+        if (e.grid && z >= 4.0f * s) {
+            const glm::vec4 gc(0.0f, 0.0f, 0.0f, 0.22f);
+            for (int x = 0; x <= e.view->w; ++x) b.rect(cx + x * z, cy, cx + x * z + 1.0f, cy + ch, gc);
+            for (int y = 0; y <= e.view->h; ++y) b.rect(cx, cy + y * z, cx + cw, cy + y * z + 1.0f, gc);
         }
-        const float tw2 = textWidthPx(wd.text) * s;
-        b.text(std::floor(x0 + (wd.size.x - tw2) * 0.5f), std::floor(y0 + (wd.size.y - 8.0f * s) * 0.5f), s, wd.text,
-               glm::vec4(1.0f));
+        if (e.net) {
+            for (const NetRegion& r : e.regions) {
+                const glm::vec4 lc(1.0f, 0.95f, 0.3f, 0.9f);
+                const float x0 = cx + r.x * z, y0 = cy + r.y * z, x1 = x0 + r.w * z, y1 = y0 + r.h * z;
+                b.rect(x0, y0, x1, y0 + s, lc);
+                b.rect(x0, y1 - s, x1, y1, lc);
+                b.rect(x0, y0, x0 + s, y1, lc);
+                b.rect(x1 - s, y0, x1, y1, lc);
+                if (r.w * z >= 9.0f * s && r.h * z >= 11.0f * s)
+                    b.text(std::floor(x0 + (r.w * z - 5.0f * s) * 0.5f), std::floor(y0 + (r.h * z - 8.0f * s) * 0.5f), s,
+                           std::string(1, r.label), glm::vec4(1.0f, 1.0f, 1.0f, 0.65f));
+            }
+        }
+        if (e.hoverPixel.x >= 0) {
+            const float x0 = cx + e.hoverPixel.x * z, y0 = cy + e.hoverPixel.y * z;
+            const glm::vec4 hc = e.hoverEditable ? glm::vec4(1, 1, 1, 0.95f) : glm::vec4(1, 0.3f, 0.3f, 0.8f);
+            b.rect(x0, y0, x0 + z, y0 + s, hc);
+            b.rect(x0, y0 + z - s, x0 + z, y0 + z, hc);
+            b.rect(x0, y0, x0 + s, y0 + z, hc);
+            b.rect(x0 + z - s, y0, x0 + z, y0 + z, hc);
+        }
     }
+
+    // Vorschau
+    {
+        const float px = L.preview.x, py = L.preview.y, pw = L.preview.z, ph = L.preview.w;
+        b.rect(px - s, py - s, px + pw + s, py + ph + s, glm::vec4(0.02f, 0.02f, 0.03f, 1.0f));
+        b.rect(px, py, px + pw, py + ph, glm::vec4(0.20f, 0.30f, 0.45f, 1.0f));
+        b.rect(px, py + ph * 0.72f, px + pw, py + ph, glm::vec4(0.22f, 0.36f, 0.20f, 1.0f));  // Boden
+        const glm::vec2 c(px + pw * 0.5f, py + ph * 0.5f);
+        const float scale = std::min(pw, ph) * 0.5f * 0.92f;
+        for (const PreviewQuad& q : e.quads) {
+            glm::vec2 pts[4];
+            for (int k = 0; k < 4; ++k) pts[k] = c + q.p[k] * scale;
+            b.quad(pts, q.uv, glm::vec4(q.shade, q.shade, q.shade, 1.0f), q.skin ? HUD_TEX_SKIN : HUD_TEX_ATLAS);
+        }
+        b.text(px + 3 * s, py + 3 * s, s, "Vorschau", glm::vec4(1, 1, 1, 0.8f));
+    }
+    b.text(L.statusPos.x, L.statusPos.y, s, e.status, glm::vec4(0.85f, 0.95f, 0.85f, 1.0f));
 }
 
 void buildHud(HudBatch& b, const HudState& st, int w, int h) {
@@ -357,6 +434,10 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
     else if (st.burning) b.rect(0, H * 0.82f, W, H, glm::vec4(1.0f, 0.45f, 0.05f, 0.22f));
     if (st.damageFlash > 0.0f) b.rect(0, 0, W, H, glm::vec4(0.85f, 0.05f, 0.05f, 0.4f * st.damageFlash));
 
+    if (st.editor.open) {
+        drawEditor(b, st.editor, w, h);
+        return;
+    }
     if (!st.menu.widgets.empty()) {
         drawMenu(b, st.menu, st.menuHover, w, h);
         return;

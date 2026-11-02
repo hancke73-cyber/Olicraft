@@ -16,6 +16,8 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Crafting: 2x2-Raster im Inventar, 3x3 an der Werkbank (Rechtsklick auf den Block, mit Umschalt wird er stattdessen gesetzt). Rezepte: Holz → 4 Bretter, 2 Bretter → 4 Stöcke, 4 Bretter → Werkbank, 8 Bruchstein → Ofen, Spitzhacke/Axt/Schaufel/Schwert aus Brettern, Bruchstein, Eisenbarren oder Diamanten mit Stöcken
 - Werkzeuge aus Holz, Stein, Eisen und Diamant mit Haltbarkeit (60, 132, 250, 1560 Nutzungen): passende Werkzeuge bauen schneller ab. Mindeststufe zum Ernten: Stein und Kohle Holz, Eisenerz Stein, Diamanterz Eisen, Obsidian Diamant. Ohne passendes Werkzeug dauert der Abbau länger und es fällt nichts. Schwerter und Äxte machen mehr Schaden gegen Mobs
 - Mobs: Schweine, Kühe und Schafe laufen herum und fliehen bei Treffern, lassen rohes Fleisch fallen (essen heilt). Zombies erscheinen nur nachts (draußen und in dunklen Höhlen), verfolgen und greifen an und verschwinden am Tag (im Freien verbrennen sie, in Höhlen lösen sie sich nach 10 s auf)
+- Textur-Editor (Esc, Einstellungen, Textur-Editor): zeigt die aufgeklappte Textur (bei Blöcken das Kreuznetz aus Oberseite, vier Seiten und Unterseite, bei Figuren das komplette Skin-Netzblatt mit beschrifteten Flächen: V vorn, H hinten, R rechts, L links, O oben, U unten) und daneben eine drehbare 3D-Vorschau mit der echten Textur. Bemalen mit Stift (Pinselgröße 1 bis 3), Radierer, Füllen (ähnliche Farben), Pipette (auch Rechtsklick), 32 Farbfelder plus RGBA-Schieber, Rückgängig/Wiederholen, Raster und Netz einblendbar. Texturen von Blöcken, Gegenständen (Werkzeuge, Erze usw.) und Figuren (Spieler, Schwein, Kuh, Schaf, Zombie) lassen sich ändern
+- Eigene Texturen als PNG: "Speichern" schreibt nach `textures/`, beim nächsten Start lädt das Spiel diese Dateien statt der prozeduralen Texturen. "Exportieren" schreibt das aufgeklappte Netz nach `textures/export/`, das lässt sich in einem Malprogramm bearbeiten und mit "Importieren" wieder einlesen (danach noch speichern). "Zurücksetzen" stellt die Standardtextur wieder her und löscht die gespeicherte Datei
 - Ansichten (V): Ego, von hinten, von vorn. In den Außenansichten sieht man das eigene Spielermodell (Quader mit Laufanimation und Kopfneigung). Die Kamera rückt heran, wenn Blöcke im Weg sind, und steckt nie im Gelände
 - Figuren-Texturen als aufgeklappte Netze (Skins, 64x32 bzw. 64x64): Spieler im Minecraft-Layout, dazu Schwein, Kuh, Schaf und Zombie
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
@@ -24,6 +26,8 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, VSync, Vollbild, Spielmodus. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
 - Speichern und Laden: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
+
+Texturformate: Kacheln sind 16x16 (`textures/block_<name>.png`), die Skins `skin_player.png` und `skin_zombie.png` 64x32 im Minecraft-Layout (Kopf 0,0, Körper 16,16, Arm 40,16, Bein 0,16; linke Gliedmaßen werden gespiegelt; Minecraft-Skins im Format 64x64 werden akzeptiert, die obere Hälfte zählt), `skin_pig.png`, `skin_cow.png` und `skin_sheep.png` 64x64. Dateien mit falscher Größe werden beim Start ignoriert und gemeldet. Der Block-Export ist ein 64x48-Kreuznetz (4 x 3 Kacheln).
 
 Bewusst nicht enthalten: Hunger, Rüstung, Gold, Sound, Mehrspieler.
 
@@ -51,6 +55,8 @@ Bewusst nicht enthalten: Hunger, Rüstung, Gold, Sound, Mehrspieler.
 | F5 | Speichern (zusätzlich alle 90 s und beim Beenden) |
 | F11 | Vollbild |
 | Esc | Inventar schließen, sonst Pause-Menü (dort "Weiter", "Einstellungen", "Spiel speichern", "Beenden"); in den Einstellungen geht Esc einen Schritt zurück |
+
+Im Textur-Editor: Linksklick malt, Rechtsklick nimmt die Farbe auf, B Stift, E Radierer, F Füllen, P Pipette, 1 bis 3 Pinselgröße, G Raster, N Netz, R Drehen, Strg+Z rückgängig, Strg+Y oder Strg+Umschalt+Z wiederholen, Strg+S speichern, Mausrad in der Liste scrollt, Esc geht zurück.
 
 Im Inventar: Linksklick nimmt oder legt einen ganzen Stapel, Rechtsklick nimmt die Hälfte bzw. legt eines ab, Umschalt+Linksklick verschiebt zwischen Hotbar und Rucksack, ein Klick außerhalb des Fensters wirft den gehaltenen Stapel weg. Nach dem Tod lässt dich die Leertaste am Startpunkt wiederkehren (Inventar bleibt erhalten).
 
@@ -116,9 +122,10 @@ cmake --build build -j
 --no-save          Nichts laden oder speichern
 --save-path PFAD   Speicherdatei (Standard: saves/world.dat)
 --settings PFAD    Einstellungsdatei (Standard: settings.cfg)
+--textures PFAD    Ordner mit eigenen Texturen (Standard: textures)
 ```
 
-Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--demo mobs|water|inv|craft|furnace|menu|settings` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
+Entwicklungsoptionen: `--screenshot DATEI --frames N` (Screenshot nach N Frames, dann beenden), `--pos X Y Z`, `--look YAW PITCH`, `--time T` (0 bis 1, 0.25 ist Mittag), `--fly`, `--view 0|1|2`, `--health N`, `--demo mobs|water|inv|craft|furnace|menu|settings|editor|editorblock|editorpig|editoritem` (Szenen für Screenshots), `--bench N` (automatischer Flug, gibt Frame-Zeiten aus), `--selftest` (prüft Abbauen, Setzen, Drops, Essen, Schaden, Fallschaden, Ertrinken, Tod, Inventar-Klicks, Speichern in einem echten Fenster).
 
 ## Tests
 
@@ -146,6 +153,7 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/Entities.*` | Mobs (KI, Spawnen, Modelle aus Quadern) und Gegenstände am Boden |
 | `src/Items.*`, `src/Inventory.*`, `src/Crafting.*`, `src/Furnace.h` | Gegenstände und Werkzeuge, Stapel, Klicklogik, Rezepte, Schmelzen, Ofenzustand |
 | `src/Menu.*`, `src/Settings.*` | Pause- und Einstellungsmenü, `settings.cfg` |
+| `src/TextureStore.*`, `src/TextureEditor.*`, `src/EditorUi.*`, `src/Image.*` | Texturspeicher mit PNG-Dateien, Editor-Logik (Werkzeuge, Rückgängig, Netze, Vorschau), Editor-Oberfläche |
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
 | `src/Save.*` | Speicherformat Version 4 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Öfen, Gesundheit, Modus; Versionen 1 bis 3 bleiben lesbar) |
 | `tests/` | Tests |
@@ -156,11 +164,11 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 
 1. **Sound:** Effekte und Musik. Vorher wird die Audio-Bibliothek geklärt.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
-3. **Textur-Editor:** Im Spiel erreichbar über das Einstellungsmenü. Damit lassen sich Texturen von Blöcken und Charakteren ändern und speichern. Beim Start lädt das Spiel gespeicherte Texturen statt der prozeduralen. Das Einstellungsmenü dafür gibt es bereits.
-4. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+3. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
 
 ## Drittanbieter
 
 - [GLFW](https://www.glfw.org/) 3.4 (zlib/libpng-Lizenz)
 - [GLM](https://github.com/g-truc/glm) 1.0.1 (MIT)
+- [stb_image und stb_image_write](https://github.com/nothings/stb) (gemeinfrei oder MIT) für PNG, liegen in `third_party/stb`
 - GLAD 2, erzeugt für OpenGL 3.3 Core, liegt in `third_party/glad` (SPDX laut Header: WTFPL OR CC0-1.0, AND Apache-2.0)

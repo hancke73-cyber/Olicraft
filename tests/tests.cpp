@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "Block.h"
+#include "TextureEditor.h"
+#include "TextureStore.h"
 #include "Camera.h"
 #include "Models.h"
 #include "Skins.h"
@@ -1525,6 +1527,342 @@ static void testCamera() {
     CHECK(h.hit && std::fabs(h.dist - 1.5f) < 1e-3f);  // Block -2 beginnt bei x = -1
 }
 
+static void testImagesAndTextures() {
+    const std::string dir = "olicraft_test_tex";
+    std::filesystem::remove_all(dir);
+
+    // PNG-Rundlauf inklusive Transparenz
+    Image img(5, 3);
+    for (int y = 0; y < 3; ++y)
+        for (int x = 0; x < 5; ++x) {
+            uint8_t* p = img.at(x, y);
+            p[0] = static_cast<uint8_t>(x * 50);
+            p[1] = static_cast<uint8_t>(y * 100);
+            p[2] = static_cast<uint8_t>(x * y * 20);
+            p[3] = (x + y) % 2 ? 255 : 0;
+        }
+    std::string err;
+    CHECK(savePng(dir + "/a/b.png", img, &err));
+    Image back;
+    CHECK(loadImage(dir + "/a/b.png", back, &err));
+    CHECK(back.w == 5 && back.h == 3 && back.rgba == img.rgba);
+    CHECK(!loadImage(dir + "/nicht_da.png", back, &err) && !err.empty());
+    {
+        std::FILE* f = std::fopen((dir + "/kaputt.png").c_str(), "wb");
+        std::fputs("kein PNG", f);
+        std::fclose(f);
+    }
+    CHECK(!loadImage(dir + "/kaputt.png", back, &err));
+    CHECK(!savePng(dir + "/leer.png", Image(), &err));
+
+    // Texturspeicher: Standardtexturen, Kachel-Orientierung, Datei-Rundlauf
+    TextureStore store;
+    store.setDirectory(dir);
+    CHECK(store.atlasPixels().size() == static_cast<size_t>(ATLAS_PX) * ATLAS_PX * 4);
+    for (int t = 0; t < TILE_COUNT; ++t) {
+        CHECK(std::string(tileName(t).file).size() > 0 && std::string(tileName(t).name).size() > 0);
+        CHECK(store.tile(t).valid() && store.tile(t).rgba == store.defaultTile(t).rgba);
+    }
+    // Gras-Seite: oben (Zeile 0) gruen, unten braun
+    {
+        Image gs = store.tile(TILE_GRASS_SIDE);
+        const uint8_t* top = gs.at(3, 0);
+        const uint8_t* bottom = gs.at(3, 15);
+        CHECK(top[1] > top[0] && bottom[0] > bottom[2]);  // oben gruen, unten braun
+    }
+    // Ein Pixel setzen wirkt auf den Atlas (und umgekehrt orientiert)
+    const uint8_t red[4] = {255, 0, 0, 255};
+    store.setTilePixel(TILE_STONE, 2, 0, red);
+    CHECK(store.tile(TILE_STONE).at(2, 0)[0] == 255 && store.tile(TILE_STONE).at(2, 0)[1] == 0);
+    CHECK(store.atlasDirty());
+    {
+        // Atlas: Zeile 0 der Kachel = unten, also liegt das Pixel in der obersten Atlaszeile der Kachel
+        const int ty = (TILE_STONE / ATLAS_TILES) * TILE_PX + (TILE_PX - 1);
+        const int tx = (TILE_STONE % ATLAS_TILES) * TILE_PX + 2;
+        CHECK(store.atlasPixels()[(static_cast<size_t>(ty) * ATLAS_PX + tx) * 4] == 255);
+    }
+    CHECK(!store.tileCustom(TILE_STONE));
+    CHECK(store.saveTile(TILE_STONE, &err) && store.tileCustom(TILE_STONE));
+    CHECK(std::filesystem::exists(store.tilePath(TILE_STONE)));
+    store.resetTile(TILE_STONE);
+    CHECK(store.tile(TILE_STONE).at(2, 0)[0] != 255 || store.tile(TILE_STONE).at(2, 0)[1] != 0);
+    CHECK(store.loadTile(TILE_STONE, &err));
+    CHECK(store.tile(TILE_STONE).at(2, 0)[0] == 255 && store.tile(TILE_STONE).at(2, 0)[1] == 0);
+
+    // Skins: speichern, laden, falsche Groessen, Minecraft-Skin 64x64
+    store.setSkin(SKIN_PLAYER, [&] {
+        Image s = store.defaultSkin(SKIN_PLAYER);
+        s.at(0, 0)[0] = 1;
+        s.at(0, 0)[1] = 2;
+        s.at(0, 0)[2] = 3;
+        s.at(0, 0)[3] = 255;
+        return s;
+    }());
+    CHECK(store.saveSkin(SKIN_PLAYER, &err) && store.skinCustom(SKIN_PLAYER));
+    store.resetSkin(SKIN_PLAYER);
+    CHECK(store.skin(SKIN_PLAYER).at(0, 0)[0] != 1 || store.skin(SKIN_PLAYER).at(0, 0)[1] != 2);
+    CHECK(store.loadSkin(SKIN_PLAYER, &err));
+    CHECK(store.skin(SKIN_PLAYER).at(0, 0)[0] == 1 && store.skin(SKIN_PLAYER).at(0, 0)[2] == 3);
+    {
+        Image wrong(10, 10);
+        CHECK(savePng(dir + "/skin_player.png", wrong, &err));
+        CHECK(!store.loadSkin(SKIN_PLAYER, &err) && err.find("10x10") != std::string::npos);
+        Image mc(64, 64);
+        mc.at(5, 5)[0] = 77;
+        mc.at(5, 5)[3] = 255;
+        mc.at(5, 40)[0] = 99;  // untere Haelfte (neues Layout) wird verworfen
+        CHECK(savePng(dir + "/skin_player.png", mc, &err));
+        CHECK(store.loadSkin(SKIN_PLAYER, &err) && store.skin(SKIN_PLAYER).h == 32 && store.skin(SKIN_PLAYER).at(5, 5)[0] == 77);
+        Image halfPig(64, 32);
+        CHECK(savePng(dir + "/skin_pig.png", halfPig, &err));  // Tiere nur in exakter Groesse (64x64)
+        CHECK(!store.loadSkin(SKIN_PIG, &err));
+        Image tile32(32, 32);
+        CHECK(savePng(store.tilePath(TILE_DIRT), tile32, &err));
+        CHECK(!store.loadTile(TILE_DIRT, &err));
+    }
+    // Alles aus dem Ordner laden: gueltige Dateien werden uebernommen, ungueltige gemeldet
+    {
+        TextureStore s2;
+        s2.setDirectory(dir);
+        std::vector<std::string> msgs;
+        const int n = s2.loadAllFromDirectory(&msgs);
+        CHECK(n >= 2);                                  // Stein-Kachel und Spieler-Skin
+        CHECK(msgs.size() == 2);                        // Schwein und Erde sind ungueltig
+        CHECK(s2.tileCustom(TILE_STONE) && !s2.tileCustom(TILE_DIRT) && s2.skinCustom(SKIN_PLAYER) && !s2.skinCustom(SKIN_PIG));
+        TextureStore none;
+        none.setDirectory(dir + "/gibt_es_nicht");
+        CHECK(none.loadAllFromDirectory(nullptr) == 0);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+static void testTextureEditor() {
+    const std::string dir = "olicraft_test_editor";
+    std::filesystem::remove_all(dir);
+    TextureStore store;
+    store.setDirectory(dir);
+    TextureEditor ed(store);
+    std::string msg;
+
+    // Eintraege
+    const auto& entries = ed.entries();
+    CHECK(entries.size() > 40);
+    int blocks = 0, flats = 0, skins = 0;
+    std::vector<std::string> names;
+    for (const EditorEntry& e : entries) {
+        CHECK(!e.name.empty());
+        names.push_back(e.name + "/" + e.group);
+        blocks += e.kind == EditorEntry::BlockNet;
+        flats += e.kind == EditorEntry::FlatTile;
+        skins += e.kind == EditorEntry::Skin;
+    }
+    CHECK(blocks >= 15 && flats >= 20 && skins == SKIN_COUNT);
+    std::sort(names.begin(), names.end());
+    CHECK(std::adjacent_find(names.begin(), names.end()) == names.end());  // Namen eindeutig
+
+    auto find = [&](const std::string& n) {
+        for (size_t i = 0; i < entries.size(); ++i)
+            if (entries[i].name == n) return static_cast<int>(i);
+        return -1;
+    };
+    const int grass = find("Gras"), stick = find("Stock"), player = find("Spieler");
+    CHECK(grass >= 0 && stick >= 0 && player >= 0);
+
+    // Block: Kreuznetz 64x48, Seite kommt viermal vor
+    ed.select(grass);
+    CHECK(ed.view().w == 64 && ed.view().h == 48);
+    CHECK(ed.editable(16 + 3, 3) && ed.editable(3, 16 + 3) && ed.editable(16 + 3, 32 + 3));
+    CHECK(!ed.editable(3, 3) && !ed.editable(48 + 3, 3) && !ed.editable(3, 32 + 3));  // leere Zellen des Kreuzes
+    CHECK(ed.regions().size() == 6);
+    ed.tool = Tool::Pencil;
+    ed.color[0] = 10;
+    ed.color[1] = 20;
+    ed.color[2] = 30;
+    ed.color[3] = 255;
+    ed.brush = 1;
+    ed.paintAt(2, 16 + 5);  // Seite, Zelle 0
+    for (int c = 0; c < 4; ++c) {
+        const uint8_t* p = ed.view().at(c * 16 + 2, 16 + 5);
+        CHECK(p[0] == 10 && p[1] == 20 && p[2] == 30);  // alle vier Seiten zeigen dieselbe Kachel
+    }
+    CHECK(store.tile(TILE_GRASS_SIDE).at(2, 5)[0] == 10);
+    CHECK(store.tile(TILE_GRASS_TOP).at(2, 5)[0] != 10 || store.tile(TILE_GRASS_TOP).at(2, 5)[1] != 20);  // oben unberuehrt
+    CHECK(ed.canUndo() && ed.modified());
+    ed.paintAt(3, 3);  // ausserhalb des Kreuzes: nichts
+    CHECK(store.tile(TILE_GRASS_SIDE).at(3, 3)[0] != 10 || store.tile(TILE_GRASS_SIDE).at(3, 3)[1] != 20);
+
+    // Radierer und Pinselgroesse
+    ed.tool = Tool::Eraser;
+    ed.brush = 2;
+    ed.paintAt(16 + 8, 8);  // oben
+    int erased = 0;
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            if (store.tile(TILE_GRASS_TOP).at(x, y)[3] == 0) ++erased;
+    CHECK(erased == 4);
+    ed.brush = 3;
+    ed.paintAt(16 + 0, 0);  // an der Kante: nur Pixel innerhalb der Kachel
+    erased = 0;
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            if (store.tile(TILE_GRASS_TOP).at(x, y)[3] == 0) ++erased;
+    CHECK(erased == 4 + 4);  // 2x2 an der Ecke (Pinsel 3 reicht von -1 bis +1)
+
+    // Undo / Redo
+    const Image before = store.tile(TILE_GRASS_TOP);
+    CHECK(ed.undo() && ed.undo());
+    CHECK(store.tile(TILE_GRASS_TOP).rgba == store.defaultTile(TILE_GRASS_TOP).rgba);
+    CHECK(ed.redo());
+    CHECK(store.tile(TILE_GRASS_TOP).rgba != store.defaultTile(TILE_GRASS_TOP).rgba);
+    CHECK(ed.redo() && !ed.canRedo());
+    CHECK(store.tile(TILE_GRASS_TOP).rgba == before.rgba);
+
+    // Fuellen bleibt in der Zelle, Pipette liest die Farbe
+    ed.select(grass);
+    ed.tool = Tool::Fill;
+    ed.color[0] = 1; ed.color[1] = 2; ed.color[2] = 3; ed.color[3] = 255;
+    ed.paintAt(16 + 8, 8);
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x) {
+            const uint8_t* p = store.tile(TILE_GRASS_TOP).at(x, y);
+            CHECK(p[0] <= 255);  // alle Pixel gueltig
+            (void)p;
+        }
+    CHECK(ed.view().at(16 + 8, 8)[0] == 1);
+    CHECK(store.tile(TILE_DIRT).rgba == store.defaultTile(TILE_DIRT).rgba);
+    CHECK(store.tile(TILE_GRASS_SIDE).at(7, 7)[0] != 1);  // Seite nicht mitgefuellt
+    ed.tool = Tool::Picker;
+    ed.color[0] = 99;
+    ed.paintAt(16 + 8, 8);
+    CHECK(ed.color[0] == 1 && ed.color[1] == 2 && ed.color[2] == 3);
+
+    // Gegenstand: Orientierung (Zeile 0 oben) und Linie
+    ed.select(stick);
+    CHECK(ed.view().w == 16 && ed.view().h == 16 && ed.regions().empty());
+    ed.tool = Tool::Pencil;
+    ed.brush = 1;
+    ed.color[0] = 7; ed.color[1] = 8; ed.color[2] = 9; ed.color[3] = 255;
+    ed.paintLine(1, 1, 8, 5);
+    CHECK(store.tile(TILE_STICK).at(1, 1)[0] == 7 && store.tile(TILE_STICK).at(8, 5)[0] == 7);
+    int painted = 0;
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            if (store.tile(TILE_STICK).at(x, y)[0] == 7 && store.tile(TILE_STICK).at(x, y)[1] == 8) ++painted;
+    CHECK(painted == 8);  // Bresenham von (1,1) nach (8,5): max(dx, dy) + 1 Pixel
+    CHECK(ed.undo());  // die ganze Linie ist ein Schritt
+    CHECK(store.tile(TILE_STICK).rgba == store.defaultTile(TILE_STICK).rgba);
+
+    // Skin: Netz, Flaechen, Fuellen nur in der Flaeche
+    ed.select(player);
+    CHECK(ed.view().w == 64 && ed.view().h == 32);
+    CHECK(ed.regions().size() == 4 * 6);  // Kopf, Koerper, Arm, Bein
+    ed.tool = Tool::Fill;
+    ed.color[0] = 200; ed.color[1] = 0; ed.color[2] = 200; ed.color[3] = 255;
+    const int fx = 16 + 4 + 2, fy = 16 + 4 + 5;  // im Koerper (Vorderseite)
+    ed.paintAt(fx, fy);
+    CHECK(store.skin(SKIN_PLAYER).at(fx, fy)[0] == 200);
+    int purple = 0;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 64; ++x)
+            if (store.skin(SKIN_PLAYER).at(x, y)[0] == 200 && store.skin(SKIN_PLAYER).at(x, y)[1] == 0) ++purple;
+    CHECK(purple > 40 && purple <= 8 * 12);  // fuellt die (verrauschte) Koerper-Vorderseite, hoechstens 8x12 Pixel
+    CHECK(ed.undo());
+    ed.paintAt(60, 2);  // ausserhalb jeder Flaeche: nichts
+    CHECK(store.skin(SKIN_PLAYER).at(60, 2)[0] != 200 || store.skin(SKIN_PLAYER).at(60, 2)[3] == 0);
+    // Zeichnen in einen Arm veraendert das Netz, das sich linker und rechter Arm teilen
+    ed.tool = Tool::Pencil;
+    ed.paintAt(44, 20);
+    CHECK(store.skin(SKIN_PLAYER).at(44, 20)[0] == 200);
+
+    // Speichern / Export / Import / Zuruecksetzen
+    CHECK(ed.save(&msg) && std::filesystem::exists(store.skinPath(SKIN_PLAYER)));
+    CHECK(!ed.modified());
+    CHECK(ed.exportNet(&msg) && std::filesystem::exists(ed.exportPath()));
+    {
+        Image ext;
+        std::string err;
+        CHECK(loadImage(ed.exportPath(), ext, &err) && ext.w == 64 && ext.h == 32 && ext.at(44, 20)[0] == 200);
+        ext.at(10, 10)[0] = 12;
+        ext.at(10, 10)[1] = 34;
+        ext.at(10, 10)[2] = 56;
+        ext.at(10, 10)[3] = 255;
+        CHECK(savePng(ed.exportPath(), ext, &err));
+    }
+    CHECK(ed.importNet(&msg));
+    CHECK(store.skin(SKIN_PLAYER).at(10, 10)[0] == 12 && store.skin(SKIN_PLAYER).at(10, 10)[2] == 56);
+    CHECK(ed.undo() && store.skin(SKIN_PLAYER).at(10, 10)[0] != 12);
+    {
+        Image bad(10, 10);
+        std::string err;
+        CHECK(savePng(ed.exportPath(), bad, &err));
+        const Image keep = store.skin(SKIN_PLAYER);
+        CHECK(!ed.importNet(&msg) && msg.find("Groesse") != std::string::npos);
+        CHECK(store.skin(SKIN_PLAYER).rgba == keep.rgba);
+    }
+    ed.resetToDefault(&msg);
+    CHECK(store.skin(SKIN_PLAYER).rgba == store.defaultSkin(SKIN_PLAYER).rgba);
+    CHECK(!std::filesystem::exists(store.skinPath(SKIN_PLAYER)));
+
+    // Block-Netz exportieren, in der Datei etwas veraendern, importieren
+    ed.select(grass);
+    CHECK(ed.exportNet(&msg));
+    {
+        Image net;
+        std::string err;
+        CHECK(loadImage(ed.exportPath(), net, &err) && net.w == 64 && net.h == 48);
+        // eine der vier Seiten (Zelle 2) und die Oberseite veraendern
+        net.at(2 * 16 + 4, 16 + 4)[0] = 250;
+        net.at(2 * 16 + 4, 16 + 4)[3] = 255;
+        net.at(16 + 4, 4)[1] = 251;
+        net.at(16 + 4, 4)[3] = 255;
+        CHECK(savePng(ed.exportPath(), net, &err));
+    }
+    CHECK(ed.importNet(&msg));
+    CHECK(store.tile(TILE_GRASS_SIDE).at(4, 4)[0] == 250 && store.tile(TILE_GRASS_TOP).at(4, 4)[1] == 251);
+    CHECK(ed.save(&msg) && std::filesystem::exists(store.tilePath(TILE_GRASS_SIDE)) &&
+          std::filesystem::exists(store.tilePath(TILE_GRASS_TOP)) && std::filesystem::exists(store.tilePath(TILE_DIRT)));
+    // Ein neuer Speicher laedt das beim Start
+    {
+        TextureStore again;
+        again.setDirectory(dir);
+        CHECK(again.loadAllFromDirectory(nullptr) >= 3);
+        CHECK(again.tile(TILE_GRASS_SIDE).at(4, 4)[0] == 250);
+    }
+    // Fehlende Importdatei
+    ed.select(find("Kuh"));
+    CHECK(!ed.importNet(&msg) && msg.find("Nicht gefunden") != std::string::npos);
+
+    // Vorschau: Wuerfel zeigt drei Flaechen, Figuren viele, alles im Einheitskreis und nach Tiefe sortiert
+    ed.select(grass);
+    auto q = ed.preview(0.6f, 0.45f);
+    CHECK(q.size() == 3);
+    bool inside = true;
+    for (const PreviewQuad& pq : q) {
+        CHECK(!pq.skin);
+        for (int k = 0; k < 4; ++k) inside = inside && glm::length(pq.p[k]) <= 1.01f;
+    }
+    CHECK(inside);
+    ed.select(player);
+    q = ed.preview(0.3f, 0.3f);
+    CHECK(q.size() >= 12);
+    bool allSkin = true;
+    for (const PreviewQuad& pq : q) {
+        allSkin = allSkin && pq.skin;
+        for (int k = 0; k < 4; ++k) {
+            inside = inside && glm::length(pq.p[k]) <= 1.01f;
+            allSkin = allSkin && pq.uv[k].x >= 0 && pq.uv[k].x <= 1 && pq.uv[k].y >= 0 && pq.uv[k].y <= 1;
+        }
+    }
+    CHECK(allSkin && inside);
+    // Drehung um 180 Grad zeigt andere Flaechen
+    auto q2 = ed.preview(0.3f + 3.14159f, 0.3f);
+    float sumA = 0, sumB = 0;
+    for (const PreviewQuad& pq : q) sumA += pq.uv[0].x * 3.0f + pq.uv[0].y;
+    for (const PreviewQuad& pq : q2) sumB += pq.uv[0].x * 3.0f + pq.uv[0].y;
+    CHECK(q2.size() >= 12 && std::fabs(sumA - sumB) > 1e-3f);
+    std::filesystem::remove_all(dir);
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -1557,6 +1895,8 @@ int main() {
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();
+    testImagesAndTextures();
+    testTextureEditor();
     testCamera();
     testSaveV2();
     testEntities();

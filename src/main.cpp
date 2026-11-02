@@ -22,6 +22,7 @@ static void printHelp() {
         "  --no-mobs         Keine Tiere und Monster\n"
         "  --save-path PFAD  Speicherdatei (Standard: saves/world.dat)\n"
         "  --settings PFAD   Einstellungsdatei (Standard: settings.cfg)\n"
+        "  --textures PFAD   Ordner mit eigenen Texturen (Standard: textures)\n"
         "  --help            Diese Hilfe\n"
         "\n"
         "Steuerung: WASD, Maus, Leertaste springen, Strg sprinten, F fliegen (Kreativ),\n"
@@ -59,6 +60,9 @@ int main(int argc, char** argv) {
         } else if (a == "--settings") {
             need(1);
             opt.settingsPath = argv[++i];
+        } else if (a == "--textures") {
+            need(1);
+            opt.texturesDir = argv[++i];
         } else if (a == "--distance") {
             need(1);
             opt.renderDistance = std::atoi(argv[++i]);
