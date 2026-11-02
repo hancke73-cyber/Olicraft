@@ -1101,6 +1101,35 @@ void drawDoorItem(TileCanvas& c, bool iron) {
         }
 }
 
+
+void drawLadder(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const bool rail = x <= 2 || x >= 13;
+            const bool rung = (y % 4 == 1 || y % 4 == 2) && x > 2 && x < 13;
+            if (!rail && !rung) continue;
+            const int d = static_cast<int>((rnd(x, y, TILE_LADDER) - 0.5f) * 16);
+            c.set(x, y, shade(rail ? Rgba{120, 84, 44, 255} : Rgba{150, 108, 58, 255}, d));
+        }
+}
+
+void drawBedTop(TileCanvas& c, int tile, bool head) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            int d = static_cast<int>((rnd(x, y, tile) - 0.5f) * 10);
+            Rgba col = shade({176, 44, 44, 255}, d);
+            if (head) {
+                const bool pillow = x >= 2 && x <= 13 && y >= 3 && y <= 12;
+                col = pillow ? shade({238, 236, 228, 255}, d) : shade({150, 36, 36, 255}, d);
+                if (pillow && (x == 2 || x == 13 || y == 3 || y == 12)) col = shade({206, 204, 196, 255}, d);
+            } else if (x == 0 || x == 15 || y == 0 || y == 15) {
+                col = shade({140, 32, 32, 255}, d);
+            }
+            c.set(x, y, col);
+        }
+}
+
 }  // namespace
 
 std::vector<uint8_t> generateAtlasPixels() {
@@ -1243,6 +1272,12 @@ std::vector<uint8_t> generateAtlasPixels() {
         drawDoorItem(di2, true);
     }
     make(TILE_FARMLAND, drawFarmland);
+    make(TILE_LADDER, drawLadder);
+    {
+        TileCanvas bf(px, TILE_BED_FOOT_TOP), bh(px, TILE_BED_HEAD_TOP);
+        drawBedTop(bf, TILE_BED_FOOT_TOP, false);
+        drawBedTop(bh, TILE_BED_HEAD_TOP, true);
+    }
     make(TILE_SEEDS, drawSeeds);
     make(TILE_WHEAT, drawWheatItem);
     make(TILE_BREAD, drawBread);

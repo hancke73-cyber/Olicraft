@@ -87,7 +87,18 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
     vel.x += (target.x - vel.x) * k;
     vel.z += (target.z - vel.z) * k;
 
-    if (flying) {
+    // Leiter: an der Leiter klettern (Sprung oder Vorwaertsgehen hoch, Schleichen haelt, sonst langsam runter)
+    {
+        auto ladderAt = [&](float y) {
+            return isLadder(world.getBlock(static_cast<int>(std::floor(pos.x)), static_cast<int>(std::floor(y)), static_cast<int>(std::floor(pos.z))));
+        };
+        onLadder = !flying && (ladderAt(pos.y + 0.1f) || ladderAt(pos.y + 0.9f) || ladderAt(pos.y + 1.5f));
+    }
+    if (onLadder) {
+        vel.x = std::max(-1.6f, std::min(1.6f, vel.x));
+        vel.z = std::max(-1.6f, std::min(1.6f, vel.z));
+        vel.y = (in.jump || in.forward > 0.1f) ? 3.2f : (in.sneak ? 0.0f : -2.4f);
+    } else if (flying) {
         float ty = (in.jump ? FLY * 0.8f : 0.0f) - (in.sneak ? FLY * 0.8f : 0.0f);
         if (in.sprint) ty *= 1.5f;
         vel.y += (ty - vel.y) * (1.0f - std::exp(-8.0f * dt));
@@ -125,6 +136,7 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
     moveAxis(1, vel.y * dt, world);
 
     if (flying && onGround) flying = false;  // Landen beendet den Flug
+    if (onLadder) peakY_ = pos.y;             // an der Leiter gibt es keinen Fallschaden
 
     // Fallhoehe fuer Fallschaden
     if (onGround) {

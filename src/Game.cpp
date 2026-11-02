@@ -1177,6 +1177,7 @@ void Game::update(float dt) {
         EntityEnv env;
         env.daylight = Renderer::daylight(timeOfDay_);
         env.creative = creative_;
+        env.timeOfDay = timeOfDay_;
         env.playerDead = dead_;
         env.allowSpawns = opt_.mobs && (!shotMode || opt_.demo == "village");
         entities_.update(dt, *world_, player_, inventory_, env);
@@ -1326,7 +1327,7 @@ void Game::placeBlockOrUse() {
             openChest(target_.block);
             return;
         }
-        if (tb == BED) {
+        if (isAnyBed(tb)) {
             useBed(target_.block);
             return;
         }
@@ -1464,8 +1465,41 @@ void Game::placeBlockOrUse() {
             else if (canFloor) id = LANTERN;
             else if (canHang) id = LANTERN_HANG;
             else return;
-        } else if (id == FARMLAND) {
-            // Acker nur wie ein normaler Block
+        } else if (isLadder(id)) {
+            // Seite des Traegers: bei Seitenflaechen der getroffene Block, sonst in Blickrichtung oder rundherum
+            static const int DIRV[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            auto supported = [&](int fdir) {
+                const BlockId sb = world_->getBlock(p.x + DIRV[fdir][0], p.y, p.z + DIRV[fdir][1]);
+                return blockInfo(sb).solid && blockInfo(sb).shape != SH_LADDER;
+            };
+            int fdir = -1;
+            if (target_.normal.y == 0) {
+                for (int d = 0; d < 4; ++d)
+                    if (DIRV[d][0] == -target_.normal.x && DIRV[d][1] == -target_.normal.z) fdir = d;
+            } else if (supported(lookDir)) {
+                fdir = lookDir;
+            } else {
+                for (int d = 0; d < 4 && fdir < 0; ++d)
+                    if (supported(d)) fdir = d;
+            }
+            if (fdir < 0 || !supported(fdir)) return;
+            id = makeLadder(fdir);
+        } else if (id == BED) {
+            static const int DIRV[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            const glm::ivec3 hp(p.x + DIRV[lookDir][0], p.y, p.z + DIRV[lookDir][1]);
+            auto freeCell = [&](const glm::ivec3& c) {
+                const BlockId cb = world_->getBlock(c.x, c.y, c.z);
+                return (cb == AIR || isPlant(cb)) && blockInfo(world_->getBlock(c.x, c.y - 1, c.z)).solid;
+            };
+            if (!freeCell(p) || !freeCell(hp)) return;
+            Box bb[1] = {{0, 0, 0, 1, 9.0f / 16.0f, 1}};
+            if (player_.intersectsBoxes(p.x, p.y, p.z, bb, 1) || player_.intersectsBoxes(hp.x, hp.y, hp.z, bb, 1)) return;
+            world_->setBlock(p.x, p.y, p.z, makeBedPart(false, lookDir));
+            world_->setBlock(hp.x, hp.y, hp.z, makeBedPart(true, lookDir));
+            placeTimer_ = 0.25f;
+            playSound(SoundId::BlockGrass, glm::vec3(p) + glm::vec3(0.5f), 0.8f, 0.85f);
+            if (!creative_) inventory_.take(slot_, 1);
+            return;
         }
     }
     {
@@ -1823,6 +1857,12 @@ void Game::applyDemo() {
         put(0, 1, 19, GLASS_PANE);
         put(0, 1, 21, GLASS_PANE);
         put(4, 0, 21, IRON_BARS);
+        for (int y = 0; y < 4; ++y) {
+            put(5, y, 23, STONE);
+            put(4, y, 23, makeLadder(0));
+        }
+        put(10, 0, 22, makeBedPart(false, 2));
+        put(10, 0, 23, makeBedPart(true, 2));
         put(4, 1, 21, IRON_BARS);
         put(2, 0, 16, LANTERN);
         put(6, 3, 20, STONE);

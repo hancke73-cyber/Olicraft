@@ -14,6 +14,7 @@ namespace oc {
 
 class World;
 class Player;
+struct Village;
 
 // Geometrie fuer die Darstellung (Positionen relativ zur Kamera), getrennt nach Textur
 struct EntityBatches {
@@ -92,6 +93,18 @@ struct Mob {
     int homeX = 0, homeZ = 0, villageId = 0;
     int profession = 0;
     bool hasHome = false;
+    const Village* village = nullptr;  // Heimatdorf (zeigt in den Zwischenspeicher des Dorfgenerators)
+    int bedIndex = -1;                 // Bett im Dorf
+    bool sleeping = false;
+    int route = 0;                     // 0..3 ins Haus hinein, 10..12 hinaus
+    float anchorX = 0.0f, anchorZ = 0.0f, anchorR = 22.0f;  // Bleibebereich beim Umherlaufen
+    float sleepYaw = 0.0f;
+    std::vector<glm::ivec3> path;  // berechneter Weg (Zellen, auf denen er steht)
+    size_t pathIdx = 0;
+    glm::ivec3 pathGoal{0};
+    bool pathValid = false;
+    float pathTimer = 0.0f;       // Zeit seit der letzten Bewegung (Festhaengen)
+    glm::vec3 pathLastPos{0.0f};
 
     bool dead() const { return deathTimer >= 0.0f; }
 };
@@ -106,6 +119,7 @@ struct EntityEnv {
     bool creative = false;
     bool playerDead = false;
     bool allowSpawns = true;
+    float timeOfDay = 0.3f;
 };
 
 class EntityManager {
@@ -142,6 +156,15 @@ private:
     void updateItem(ItemEntity& it, float dt, World& world);
     void updateMob(Mob& m, float dt, World& world, const Player& player, const EntityEnv& env);
     void trySpawn(World& world, const Player& player, const EntityEnv& env);
+    bool followPath(Mob& m, World& world, const glm::ivec3& goal, float arrive, glm::vec2& want, float& speed, bool& look, float& yaw, float dt);
+    bool villagerBrain(Mob& m, float dt, World& world, const EntityEnv& env, glm::vec2& want, float& speed, bool& look, float& yaw);
+    void openDoorsAhead(Mob& m, World& world, const glm::vec2& want);
+    void updateOpenedDoors(float dt, World& world, const Player& player);
+    struct OpenedDoor {
+        glm::ivec3 pos;
+        float timer;
+    };
+    std::vector<OpenedDoor> openedDoors_;
     void dropLoot(const Mob& m);
 
     std::vector<ItemEntity> items_;

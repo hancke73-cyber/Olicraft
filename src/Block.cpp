@@ -140,6 +140,14 @@ struct InfoTable {
                 for (int axis = 0; axis < 2; ++axis)
                     thin(makeGate(mat, open == 1, axis), mat == 0 ? "Holztor" : "Eisentor", mat == 0 ? TILE_GATE_WOOD : TILE_GATE_IRON,
                          mat == 0 ? 1.5f : 4.0f, makeGate(mat, false, 0), mat == 0 ? TOOL_AXE : TOOL_PICKAXE, mat == 0 ? 0 : 1, SH_GATE, open == 0);
+        // Leitern und Betten
+        for (int f = 0; f < 4; ++f) {
+            thin(makeLadder(f), "Leiter", TILE_LADDER, 0.4f, LADDER_BASE, TOOL_AXE, 0, SH_LADDER, false);
+            for (int hd = 0; hd < 2; ++hd) {
+                BlockInfo& i = infos[makeBedPart(hd == 1, f)];
+                i = {"Bett", true, false, false, true, false, true, hd ? TILE_BED_HEAD_TOP : TILE_BED_FOOT_TOP, TILE_PLANKS, TILE_BED_SIDE, 0.4f, BED, TOOL_NONE, 0, false, SH_BED};
+            }
+        }
         // Acker und Feldfruechte
         infos[FARMLAND] = {"Acker", true, false, false, true, false, true, TILE_FARMLAND, TILE_DIRT, TILE_DIRT, 0.3f, DIRT, TOOL_SHOVEL, 0, false, SH_FARMLAND};
         for (int s = 0; s < 4; ++s) {

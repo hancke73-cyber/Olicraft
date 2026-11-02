@@ -77,6 +77,97 @@ void addBox(std::vector<Vertex>& out, const glm::vec3& center, const glm::vec3& 
     }
 }
 
+// Naechste Uferrichtung (Winkel), wenn man im Wasser steckt: nahe feste Zelle mit zwei freien Zellen darueber und ohne Wasser
+bool shoreDirection(const World& w, const glm::vec3& pos, float& angOut) {
+    const int by = static_cast<int>(std::floor(pos.y));
+    for (int r = 1; r <= 9; ++r)
+        for (int k = 0; k < 16; ++k) {
+            const float ang = static_cast<float>(k) * PI / 8.0f;
+            const int x = static_cast<int>(std::floor(pos.x + std::cos(ang) * static_cast<float>(r)));
+            const int z = static_cast<int>(std::floor(pos.z + std::sin(ang) * static_cast<float>(r)));
+            for (int dy = -1; dy <= 2; ++dy) {
+                const int y = by + dy;
+                if (w.isSolidAt(x, y, z) && !w.isSolidAt(x, y + 1, z) && !w.isSolidAt(x, y + 2, z) && !isLiquid(w.getBlock(x, y + 1, z)) &&
+                    !isLiquid(w.getBlock(x, y + 2, z))) {
+                    angOut = ang;
+                    return true;
+                }
+            }
+        }
+    return false;
+}
+
+// A*-Suche ueber begehbare Zellen (Tueren und Tore zaehlen als begehbar, Dorfbewohner oeffnen sie).
+std::vector<glm::ivec3> findPathCells(const World& w, const glm::ivec3& start, const glm::ivec3& goal, int radius) {
+    auto freeCell = [&](int x, int y, int z) {
+        const BlockId b = w.getBlock(x, y, z);
+        if (b == AIR) return true;
+        if (isLiquid(b)) return false;
+        const BlockInfo& bi = blockInfo(b);
+        return !bi.solid || isDoor(b) || isGate(b);
+    };
+    auto standable = [&](int x, int y, int z) {
+        if (y < 1 || y >= CHUNK_H - 2) return false;
+        if (!freeCell(x, y, z) || !freeCell(x, y + 1, z)) return false;
+        const BlockId below = w.getBlock(x, y - 1, z);
+        return blockInfo(below).solid && !isDoor(below) && !isGate(below) && !isFence(below) && !isWall(below);
+    };
+    struct Node {
+        glm::ivec3 p;
+        int g;
+        int parent;
+    };
+    std::vector<Node> nodes;
+    std::vector<std::pair<int, int>> open;  // (f, index)
+    auto key = [](const glm::ivec3& p) { return (static_cast<int64_t>(p.x) << 40) ^ (static_cast<int64_t>(p.z) << 12) ^ p.y; };
+    std::vector<int64_t> closedKeys;
+    auto isClosed = [&](const glm::ivec3& p) {
+        const int64_t k = key(p);
+        for (int64_t c : closedKeys)
+            if (c == k) return true;
+        return false;
+    };
+    auto h = [&](const glm::ivec3& p) { return std::abs(p.x - goal.x) + std::abs(p.z - goal.z) + std::abs(p.y - goal.y); };
+    nodes.push_back({start, 0, -1});
+    open.push_back({h(start), 0});
+    static const int D[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    int expanded = 0;
+    while (!open.empty() && expanded < 5000) {
+        size_t bi = 0;
+        for (size_t i = 1; i < open.size(); ++i)
+            if (open[i].first < open[bi].first) bi = i;
+        const int idx = open[bi].second;
+        open[bi] = open.back();
+        open.pop_back();
+        const glm::ivec3 cur = nodes[static_cast<size_t>(idx)].p;
+        if (isClosed(cur)) continue;
+        closedKeys.push_back(key(cur));
+        ++expanded;
+        if (cur == goal) {
+            std::vector<glm::ivec3> out;
+            for (int i = idx; i >= 0; i = nodes[static_cast<size_t>(i)].parent) out.push_back(nodes[static_cast<size_t>(i)].p);
+            std::reverse(out.begin(), out.end());
+            return out;
+        }
+        for (const auto& d : D) {
+            const int nx = cur.x + d[0], nz = cur.z + d[1];
+            if (std::abs(nx - goal.x) > radius + std::abs(start.x - goal.x) || std::abs(nz - goal.z) > radius + std::abs(start.z - goal.z)) continue;
+            for (int dy : {0, 1, -1}) {
+                const int ny = cur.y + dy;
+                if (!standable(nx, ny, nz)) continue;
+                if (dy == 1 && !freeCell(cur.x, cur.y + 2, cur.z)) continue;  // Platz zum Hochsteigen
+                const glm::ivec3 np(nx, ny, nz);
+                if (isClosed(np)) continue;
+                const int g = nodes[static_cast<size_t>(idx)].g + 1 + (dy != 0 ? 1 : 0);
+                nodes.push_back({np, g, idx});
+                open.push_back({g + h(np), static_cast<int>(nodes.size()) - 1});
+                break;  // eine passende Hoehe je Richtung
+            }
+        }
+    }
+    return {};
+}
+
 SkinId skinOf(MobType t) {
     switch (t) {
         case MobType::Pig: return SKIN_PIG;
@@ -162,6 +253,7 @@ void EntityManager::hurtMob(Mob& m, int damage, const glm::vec3& from) {
     if (m.dead()) return;
     m.health -= damage;
     m.hurtTimer = 0.45f;
+    m.sleeping = false;
     glm::vec2 away = normalized2(glm::vec2(m.pos.x - from.x, m.pos.z - from.z),
                                  glm::vec2(std::cos(m.yaw), std::sin(m.yaw)));
     m.vel.x += away.x * 5.5f;
@@ -278,6 +370,21 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
         }
     }
 
+    if (m.sleeping && !m.dead()) {  // schlaeft im Bett: bleibt liegen, steht am Morgen auf
+        if (env.daylight > 0.5f && m.village && m.bedIndex >= 0 && m.bedIndex < static_cast<int>(m.village->beds.size())) {
+            const Village::Bed& bed = m.village->beds[static_cast<size_t>(m.bedIndex)];
+            m.sleeping = false;
+            m.route = 10;
+            m.pathValid = false;
+            m.pos = glm::vec3(static_cast<float>(bed.head.x) + 0.5f, static_cast<float>(bed.head.y) + 0.6f, static_cast<float>(bed.head.z) + 0.5f);
+        } else {
+            m.vel = glm::vec3(0.0f);
+            m.walkAmount = 0.0f;
+            m.yaw = m.sleepYaw;
+            return;
+        }
+    }
+
     glm::vec2 want(0.0f);
     float speed = 0.0f;
     bool lookAtTarget = false;
@@ -300,11 +407,22 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
                 playerHits_.push_back({3, glm::vec3(dir.x * 6.0f, 4.0f, dir.y * 6.0f)});
             }
             if (dist2d < 1.0f) speed = 0.0f;  // direkt vor dem Spieler stehen bleiben
+        } else if (m.inWater && !sp.hostile && !m.sleeping && !world.inLavaAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f))) {
+            // Im Wasser: zum naechsten Ufer schwimmen und hinausspringen
+            float ang;
+            if (shoreDirection(world, m.pos, ang)) {
+                want = glm::vec2(std::cos(ang), std::sin(ang));
+                speed = sp.speed * 1.7f;
+                lookAtTarget = true;
+                targetYaw = ang;
+            }
         } else if (m.panicTimer > 0.0f) {
             want = m.fleeDir;
             speed = sp.speed * 2.2f;
             lookAtTarget = true;
             targetYaw = std::atan2(want.y, want.x);
+        } else if (m.type == MobType::Villager && villagerBrain(m, dt, world, env, want, speed, lookAtTarget, targetYaw)) {
+            // Tagesablauf: Arbeit, nach Hause, schlafen
         } else {
             m.stateTimer -= dt;
             if (m.state == Mob::Idle) {
@@ -314,9 +432,9 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
                     m.stateTimer = rng_.range(2.0f, 6.0f);
                 }
             } else {
-                if (m.hasHome) {  // Dorfbewohner bleiben im Dorf
-                    const float hx = static_cast<float>(m.homeX) + 0.5f - m.pos.x, hz = static_cast<float>(m.homeZ) + 0.5f - m.pos.z;
-                    if (hx * hx + hz * hz > 22.0f * 22.0f) m.wanderYaw = std::atan2(hz, hx);
+                if (m.hasHome) {  // Dorfbewohner bleiben im Dorf bzw. bei ihrem Arbeitsplatz
+                    const float hx = m.anchorX + 0.5f - m.pos.x, hz = m.anchorZ + 0.5f - m.pos.z;
+                    if (hx * hx + hz * hz > m.anchorR * m.anchorR) m.wanderYaw = std::atan2(hz, hx);
                 }
                 want = glm::vec2(std::cos(m.wanderYaw), std::sin(m.wanderYaw));
                 speed = sp.speed * 0.8f;
@@ -350,6 +468,7 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
     }
 
     if (lookAtTarget) m.yaw = turnToward(m.yaw, targetYaw, 9.0f * dt);
+    if (m.type == MobType::Villager && speed > 0.0f && !m.dead()) openDoorsAhead(m, world, want);
 
     // Hindernis voraus? Eine Stufe hochspringen, sonst die Richtung wechseln
     if (!m.dead() && speed > 0.0f && m.onGround) {
@@ -389,6 +508,12 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
         m.vel.y *= std::exp(-2.0f * dt);
         if (!m.dead()) m.vel.y += 18.0f * dt;  // treiben nach oben
         m.vel.y = std::max(-3.0f, std::min(2.5f, m.vel.y));
+        if (!m.dead() && !sp.hostile && speed > 0.0f) {  // Kante voraus: hinausspringen
+            const int fx = static_cast<int>(std::floor(m.pos.x + want.x * (hw + 0.35f)));
+            const int fz = static_cast<int>(std::floor(m.pos.z + want.y * (hw + 0.35f)));
+            const int fy = static_cast<int>(std::floor(m.pos.y + 0.1f));
+            if (world.isSolidAt(fx, fy, fz) && !world.isSolidAt(fx, fy + 1, fz) && !world.isSolidAt(fx, fy + 2, fz)) m.vel.y = 8.5f;
+        }
     } else {
         m.vel.y = std::max(-40.0f, m.vel.y - GRAVITY * dt);
     }
@@ -443,6 +568,171 @@ static bool findGround(const World& w, int x, int z, int yTop, int yBottom, int&
     return false;
 }
 
+// Folgt (und berechnet bei Bedarf) einen Weg zur Zielzelle. true: angekommen.
+bool EntityManager::followPath(Mob& m, World& world, const glm::ivec3& goal, float arrive, glm::vec2& want, float& speed, bool& look, float& yaw, float dt) {
+    const glm::ivec3 here(static_cast<int>(std::floor(m.pos.x)), static_cast<int>(std::floor(m.pos.y + 0.05f)), static_cast<int>(std::floor(m.pos.z)));
+    const float gx = static_cast<float>(goal.x) + 0.5f, gz = static_cast<float>(goal.z) + 0.5f;
+    if (std::hypot(gx - m.pos.x, gz - m.pos.z) < arrive && std::abs(here.y - goal.y) <= 1) return true;
+    // Festhaengen erkennen
+    m.pathTimer += dt;
+    if (glm::length(m.pos - m.pathLastPos) > 0.4f) {
+        m.pathLastPos = m.pos;
+        m.pathTimer = 0.0f;
+    }
+    if (!m.pathValid || m.pathGoal != goal || m.pathTimer > 4.0f) {
+        m.path = findPathCells(world, here, goal, 14);
+        m.pathIdx = 0;
+        m.pathGoal = goal;
+        m.pathValid = true;
+        m.pathTimer = 0.0f;
+        m.pathLastPos = m.pos;
+    }
+    glm::vec2 target(gx, gz);
+    if (!m.path.empty()) {
+        while (m.pathIdx + 1 < m.path.size()) {
+            const glm::ivec3& c = m.path[m.pathIdx];
+            if (std::hypot(static_cast<float>(c.x) + 0.5f - m.pos.x, static_cast<float>(c.z) + 0.5f - m.pos.z) < 0.5f) ++m.pathIdx;
+            else break;
+        }
+        const glm::ivec3& c = m.path[m.pathIdx];
+        target = glm::vec2(static_cast<float>(c.x) + 0.5f, static_cast<float>(c.z) + 0.5f);
+    }
+    const float dx = target.x - m.pos.x, dz = target.y - m.pos.z;
+    const float d = std::sqrt(dx * dx + dz * dz);
+    if (d < 1e-3f) return false;
+    want = glm::vec2(dx / d, dz / d);
+    speed = mobSpec(m.type).speed;
+    look = true;
+    yaw = std::atan2(dz, dx);
+    return false;
+}
+
+// Tagesablauf eines Dorfbewohners: tagsueber am Arbeitsplatz, abends ins Haus, nachts im Bett.
+// Rueckgabe true: Ziel gesetzt (sonst laeuft er normal umher, im Bereich um den Arbeitsplatz).
+bool EntityManager::villagerBrain(Mob& m, float dt, World& world, const EntityEnv& env, glm::vec2& want, float& speed, bool& look, float& yaw) {
+    (void)dt;
+    if (!m.village) return false;
+    const Village& v = *m.village;
+    const MobSpec& sp = mobSpec(m.type);
+    const float day = env.daylight;
+    const bool hasBed = m.bedIndex >= 0 && m.bedIndex < static_cast<int>(v.beds.size());
+    // 0 Arbeit, 1 Heimweg (noch wach), 2 Schlafen
+    int sch = 0;
+    if (hasBed) {
+        if (m.sleeping) sch = day < 0.5f ? 2 : 0;
+        else sch = day > 0.5f ? 0 : (day > 0.28f ? 1 : 2);
+    }
+    const Village::Bed* bed = hasBed ? &v.beds[static_cast<size_t>(m.bedIndex)] : nullptr;
+    const VillageBuilding* house = bed ? &v.buildings[static_cast<size_t>(bed->building)] : nullptr;
+    auto goTo = [&](float tx, float tz, float arrive, float spd) {  // geradeaus (kurze Strecken)
+        const float dx = tx - m.pos.x, dz = tz - m.pos.z;
+        const float d = std::sqrt(dx * dx + dz * dz);
+        if (d < arrive) return true;
+        want = glm::vec2(dx / d, dz / d);
+        speed = spd;
+        look = true;
+        yaw = std::atan2(dz, dx);
+        return false;
+    };
+    auto walkTo = [&](const glm::ivec3& goal, float arrive) { return followPath(m, world, goal, arrive, want, speed, look, yaw, dt); };
+
+    if (sch == 0) {
+        if (m.sleeping) {  // aufwachen: neben dem Bett aufstehen und das Haus verlassen
+            m.sleeping = false;
+            m.route = 10;
+            m.pos = glm::vec3(static_cast<float>(bed->head.x) + 0.5f, static_cast<float>(bed->head.y) + 0.6f, static_cast<float>(bed->head.z) + 0.5f);
+        }
+        if (m.route >= 10 && house) {  // Haus verlassen: bis vor die Tuer
+            if (walkTo(glm::ivec3(house->door.x, house->groundY + 1, house->door.y), 0.6f)) m.route = 0;
+            return true;
+        }
+        m.route = 0;
+        const glm::ivec3 ws = v.workSpot(m.profession);
+        m.anchorX = static_cast<float>(ws.x);
+        m.anchorZ = static_cast<float>(ws.z);
+        m.anchorR = 5.0f;
+        const float dx = static_cast<float>(ws.x) + 0.5f - m.pos.x, dz = static_cast<float>(ws.z) + 0.5f - m.pos.z;
+        if (dx * dx + dz * dz > 6.0f * 6.0f) {
+            walkTo(ws, 1.5f);
+            return true;
+        }
+        return false;  // beim Arbeitsplatz umherlaufen
+    }
+
+    // Heimweg und Schlafen: Weg bis in die Zelle hinter der Tuer, dann zum Bettkopf
+    if (m.route >= 10) m.route = 0;
+    if (m.route < 3) {
+        const glm::ivec2 in = house->cell(1, 0);
+        if (walkTo(glm::ivec3(in.x, house->groundY + 1, in.y), 0.5f)) m.route = 3;
+        return true;
+    }
+    const float bx = static_cast<float>(bed->head.x) + 0.5f, bz = static_cast<float>(bed->head.z) + 0.5f;
+    if (!goTo(bx, bz, 0.5f, sp.speed * 0.8f)) return true;
+    if (sch == 2) {  // hinlegen: quer zur Blickrichtung, Fuesse am Fussteil
+        m.sleeping = true;
+        const float dx = static_cast<float>(bed->head.x - bed->foot.x), dz = static_cast<float>(bed->head.z - bed->foot.z);
+        m.sleepYaw = std::atan2(-dx, dz);
+        m.pos = glm::vec3(static_cast<float>(bed->foot.x) + 0.5f - dx * 0.2f, static_cast<float>(bed->foot.y) + 9.0f / 16.0f + 0.32f,
+                          static_cast<float>(bed->foot.z) + 0.5f - dz * 0.2f);
+        m.vel = glm::vec3(0.0f);
+        (void)world;
+        return true;
+    }
+    speed = 0.0f;  // zu Hause wach: stehen bleiben
+    return true;
+}
+
+// Tueren und Tore vor dem Dorfbewohner oeffnen (sie schliessen sich spaeter wieder)
+void EntityManager::openDoorsAhead(Mob& m, World& world, const glm::vec2& want) {
+    const float len = std::sqrt(want.x * want.x + want.y * want.y);
+    if (len < 1e-3f) return;
+    const float hw = mobSpec(m.type).width * 0.5f;
+    for (float reach : {hw + 0.25f, hw + 0.9f}) {
+        const int x = static_cast<int>(std::floor(m.pos.x + want.x / len * reach));
+        const int z = static_cast<int>(std::floor(m.pos.z + want.y / len * reach));
+        for (int dy = 0; dy <= 1; ++dy) {
+            const int y = static_cast<int>(std::floor(m.pos.y + 0.1f)) + dy;
+            const BlockId b = world.getBlock(x, y, z);
+            if ((isDoor(b) && !doorOpen(b)) || (isGate(b) && !gateOpen(b))) {
+                if (world.toggleOpenGroup(x, y, z) > 0) {
+                    openedDoors_.push_back({glm::ivec3(x, y, z), 3.0f});
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void EntityManager::updateOpenedDoors(float dt, World& world, const Player& player) {
+    for (size_t i = 0; i < openedDoors_.size();) {
+        OpenedDoor& d = openedDoors_[i];
+        d.timer -= dt;
+        bool remove = false;
+        if (d.timer <= 0.0f) {
+            // nur schliessen, wenn niemand in der Tuer steht
+            bool blocked = false;
+            const glm::vec3 c(static_cast<float>(d.pos.x) + 0.5f, static_cast<float>(d.pos.y), static_cast<float>(d.pos.z) + 0.5f);
+            auto near = [&](const glm::vec3& p) { return std::fabs(p.x - c.x) < 1.1f && std::fabs(p.z - c.z) < 1.1f && p.y > c.y - 1.8f && p.y < c.y + 2.0f; };
+            if (near(player.pos)) blocked = true;
+            for (const Mob& o : mobs_) blocked = blocked || near(o.pos);
+            const BlockId b = world.getBlock(d.pos.x, d.pos.y, d.pos.z);
+            if (!(isDoor(b) || isGate(b))) remove = true;
+            else if (!blocked) {
+                if ((isDoor(b) && doorOpen(b)) || (isGate(b) && gateOpen(b))) world.toggleOpenGroup(d.pos.x, d.pos.y, d.pos.z);
+                remove = true;
+            } else {
+                d.timer = 1.0f;
+            }
+        }
+        if (remove) {
+            openedDoors_[i] = openedDoors_.back();
+            openedDoors_.pop_back();
+        } else {
+            ++i;
+        }
+    }
+}
+
 void EntityManager::spawnVillagers(World& world, const Player& player) {
     const int px = static_cast<int>(std::floor(player.pos.x)), pz = static_cast<int>(std::floor(player.pos.z));
     for (const Village* v : world.terrain().villages().villagesIn(px - 56, pz - 56, px + 56, pz + 56)) {
@@ -465,7 +755,12 @@ void EntityManager::spawnVillagers(World& world, const Player& player) {
             m.homeX = v->center.x;
             m.homeZ = v->center.y;
             m.villageId = v->id;
-            m.profession = professionFor(v->id, index++);
+            m.profession = professionFor(v->id, index);
+            m.village = v;
+            m.bedIndex = v->beds.empty() ? -1 : index % static_cast<int>(v->beds.size());
+            m.anchorX = static_cast<float>(v->center.x);
+            m.anchorZ = static_cast<float>(v->center.y);
+            ++index;
         }
         // Tiere im Stall
         for (const Village::AnimalSpawn& a : v->animalSpawns) {
@@ -568,6 +863,8 @@ void EntityManager::update(float dt, World& world, const Player& player, Invento
         }
     }
 
+    updateOpenedDoors(dt, world, player);
+
     // Dorfbewohner
     if (env.allowSpawns) {
         villageTimer_ -= dt;
@@ -596,7 +893,7 @@ void EntityManager::buildMesh(const World& world, const glm::vec3& camPos, float
     for (const Mob& m : mobs_) {
         const MobSpec& sp = mobSpec(m.type);
         const bool flash = m.hurtTimer > 0.0f || m.dead();
-        const SkinId skin = skinOf(m.type);
+        const SkinId skin = m.type == MobType::Villager ? villagerSkinFor(m.profession) : skinOf(m.type);
         const int bx = static_cast<int>(std::floor(m.pos.x)), bz = static_cast<int>(std::floor(m.pos.z));
         Pose pose;
         pose.pos = m.pos - camPos;
@@ -604,7 +901,7 @@ void EntityManager::buildMesh(const World& world, const glm::vec3& camPos, float
         pose.walkPhase = m.walkPhase;
         pose.walkAmount = m.walkAmount;
         pose.time = time;
-        pose.roll = m.dead() ? std::min(1.0f, m.deathTimer / 0.4f) * (PI * 0.5f) : 0.0f;
+        pose.roll = m.dead() ? std::min(1.0f, m.deathTimer / 0.4f) * (PI * 0.5f) : (m.sleeping ? PI * 0.5f : 0.0f);
         pose.sky = skyExposed(world, bx, static_cast<int>(std::floor(m.pos.y + sp.height)), bz) ? 1.0f : 0.0f;
         pose.light = static_cast<float>(world.lightAt(bx, static_cast<int>(std::floor(m.pos.y + sp.height * 0.5f)), bz)) / MAX_LIGHT;
         appendModel(skin, pose, flash ? out.skinHurt[skin] : out.skin[skin]);

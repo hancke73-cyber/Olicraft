@@ -64,6 +64,8 @@ Material blockMaterial(BlockId b) {
     if (b == GLASS_PANE || isLantern(b)) return Material::Glass;
     if (b == FARMLAND) return Material::Dirt;
     if (isCrop(b)) return Material::Grass;
+    if (isLadder(b)) return Material::Wood;
+    if (isBedPart(b)) return Material::Grass;
     switch (b) {
         case GRASS:
         case LEAVES:

@@ -21,6 +21,8 @@
 #include "Models.h"
 #include "Skins.h"
 #include "Sky.h"
+#include <array>
+
 #include "BlockShape.h"
 #include "Physics.h"
 #include "Trades.h"
@@ -2599,7 +2601,13 @@ static void testVillages() {
                     for (int x = b.x0; x <= b.x1; ++x)
                         for (int z = b.z0; z <= b.z1; ++z) hasPane = hasPane || isPane(at(x, y, z));
                 CHECK(hasPane);
-                CHECK(isStairs(at(b.x0 - 1, roofY, b.z0 - 1)) || isStairs(at(b.x0 - 1, roofY, zc)) || isStairs(at(xc, roofY, b.z0 - 1)));
+                if (b.kind != VillageBuilding::Tower)
+                    CHECK(isStairs(at(b.x0 - 1, roofY, b.z0 - 1)) || isStairs(at(b.x0 - 1, roofY, zc)) || isStairs(at(xc, roofY, b.z0 - 1)));
+                else {  // Turm: Leiter vom Boden bis zur Plattform, Zwischenboden mit Loch
+                    const glm::ivec2 lad = b.cell(b.depth() - 2, 0);
+                    for (int y = g + 1; y <= g + 10; ++y) CHECK(isLadder(at(lad.x, y, lad.y)));
+                    CHECK(isSolid(at(xc, g + 5, zc)) && at(lad.x, g + 5, lad.y) != PLANKS && isSolid(at(xc, g + 10, zc)));
+                }
                 break;
             }
             case VillageBuilding::Barn:
@@ -2707,6 +2715,46 @@ static void testVillages() {
     CHECK(near);
     // Villager rufen und verursachen keinen Schaden
     CHECK(em.playerHits().empty());
+    {   // Tagesablauf: Nacht -> alle gehen heim und schlafen, Tuerschliessen, Morgen -> aufstehen und zur Arbeit
+        EntityEnv nightEnv = env;
+        nightEnv.daylight = 0.0f;
+        nightEnv.allowSpawns = false;
+        pl.pos = glm::vec3(static_cast<float>(v->center.x) + 0.5f, static_cast<float>(v->groundY + 1), static_cast<float>(v->center.y) + 0.5f);
+        for (int i = 0; i < 300 * 20; ++i) em.update(0.05f, w, pl, inv, nightEnv);  // 5 Minuten Nacht
+        int sleeping = 0, total = 0, inside = 0;
+        for (const Mob& m : em.mobs())
+            if (m.type == MobType::Villager) {
+                ++total;
+                sleeping += m.sleeping;
+                if (m.sleeping) {
+                    const Village::Bed& bed = v->beds[static_cast<size_t>(m.bedIndex)];
+                    inside += std::fabs(m.pos.x - (bed.foot.x + 0.5f)) < 1.5f && std::fabs(m.pos.z - (bed.foot.z + 0.5f)) < 1.5f &&
+                              m.pos.y > bed.foot.y + 0.5f;
+                }
+            }
+        CHECK(total > 0 && sleeping * 10 >= total * 7 && inside == sleeping);
+        // Tueren sind wieder zu
+        int openDoors = 0;
+        for (const Village::Bed& bed : v->beds) {
+            const VillageBuilding& hb = v->buildings[static_cast<size_t>(bed.building)];
+            const glm::ivec2 dc = hb.cell(0, 0);
+            const BlockId lo = w.getBlock(dc.x, hb.groundY + 1, dc.y);
+            openDoors += isDoor(lo) && doorOpen(lo);
+        }
+        CHECK(openDoors == 0);
+        EntityEnv morning = env;
+        morning.daylight = 1.0f;
+        morning.allowSpawns = false;
+        for (int i = 0; i < 240 * 20; ++i) em.update(0.05f, w, pl, inv, morning);
+        int awake = 0, atWork = 0;
+        for (const Mob& m : em.mobs())
+            if (m.type == MobType::Villager) {
+                awake += !m.sleeping;
+                const glm::ivec3 ws = v->workSpot(m.profession);
+                atWork += std::hypot(m.pos.x - ws.x, m.pos.z - ws.z) < 8.5f;
+            }
+        CHECK(awake == total && atWork * 10 >= total * 6);
+    }
 
     // Handel
     for (int p = 0; p < PROF_COUNT; ++p) {
@@ -2997,6 +3045,100 @@ static void testPartsAndFarming() {
     CHECK(panes.id == GLASS_PANE && panes.count == 16);
 }
 
+static void testLaddersBedsWater() {
+    World w(8);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    const int gy = 100;
+    for (int x = -12; x <= 12; ++x)
+        for (int z = -12; z <= 12; ++z) {
+            for (int y = gy - 4; y < gy + 20; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    // Leiter: klettern bis oben, runterrutschen, kein Fallschaden, faellt ohne Traeger
+    for (int y = 0; y < 8; ++y) {
+        w.setBlock(2, gy + y, 0, STONE);
+        w.setBlock(1, gy + y, 0, makeLadder(0));  // Traeger auf +X
+    }
+    {
+        CHECK(blockBoxes(makeLadder(0), 1, gy, 0, [&](int a, int b, int c) { return w.getBlock(a, b, c); }, false, std::array<Box, MAX_BOXES>().data()) == 0);
+        Player p;
+        p.pos = glm::vec3(1.5f, gy + 0.0f, 0.5f);
+        MoveInput up;
+        up.jump = true;
+        float top = 0.0f;
+        for (int i = 0; i < 40; ++i) {
+            p.update(0.05f, up, w);
+            top = std::max(top, p.pos.y - gy);
+        }
+        CHECK(top > 5.0f && top < 8.8f);  // 2 Sekunden hoch (3.2 Bloecke/s)
+        p.pos = glm::vec3(1.5f, gy + 5.0f, 0.5f);
+        p.vel = glm::vec3(0.0f);
+        p.update(0.05f, up, w);
+        CHECK(p.onLadder);
+        MoveInput idle;
+        p.pos = glm::vec3(1.5f, gy + 6.0f, 0.5f);
+        p.vel = glm::vec3(0.0f);
+        for (int i = 0; i < 20; ++i) p.update(0.05f, idle, w);
+        CHECK(p.pos.y < gy + 5.0f && p.pos.y > gy + 3.0f);  // rutscht langsam (2.4 Bloecke/s)
+        MoveInput hold;
+        hold.sneak = true;
+        const float y0 = p.pos.y;
+        for (int i = 0; i < 20; ++i) p.update(0.05f, hold, w);
+        CHECK(std::fabs(p.pos.y - y0) < 0.1f);  // Schleichen haelt fest
+        for (int i = 0; i < 100; ++i) p.update(0.05f, idle, w);
+        CHECK(p.onGround && p.landedFall < 0.5f);  // keine Fallhoehe
+    }
+    {
+        w.takePlantDrops();
+        w.setBlock(2, gy + 3, 0, AIR);
+        auto d = w.takePlantDrops();
+        CHECK(w.getBlock(1, gy + 3, 0) == AIR && d.size() == 1 && isLadder(d[0].block) && blockDropItem(d[0].block) == LADDER_BASE);
+    }
+    CHECK(itemValid(LADDER_BASE) && !itemValid(makeLadder(2)));
+    // Bett: zwei Hälften, brechen eine entfernt die andere
+    {
+        w.setBlock(6, gy, 6, makeBedPart(false, 0));
+        w.setBlock(7, gy, 6, makeBedPart(true, 0));
+        CHECK(isBedPart(w.getBlock(6, gy, 6)) && !bedIsHead(w.getBlock(6, gy, 6)) && bedIsHead(w.getBlock(7, gy, 6)));
+        Box bx[MAX_BOXES];
+        CHECK(w.collisionBoxes(6, gy, 6, bx) == 1 && std::fabs(bx[0].y1 - 9.0f / 16.0f) < 1e-5f);
+        w.setBlock(7, gy, 6, AIR);
+        CHECK(w.getBlock(6, gy, 6) == AIR);
+        CHECK(blockDropItem(makeBedPart(true, 2)) == BED && isAnyBed(BED) && isAnyBed(makeBedPart(false, 1)));
+    }
+    // Wasser: Tiere und Dorfbewohner schwimmen zum Ufer und springen heraus (Bach, ein Block tief, Ufer einen Block hoeher)
+    for (int x = 3; x <= 12; ++x)
+        for (int z = -12; z <= 12; ++z) w.setBlock(x, gy, z, STONE);  // Ufer-Plateau (gy + 1 Oberflaeche)
+    for (int x = 3; x <= 12; ++x)
+        for (int z = -12; z <= 12; ++z)
+            if (x == 12 || z == 12 || z == -12) {
+                w.setBlock(x, gy + 1, z, STONE);  // Rand, damit nichts vom Plateau faellt
+                w.setBlock(x, gy + 2, z, STONE);
+            }
+    for (int x = 5; x <= 8; ++x)
+        for (int z = -12; z <= 12; ++z) {
+            w.setBlock(x, gy, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+            w.setBlock(x, gy, z, WATER);
+        }
+    {
+        Player pl;
+        pl.pos = glm::vec3(-10.5f, static_cast<float>(gy), 10.5f);
+        Inventory inv;
+        EntityEnv env;
+        env.allowSpawns = false;
+        env.daylight = 1.0f;
+        EntityManager em(5);
+        em.spawnMob(MobType::Villager, glm::vec3(6.5f, gy + 0.2f, 0.5f));
+        em.spawnMob(MobType::Pig, glm::vec3(7.5f, gy + 0.2f, 2.5f));
+        for (int i = 0; i < 8 * 20; ++i) em.update(0.05f, w, pl, inv, env);  // 8 Sekunden
+        for (const Mob& m : em.mobs()) {
+            CHECK(!w.inWaterAt(m.pos + glm::vec3(0.0f, 0.3f, 0.0f)) && m.pos.y > gy - 0.5f);
+        }
+    }
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -3033,6 +3175,7 @@ int main() {
     testChestsAndSaveV5();
     testVillages();
     testPartsAndFarming();
+    testLaddersBedsWater();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

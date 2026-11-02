@@ -124,6 +124,12 @@ enum Block : BlockId {
     CARROT_1,
     CARROT_2,
     CARROT_3,
+    // Leitern: 4 Richtungen (Seite des Traegerblocks: +X, -X, +Z, -Z)
+    LADDER_BASE,
+    LADDER_END = LADDER_BASE + 3,
+    // Betten aus zwei Bloecken: id = BED_BASE + (Kopf ? 4 : 0) + Richtung (vom Fussteil zum Kopfteil)
+    BED_BASE,
+    BED_END = BED_BASE + 7,
     BLOCK_COUNT
 };
 
@@ -263,6 +269,9 @@ enum Tile : int {
     TILE_HOE_DIAMOND,
     TILE_DOOR_WOOD_ITEM,
     TILE_DOOR_IRON_ITEM,
+    TILE_LADDER,
+    TILE_BED_FOOT_TOP,
+    TILE_BED_HEAD_TOP,
     TILE_COUNT
 };
 
@@ -270,7 +279,7 @@ enum Tile : int {
 enum ToolClass : uint8_t { TOOL_NONE = 0, TOOL_PICKAXE, TOOL_AXE, TOOL_SHOVEL, TOOL_SWORD, TOOL_HOE };
 
 // Form eines Blocks: Vollwuerfel oder Teilform (genaue Boxen siehe BlockShape.h)
-enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND };
+enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND, SH_LADDER, SH_BED };
 
 struct BlockInfo {
     const char* name;
@@ -347,6 +356,14 @@ inline int gateMaterial(BlockId id) { return (id - GATE_BASE) / 4; }
 inline bool gateOpen(BlockId id) { return ((id - GATE_BASE) / 2) % 2 == 1; }
 inline int gateAxis(BlockId id) { return (id - GATE_BASE) % 2; }
 inline BlockId makeGate(int material, bool open, int axis) { return static_cast<BlockId>(GATE_BASE + material * 4 + (open ? 2 : 0) + axis); }
+inline bool isLadder(BlockId id) { return id >= LADDER_BASE && id <= LADDER_END; }
+inline int ladderFacing(BlockId id) { return id - LADDER_BASE; }  // Seite des Traegerblocks
+inline BlockId makeLadder(int facing) { return static_cast<BlockId>(LADDER_BASE + facing); }
+inline bool isBedPart(BlockId id) { return id >= BED_BASE && id <= BED_END; }
+inline bool bedIsHead(BlockId id) { return (id - BED_BASE) >= 4; }
+inline int bedFacing(BlockId id) { return (id - BED_BASE) % 4; }  // vom Fussteil zum Kopfteil: 0 +X, 1 -X, 2 +Z, 3 -Z
+inline BlockId makeBedPart(bool head, int facing) { return static_cast<BlockId>(BED_BASE + (head ? 4 : 0) + facing); }
+inline bool isAnyBed(BlockId id) { return id == BED || isBedPart(id); }
 inline bool isCrop(BlockId id) { return (id >= WHEAT_0 && id <= WHEAT_3) || (id >= CARROT_0 && id <= CARROT_3); }
 inline int cropStage(BlockId id) { return id >= CARROT_0 ? id - CARROT_0 : id - WHEAT_0; }
 inline bool cropFullyGrown(BlockId id) { return isCrop(id) && cropStage(id) == 3; }

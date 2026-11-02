@@ -269,6 +269,20 @@ void World::checkTorchSupports(int x, int y, int z) {
                 setBlockImpl(nx, ny, nz, AIR, true);
                 plantDrops_.push_back({glm::ivec3(nx, ny, nz), b});
             }
+        } else if (isLadder(b)) {
+            static const int SUP[4][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}};
+            const int f = ladderFacing(b);
+            const BlockId sup = getBlock(nx + SUP[f][0], ny, nz + SUP[f][2]);
+            if (!isFullSolidBlock(sup) && !blockInfo(sup).solid) {
+                setBlockImpl(nx, ny, nz, AIR, true);
+                plantDrops_.push_back({glm::ivec3(nx, ny, nz), b});
+            }
+        } else if (isBedPart(b)) {
+            static const int DIR[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            const int f = bedFacing(b);
+            const int sgn = bedIsHead(b) ? -1 : 1;
+            const BlockId other = getBlock(nx + sgn * DIR[f][0], ny, nz + sgn * DIR[f][1]);
+            if (!isBedPart(other) || bedIsHead(other) == bedIsHead(b) || bedFacing(other) != f) setBlockImpl(nx, ny, nz, AIR, true);  // Haelfte ohne Partner verschwindet
         } else if (isDoor(b)) {
             const bool upper = doorUpper(b);
             const BlockId other = getBlock(nx, ny + (upper ? -1 : 1), nz);

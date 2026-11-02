@@ -136,6 +136,19 @@ int blockBoxes(BlockId b, int x, int y, int z, const G& get, bool visual, Box* o
             }
             return n;
         }
+        case SH_LADDER: {
+            if (!visual) return 0;
+            switch (ladderFacing(b)) {
+                case 0: add(15 * S, 0, 0, 1, 1, 1); break;
+                case 1: add(0, 0, 0, 1 * S, 1, 1); break;
+                case 2: add(0, 0, 15 * S, 1, 1, 1); break;
+                default: add(0, 0, 0, 1, 1, 1 * S); break;
+            }
+            return n;
+        }
+        case SH_BED:
+            add(0, 0, 0, 1, 9 * S, 1);
+            return n;
         case SH_LANTERN:
             if (!visual) return 0;
             if (b == LANTERN) {

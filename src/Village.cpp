@@ -32,6 +32,16 @@ bool overlaps(const VillageBuilding& a, int x0, int z0, int x1, int z1, int marg
 
 }  // namespace
 
+glm::ivec3 Village::workSpot(int profession) const {
+    // Bauer: Feld, Bibliothekar: Bibliothek, Schmied: Schmiede, Steinmetz: Marktstand, Schaefer: Scheune
+    static const VillageBuilding::Kind want[5] = {VillageBuilding::Farm, VillageBuilding::Library, VillageBuilding::Smithy,
+                                                  VillageBuilding::Market, VillageBuilding::Barn};
+    const VillageBuilding::Kind k = want[profession < 0 || profession >= 5 ? 0 : profession];
+    for (const VillageBuilding& b : buildings)
+        if (b.kind == k) return glm::ivec3(b.door.x, b.groundY + 1, b.door.y);
+    return glm::ivec3(center.x, groundY + 1, center.y + 3);
+}
+
 int Village::houseCount() const {
     int n = 0;
     for (const VillageBuilding& b : buildings)
@@ -181,21 +191,28 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
         if (v.villagerSpawns.size() < 8 && b.kind != K::GateHouse && b.kind != K::Tower && b.kind != K::Barn)
             v.villagerSpawns.emplace_back(b.door.x, height(b.door.x, b.door.y) + 1, b.door.y);
     }
-    // Truhen, Tiere
+    // Truhen, Betten, Tiere
     int animal = 0;
     for (size_t i = 1; i < v.buildings.size(); ++i) {
         const VillageBuilding& b = v.buildings[i];
         if (b.kind == K::Farm || b.kind == K::GateHouse) continue;
-        const int xc = (b.x0 + b.x1) / 2, zc = (b.z0 + b.z1) / 2;
-        int x = xc, z = zc;
-        switch (b.facing) {
-            case 0: x = b.x0 + 1; break;
-            case 1: x = b.x1 - 1; break;
-            case 2: z = b.z0 + 1; break;
-            default: z = b.z1 - 1; break;
+        const bool small = b.kind == K::House && b.width() == 5;
+        const int back = b.depth() - 2;  // hinterste Zeile im Inneren
+        glm::ivec2 c = b.cell(back, small ? 1 : 0);
+        if (b.kind == K::Tower) c = b.cell(back, 1);  // die Leiter steht in der Mitte der Rueckwand
+        v.chests.emplace_back(c.x, b.groundY + 1, c.y);
+        if (b.kind == K::House) {
+            // zwei Betten (kleine Haeuser eines) an der Rueckwand, Kopfteil zur Truhe hin
+            const int w1 = small ? -1 : -2;
+            const glm::ivec2 f1 = b.cell(back, w1), h1 = b.cell(back, w1 + 1);
+            v.beds.push_back({glm::ivec3(f1.x, b.groundY + 1, f1.y), glm::ivec3(h1.x, b.groundY + 1, h1.y), static_cast<int>(i)});
+            if (!small) {
+                const glm::ivec2 f2 = b.cell(back, 2), h2 = b.cell(back, 1);
+                v.beds.push_back({glm::ivec3(f2.x, b.groundY + 1, f2.y), glm::ivec3(h2.x, b.groundY + 1, h2.y), static_cast<int>(i)});
+            }
         }
-        v.chests.emplace_back(x, b.groundY + 1, z);
         if (b.kind == K::Barn) {
+            const int xc = (b.x0 + b.x1) / 2, zc = (b.z0 + b.z1) / 2;
             // drei Tiere auf der Mittellinie des Stalls
             for (int k = -1; k <= 1; ++k) {
                 const int ax = b.facing <= 1 ? xc + k * 2 : xc, az = b.facing <= 1 ? zc : zc + k * 2;
@@ -464,24 +481,31 @@ void VillageGenerator::placeInChunk(Chunk& chunk) const {
                         for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) P.set(x, g + 4, z, roofSolid);  // Decke, Ueberstand wird gleich ueberbaut
                     roofPitched(P, b.x0 - 1, b.z0 - 1, b.x1 + 1, b.z1 + 1, g + 4, roofMat, roofSolid);
                     // Einrichtung
-                    const int bx = b.facing == 1 ? b.x1 - 1 : b.x0 + 1, bz = b.facing == 3 ? b.z1 - 1 : b.z0 + 1;  // hintere Ecke
-                    const int tx = doorAlongX ? bx : b.x1 - 1, tz = doorAlongX ? b.z1 - 1 : bz;                      // andere hintere Ecke
+                    const int back = b.depth() - 2;
+                    const bool smallHouse = b.kind == K::House && b.width() == 5;
+                    const int tw = smallHouse ? 1 : 2;
+                    const glm::ivec2 table = b.cell(1, tw);  // vordere Ecke neben der Tuer
                     if (b.kind == K::House) {
-                        P.set(bx, g + 1, bz, BED);
-                        P.set(tx, g + 1, tz, CRAFTING_TABLE);
+                        for (const Village::Bed& bed : v.beds) {
+                            if (&v.buildings[static_cast<size_t>(bed.building)] != &b) continue;
+                            const int fdx = bed.head.x - bed.foot.x, fdz = bed.head.z - bed.foot.z;
+                            const int bf = fdx > 0 ? 0 : (fdx < 0 ? 1 : (fdz > 0 ? 2 : 3));
+                            P.set(bed.foot.x, g + 1, bed.foot.z, makeBedPart(false, bf));
+                            P.set(bed.head.x, g + 1, bed.head.z, makeBedPart(true, bf));
+                        }
+                        P.set(table.x, g + 1, table.y, CRAFTING_TABLE);
                     } else if (library) {
-                        P.set(tx, g + 1, tz, CRAFTING_TABLE);
-                        for (int z = b.z0 + 1; z <= b.z1 - 1; ++z)
-                            for (int x = b.x0 + 1; x <= b.x1 - 1; ++x) {
-                                const bool back = (b.facing == 0 && x == b.x0 + 1) || (b.facing == 1 && x == b.x1 - 1) ||
-                                                  (b.facing == 2 && z == b.z0 + 1) || (b.facing == 3 && z == b.z1 - 1);
-                                if (!back) continue;
-                                P.set(x, g + 1, z, BOOKSHELF);
-                                P.set(x, g + 2, z, BOOKSHELF);
-                            }
+                        P.set(table.x, g + 1, table.y, CRAFTING_TABLE);
+                        for (int w = -(b.width() / 2 - 1); w <= b.width() / 2 - 1; ++w) {
+                            const glm::ivec2 s = b.cell(back, w);
+                            if (w == 0) continue;  // hier steht die Truhe
+                            P.set(s.x, g + 1, s.y, BOOKSHELF);
+                            P.set(s.x, g + 2, s.y, BOOKSHELF);
+                        }
                     } else {
-                        P.set(bx, g + 1, bz, FURNACE);
-                        P.set(tx, g + 1, tz, CRAFTING_TABLE);
+                        const glm::ivec2 fur = b.cell(back, -2), tab = b.cell(back, 2);
+                        P.set(fur.x, g + 1, fur.y, FURNACE);
+                        P.set(tab.x, g + 1, tab.y, CRAFTING_TABLE);
                     }
                     for (const glm::ivec3& c : v.chests)
                         if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);
@@ -619,10 +643,37 @@ void VillageGenerator::placeInChunk(Chunk& chunk) const {
                         P.set(dx0, g + 1, dz0, makeDoor(1, false, false, b.facing));
                         P.set(dx0, g + 2, dz0, makeDoor(1, true, false, b.facing));
                     }
-                    for (int z = b.z0 - 1; z <= b.z1 + 1; ++z)
-                        for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) P.set(x, g + 10, z, STONE_BRICKS);
-                    roofPitched(P, b.x0 - 1, b.z0 - 1, b.x1 + 1, b.z1 + 1, g + 10, 2, STONE_BRICKS);
-                    P.set(xc, g + 9, zc, LANTERN_HANG);
+                    // Leiter an der Rueckwand, Zwischenboden und Plattform mit Zinnen (beide mit Loch an der Leiter)
+                    {
+                        const glm::ivec2 lad = b.cell(b.depth() - 2, 0);
+                        const int lf = b.facing ^ 1;  // der Traeger liegt auf der Seite der Rueckwand
+                        for (int z = b.z0; z <= b.z1; ++z)
+                            for (int x = b.x0; x <= b.x1; ++x) {
+                                const bool hole = x == lad.x && z == lad.y;
+                                const bool perim = x == b.x0 || x == b.x1 || z == b.z0 || z == b.z1;
+                                if (!hole) {
+                                    P.set(x, g + 10, z, STONE_BRICKS);
+                                    if (!perim) P.set(x, g + 5, z, PLANKS);
+                                } else {
+                                    P.set(x, g + 10, z, AIR);
+                                    P.set(x, g + 5, z, AIR);
+                                }
+                                // Zinnen: jede zweite Randzelle, an den Ecken hoeher mit Laterne
+                                if (perim) {
+                                    const bool corner = (x == b.x0 || x == b.x1) && (z == b.z0 || z == b.z1);
+                                    if (corner) {
+                                        P.set(x, g + 11, z, STONE_BRICKS);
+                                        P.set(x, g + 12, z, STONE_BRICKS);
+                                        P.set(x, g + 13, z, LANTERN);
+                                    } else if ((x + z) % 2 == 0) {
+                                        P.set(x, g + 11, z, STONE_BRICKS);
+                                    }
+                                }
+                            }
+                        for (int y = g + 1; y <= g + 10; ++y) P.set(lad.x, y, lad.y, makeLadder(lf));
+                    }
+                    P.set((b.x0 + b.x1) / 2, g + 4, (b.z0 + b.z1) / 2, LANTERN_HANG);
+                    P.set((b.x0 + b.x1) / 2, g + 9, (b.z0 + b.z1) / 2, LANTERN_HANG);
                     P.set(b.x0 + 1, g + 1, b.z0 + 1, LANTERN);
                     for (const glm::ivec3& c : v.chests)
                         if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);

@@ -16,7 +16,11 @@ const SkinInfo SKINS[SKIN_COUNT] = {
     {"Kuh", "skin_cow.png", 64, 64},
     {"Schaf", "skin_sheep.png", 64, 64},
     {"Zombie", "skin_zombie.png", 64, 32},
-    {"Dorfbewohner", "skin_villager.png", 64, 32},
+    {"Dorfbewohner Bauer", "skin_villager.png", 64, 32},
+    {"Dorfbewohner Bibliothekar", "skin_villager_librarian.png", 64, 32},
+    {"Dorfbewohner Schmied", "skin_villager_smith.png", 64, 32},
+    {"Dorfbewohner Steinmetz", "skin_villager_mason.png", 64, 32},
+    {"Dorfbewohner Schaefer", "skin_villager_shepherd.png", 64, 32},
 };
 
 struct Rgb {
@@ -118,29 +122,49 @@ void paintHumanoid(Img& img, SkinId id, bool zombie, const HumanPalette& pal = P
     fill(img, skinNetRect(leg, 3), {72, 72, 78}, 6, 180);
 }
 
-void paintVillager(Img& img) {
-    const Rgb skin = {190, 140, 108}, robe = {112, 80, 52}, robeDark = {88, 62, 40};
+void paintVillager(Img& img, SkinId id) {
+    struct Look {
+        Rgb robe, robeDark, belt, hat, skin;
+    };
+    static const Look looks[5] = {
+        {{112, 80, 52}, {88, 62, 40}, {70, 50, 34}, {200, 170, 90}, {190, 140, 108}},    // Bauer: braun, Strohhut
+        {{232, 230, 222}, {196, 194, 188}, {70, 90, 160}, {170, 170, 176}, {196, 150, 118}},  // Bibliothekar: weiss, blauer Guertel
+        {{84, 84, 92}, {60, 60, 68}, {40, 36, 34}, {36, 32, 30}, {180, 130, 100}},       // Schmied: dunkle Schuerze
+        {{136, 136, 142}, {104, 104, 110}, {90, 80, 70}, {118, 118, 124}, {188, 142, 112}},  // Steinmetz: grau
+        {{100, 124, 66}, {78, 98, 52}, {120, 90, 56}, {214, 208, 190}, {194, 148, 116}},  // Schaefer: gruen, helle Kappe
+    };
+    const Look& L = looks[std::max(0, std::min(4, static_cast<int>(id) - static_cast<int>(SKIN_VILLAGER)))];
     const ModelPart& head = part(SKIN_VILLAGER, 0);
     const ModelPart& body = part(SKIN_VILLAGER, 1);
     const ModelPart& arm = part(SKIN_VILLAGER, 2);
     const ModelPart& leg = part(SKIN_VILLAGER, 4);
     const ModelPart& nose = part(SKIN_VILLAGER, 6);
-    fillPart(img, head, skin, 8, 600);
-    fillPart(img, nose, {166, 116, 88}, 6, 610);
-    fillPart(img, body, robe, 10, 620);
-    fillPart(img, arm, robe, 10, 630);
-    fillPart(img, leg, robeDark, 8, 640);
-    // Guertel und Saum
-    fill(img, skinNetRect(body, 0), {70, 50, 34}, 6, 650, 8, 10);
-    fill(img, skinNetRect(body, 1), {70, 50, 34}, 6, 651, 8, 10);
-    fill(img, skinNetRect(body, 4), {70, 50, 34}, 6, 652, 8, 10);
-    fill(img, skinNetRect(body, 5), {70, 50, 34}, 6, 653, 8, 10);
+    fillPart(img, head, L.skin, 8, 600);
+    // Kopfbedeckung: Oberseite und Hinterkopf, vorn ein Streifen
+    fill(img, skinNetRect(head, 2), L.hat, 8, 604);
+    fill(img, skinNetRect(head, 1), L.hat, 8, 605);
+    fill(img, skinNetRect(head, 0), L.hat, 8, 606, 0, 2);
+    fill(img, skinNetRect(head, 4), L.hat, 8, 607, 0, 2);
+    fill(img, skinNetRect(head, 5), L.hat, 8, 608, 0, 2);
+    fillPart(img, nose, {static_cast<int>(L.skin.r * 0.87), static_cast<int>(L.skin.g * 0.83), static_cast<int>(L.skin.b * 0.8)}, 6, 610);
+    fillPart(img, body, L.robe, 10, 620);
+    fillPart(img, arm, L.robe, 10, 630);
+    fillPart(img, leg, L.robeDark, 8, 640);
+    for (int f : {0, 1, 4, 5}) fill(img, skinNetRect(body, f), L.belt, 6, 650 + static_cast<uint32_t>(f), 8, 10);
+    if (id == SKIN_VILLAGER_SMITH) {  // Schuerze: dunkle Flaeche vorn
+        fill(img, skinNetRect(body, 0), L.belt, 6, 660, 2, 12);
+        fill(img, skinNetRect(arm, 0), L.robeDark, 6, 661, 8, 12);
+    }
+    if (id == SKIN_VILLAGER_LIBRARIAN) {  // Stola
+        const NetRect fr = skinNetRect(body, 0);
+        for (int y = 0; y < fr.h; ++y) px(img, fr, fr.w / 2, y, L.belt);
+    }
     const NetRect fr = skinNetRect(head, 0);
     const Rgb white = {240, 240, 240}, green = {40, 120, 70}, brow = {70, 50, 40};
-    for (int x = 0; x < 8; ++x) px(img, fr, x, 2, brow);            // durchgehende Augenbraue
+    for (int x = 0; x < 8; ++x) px(img, fr, x, 2, brow);
     for (int x : {1, 2, 5, 6}) px(img, fr, x, 3, x == 2 || x == 5 ? green : white);
     for (int x : {1, 2, 5, 6}) px(img, fr, x, 4, x == 2 || x == 5 ? green : white);
-    for (int x = 2; x <= 5; ++x) px(img, fr, x, 7, {140, 96, 76});  // Mund
+    for (int x = 2; x <= 5; ++x) px(img, fr, x, 7, {140, 96, 76});
 }
 
 void paintPig(Img& img) {
@@ -218,7 +242,11 @@ std::vector<uint8_t> generateSkinPixels(SkinId id) {
     switch (id) {
         case SKIN_PLAYER: paintHumanoid(img, id, false); break;
         case SKIN_ZOMBIE: paintHumanoid(img, id, true); break;
-        case SKIN_VILLAGER: paintVillager(img); break;
+        case SKIN_VILLAGER:
+        case SKIN_VILLAGER_LIBRARIAN:
+        case SKIN_VILLAGER_SMITH:
+        case SKIN_VILLAGER_MASON:
+        case SKIN_VILLAGER_SHEPHERD: paintVillager(img, id); break;
         case SKIN_PIG: paintPig(img); break;
         case SKIN_COW: paintCow(img); break;
         case SKIN_SHEEP: paintSheep(img); break;

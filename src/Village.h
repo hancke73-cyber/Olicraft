@@ -20,6 +20,19 @@ struct VillageBuilding {
     int groundY = 0;                     // Hoehe des Fussbodens
     int facing = 0;                      // Tuerseite: 0 +X, 1 -X, 2 +Z, 3 -Z
     glm::ivec2 door{0, 0};               // Zelle direkt vor der Tuer (draussen)
+
+    // Zelle im Gebaeude: u = Tiefe von der Tuerwand aus (0 = Tuerwand), w = Abstand von der Mittellinie quer dazu
+    glm::ivec2 cell(int u, int w) const {
+        const int xc = (x0 + x1) / 2, zc = (z0 + z1) / 2;
+        switch (facing) {
+            case 0: return {x1 - u, zc + w};
+            case 1: return {x0 + u, zc + w};
+            case 2: return {xc + w, z1 - u};
+            default: return {xc + w, z0 + u};
+        }
+    }
+    int depth() const { return facing <= 1 ? x1 - x0 + 1 : z1 - z0 + 1; }
+    int width() const { return facing <= 1 ? z1 - z0 + 1 : x1 - x0 + 1; }
 };
 
 struct Village {
@@ -29,6 +42,11 @@ struct Village {
     std::vector<VillageBuilding> buildings;  // erstes Element: der Brunnen
     std::vector<glm::ivec3> pathCells;   // x, Hoehe der Oberflaeche, z
     std::vector<glm::ivec3> chests;      // Truhen (Position)
+    struct Bed {
+        glm::ivec3 foot, head;  // Zellen der beiden Haelften
+        int building = 0;       // Index in buildings (Haus)
+    };
+    std::vector<Bed> beds;
     std::vector<glm::ivec3> villagerSpawns;  // Fusspunkt, an dem Dorfbewohner erscheinen
     struct AnimalSpawn {
         glm::ivec3 pos;
@@ -38,6 +56,8 @@ struct Village {
     int minX = 0, maxX = 0, minZ = 0, maxZ = 0;  // Umriss inkl. Rand
 
     int houseCount() const;
+    // Arbeitsplatz (Zelle vor der Tuer) fuer einen Beruf, sonst am Brunnen
+    glm::ivec3 workSpot(int profession) const;
 };
 
 class VillageGenerator {

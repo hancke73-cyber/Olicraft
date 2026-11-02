@@ -68,7 +68,11 @@ const std::vector<ModelPart>& partsFor(SkinId id) {
         case SKIN_PIG: return pig;
         case SKIN_COW: return cow;
         case SKIN_SHEEP: return sheep;
-        case SKIN_VILLAGER: return villager;
+        case SKIN_VILLAGER:
+        case SKIN_VILLAGER_LIBRARIAN:
+        case SKIN_VILLAGER_SMITH:
+        case SKIN_VILLAGER_MASON:
+        case SKIN_VILLAGER_SHEPHERD: return villager;
         default: return zombie;
     }
 }

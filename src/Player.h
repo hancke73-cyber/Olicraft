@@ -30,6 +30,7 @@ public:
     bool inWater = false;
     bool inLava = false;
     bool headInWater = false;
+    bool onLadder = false;
     float landedFall = 0.0f;  // Fallhoehe beim letzten Aufprall (vom Spiel auszulesen und zurueckzusetzen)
 
     glm::vec3 eyePos() const { return pos + glm::vec3(0.0f, EYE, 0.0f); }

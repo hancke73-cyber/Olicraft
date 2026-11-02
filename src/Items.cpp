@@ -17,7 +17,7 @@ static const ItemId CREATIVE_LIST[] = {
     FENCE, WALL_COBBLE, WALL_BRICKS, GLASS_PANE, IRON_BARS, LANTERN, GATE_BASE, GATE_BASE + 4,
     ITEM_DOOR_WOOD, ITEM_DOOR_IRON,
     // Stationen
-    CRAFTING_TABLE, FURNACE, CHEST, BED,
+    CRAFTING_TABLE, FURNACE, CHEST, BED, LADDER_BASE,
     // Pflanzen
     TALL_GRASS, FERN, FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE, MUSHROOM_RED, MUSHROOM_BROWN, DEAD_BUSH,
     SUGAR_CANE, BERRY_BUSH,
@@ -45,7 +45,8 @@ bool itemValid(ItemId id) {
         const BlockId b = static_cast<BlockId>(id);
         if (isStairs(b)) return stairFacing(b) == 0;
         if (isSlab(b)) return !slabIsTop(b);
-        if (isDoor(b) || b == LANTERN_HANG || isCrop(b)) return false;
+        if (isDoor(b) || b == LANTERN_HANG || isCrop(b) || isBedPart(b)) return false;
+        if (isLadder(b)) return b == LADDER_BASE;
         if (isGate(b)) return b == makeGate(0, false, 0) || b == makeGate(1, false, 0);
         return true;
     }
@@ -59,7 +60,7 @@ const ItemInfo& itemInfo(ItemId id) {
     if (!init) {
         for (int i = 1; i < BLOCK_COUNT; ++i) {
             const BlockInfo& bi = blockInfo(static_cast<BlockId>(i));
-            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i))};
+            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i)) || isLadder(static_cast<BlockId>(i))};
         }
         init = true;
     }

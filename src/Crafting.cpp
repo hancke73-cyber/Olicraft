@@ -94,6 +94,7 @@ std::vector<Recipe> buildRecipes() {
     v.push_back(make({" I ", "GTG", " I "}, {{'I', ITEM_IRON_INGOT}, {'G', GLASS}, {'T', TORCH}}, {LANTERN, 1}));
     v.push_back(make({"PP", "PP", "PP"}, {{'P', PLANKS}}, {ITEM_DOOR_WOOD, 3}));
     v.push_back(make({"II", "II", "II"}, {{'I', ITEM_IRON_INGOT}}, {ITEM_DOOR_IRON, 3}));
+    v.push_back(make({"S S", "SSS", "S S"}, {{'S', ITEM_STICK}}, {LADDER_BASE, 3}));
     // Landwirtschaft
     v.push_back(make({"WWW"}, {{'W', ITEM_WHEAT}}, {ITEM_BREAD, 1}));
     v.push_back(make({"W"}, {{'W', ITEM_WHEAT}}, {ITEM_SEEDS, 1}));

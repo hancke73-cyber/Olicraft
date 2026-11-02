@@ -142,6 +142,9 @@ const TileName TILE_NAMES[TILE_COUNT] = {
     {"hoe_diamond", "Diamanthacke"},
     {"door_wood_item", "Holztuer (Gegenstand)"},
     {"door_iron_item", "Eisentuer (Gegenstand)"},
+    {"ladder", "Leiter"},
+    {"bed_foot_top", "Bett Fussteil oben"},
+    {"bed_head_top", "Bett Kopfteil oben"},
 };
 static_assert(sizeof(TILE_NAMES) / sizeof(TILE_NAMES[0]) == TILE_COUNT, "Kachelnamen passen nicht zur Kachelliste");
 
@@ -281,7 +284,7 @@ bool TextureStore::conformSkin(SkinId id, Image& img, std::string* error) {
     const SkinInfo& si = skinInfo(id);
     if (img.w == si.width && img.h == si.height) return true;
     // Minecraft-Skins im neuen Format (64x64) enthalten oben das alte 64x32-Layout
-    if ((id == SKIN_PLAYER || id == SKIN_ZOMBIE || id == SKIN_VILLAGER) && img.w == 64 && img.h == 64) {
+    if ((id == SKIN_PLAYER || id == SKIN_ZOMBIE || isVillagerSkin(id)) && img.w == 64 && img.h == 64) {
         Image cut(64, 32);
         std::memcpy(cut.rgba.data(), img.rgba.data(), cut.rgba.size());
         img = cut;
