@@ -702,6 +702,40 @@ void World::exportFurnaces(std::vector<FurnaceSave>& out) const {
     }
 }
 
+Chest& World::chestAt(int x, int y, int z) {
+    auto it = chests_.find(furnaceKey(x, y, z));
+    if (it == chests_.end()) it = chests_.emplace(furnaceKey(x, y, z), ChestEntry{glm::ivec3(x, y, z), Chest()}).first;
+    return it->second.c;
+}
+
+Chest* World::findChest(int x, int y, int z) {
+    auto it = chests_.find(furnaceKey(x, y, z));
+    return it == chests_.end() ? nullptr : &it->second.c;
+}
+
+bool World::removeChest(int x, int y, int z, Chest* out) {
+    auto it = chests_.find(furnaceKey(x, y, z));
+    if (it == chests_.end()) return false;
+    if (out) *out = it->second.c;
+    chests_.erase(it);
+    return true;
+}
+
+void World::exportChests(std::vector<ChestSave>& out) const {
+    for (const auto& kv : chests_) {
+        ChestSave cs;
+        cs.x = kv.second.pos.x;
+        cs.y = kv.second.pos.y;
+        cs.z = kv.second.pos.z;
+        cs.chest = kv.second.c;
+        if (!cs.chest.isEmpty()) out.push_back(cs);
+    }
+}
+
+void World::importChests(const std::vector<ChestSave>& in) {
+    for (const ChestSave& cs : in) chests_[furnaceKey(cs.x, cs.y, cs.z)] = ChestEntry{glm::ivec3(cs.x, cs.y, cs.z), cs.chest};
+}
+
 void World::importFurnaces(const std::vector<FurnaceSave>& in) {
     for (const FurnaceSave& fs : in) furnaces_[furnaceKey(fs.x, fs.y, fs.z)] = FurnaceEntry{glm::ivec3(fs.x, fs.y, fs.z), fs.furnace};
 }

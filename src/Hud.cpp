@@ -80,9 +80,11 @@ float guiScale(int windowHeight) { return std::max(1.0f, std::floor(static_cast<
 // Layout des Inventarfensters
 // ---------------------------------------------------------------------------------------------------------------
 
-InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furnace) {
+InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furnace, bool chest) {
     InvLayout l;
     l.furnace = furnace;
+    l.chest = chest;
+    if (chest) craftSize = 0;
     l.s = guiScale(h);
     l.creative = creative;
     l.craftSize = craftSize;
@@ -96,6 +98,11 @@ InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furna
         craftOffset = height;
         height += craftSize * 18.0f * s + 8.0f * s;
     }
+    float chestOffset = 0.0f;
+    if (chest) {
+        chestOffset = height;
+        height += 3.0f * 18.0f * s + 8.0f * s;
+    }
     const float storageOffset = height;
     height += 3.0f * 18.0f * s + 4.0f * s + 18.0f * s + pad;
 
@@ -104,6 +111,7 @@ InvLayout InvLayout::make(int w, int h, bool creative, int craftSize, bool furna
     l.paletteTop = l.panelPos + glm::vec2(pad, pad + title);
     l.craftTop = l.panelPos + glm::vec2(pad + 18.0f * s, craftOffset);
     l.resultPos = l.panelPos + glm::vec2(pad + 6.0f * 18.0f * s, craftOffset + (craftSize - 1) * 9.0f * s);
+    l.chestTop = l.panelPos + glm::vec2(pad, chestOffset);
     l.storageTop = l.panelPos + glm::vec2(pad, storageOffset);
     l.hotbarTop = l.storageTop + glm::vec2(0.0f, 3.0f * 18.0f * s + 4.0f * s);
     return l;
@@ -162,7 +170,56 @@ int InvLayout::hitFurnace(glm::vec2 m) const {
     return -1;
 }
 
+glm::vec2 InvLayout::chestPos(int index) const { return chestTop + glm::vec2((index % 9) * pitch(), (index / 9) * pitch()); }
+
+int InvLayout::hitChest(glm::vec2 m) const {
+    if (!chest) return -1;
+    for (int i = 0; i < Chest::SIZE; ++i)
+        if (inRect(m, chestPos(i), pitch(), pitch())) return i;
+    return -1;
+}
+
 bool InvLayout::inside(glm::vec2 m) const { return inRect(m, panelPos, panelSize.x, panelSize.y); }
+
+// Rezeptbuch: rechts neben dem Fenster, sonst links; schmale Fenster: ueberlappend am rechten Rand
+BookLayout BookLayout::make(const InvLayout& inv, int windowW, int windowH) {
+    (void)windowH;
+    BookLayout b;
+    b.s = inv.s;
+    const float s = b.s, pad = 7.0f * s, pt = 18.0f * s;
+    b.cols = 6;
+    const float width = b.cols * pt + 2.0f * pad;
+    float x = inv.panelPos.x + inv.panelSize.x + 6.0f * s;
+    if (x + width > static_cast<float>(windowW)) x = inv.panelPos.x - 6.0f * s - width;
+    if (x < 0.0f) x = std::max(0.0f, static_cast<float>(windowW) - width);
+    b.pos = glm::vec2(std::floor(x), inv.panelPos.y);
+    b.size = glm::vec2(width, inv.panelSize.y);
+    const float header = pad + 12.0f * s + 14.0f * s;  // Titel + Filterknopf
+    b.gridTop = b.pos + glm::vec2(pad, header);
+    b.rows = std::max(1, static_cast<int>((b.size.y - header - pad) / pt));
+    b.filterPos = b.pos + glm::vec2(pad, pad + 11.0f * s);
+    b.filterSize = glm::vec2(b.cols * pt, 12.0f * s);
+    return b;
+}
+
+glm::vec2 BookLayout::entryPos(int vi) const { return gridTop + glm::vec2((vi % cols) * pitch(), (vi / cols) * pitch()); }
+
+int BookLayout::maxScroll(int total) const {
+    const int totalRows = (total + cols - 1) / cols;
+    return std::max(0, totalRows - rows);
+}
+
+int BookLayout::hitEntry(glm::vec2 m, int total, int scroll) const {
+    for (int vi = 0; vi < cols * rows; ++vi) {
+        const int idx = scroll * cols + vi;
+        if (idx >= total) break;
+        if (inRect(m, entryPos(vi), pitch(), pitch())) return idx;
+    }
+    return -1;
+}
+
+bool BookLayout::hitFilter(glm::vec2 m) const { return inRect(m, filterPos, filterSize.x, filterSize.y); }
+bool BookLayout::inside(glm::vec2 m) const { return inRect(m, pos, size.x, size.y); }
 
 // ---------------------------------------------------------------------------------------------------------------
 // HUD
@@ -186,7 +243,7 @@ static void drawSlotCount(HudBatch& b, const ItemStack& st, float x, float y, fl
 }
 
 static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
-    const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize, st.furnaceOpen);
+    const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize, st.furnaceOpen, st.chestOpen);
     const float s = L.s, pt = L.pitch();
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.55f));
 
@@ -197,7 +254,7 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
            glm::vec4(0.30f, 0.31f, 0.35f, 0.97f));
     std::string title = st.windowTitle;
     if (title.empty())
-        title = st.paletteOpen ? "Kreativ-Inventar" : (st.furnaceOpen ? "Ofen" : (st.craftSize == 3 ? "Werkbank" : "Inventar"));
+        title = st.paletteOpen ? "Kreativ-Inventar" : (st.chestOpen ? "Truhe" : (st.furnaceOpen ? "Ofen" : (st.craftSize == 3 ? "Werkbank" : "Inventar")));
     b.text(L.panelPos.x + 7 * s, L.panelPos.y + 6 * s, s, title, glm::vec4(1.0f));
 
     const glm::vec4 slotBg(0.12f, 0.12f, 0.15f, 1.0f);
@@ -218,6 +275,19 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
             b.itemIcon(creativeItem(i), p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
         }
         float sepY = L.storageTop.y - 5.0f * s;
+        b.rect(L.panelPos.x + 7 * s, sepY, L.panelPos.x + L.panelSize.x - 7 * s, sepY + s, glm::vec4(0, 0, 0, 0.5f));
+    }
+
+    // Truhe: 3 Reihen
+    const int hoverChest = L.hitChest(st.mouse);
+    if (st.chestOpen && st.chest) {
+        for (int i = 0; i < Chest::SIZE; ++i) {
+            const glm::vec2 p = L.chestPos(i);
+            slotRect(p, i == hoverChest);
+            if (!st.chest->slots[static_cast<size_t>(i)].empty())
+                b.itemIcon(st.chest->slots[static_cast<size_t>(i)].id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+        }
+        const float sepY = L.storageTop.y - 5.0f * s;
         b.rect(L.panelPos.x + 7 * s, sepY, L.panelPos.x + L.panelSize.x - 7 * s, sepY + s, glm::vec4(0, 0, 0, 0.5f));
     }
 
@@ -281,6 +351,13 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
             drawDurability(b, inv->slots[i], p.x, p.y, pt, s);
         }
     }
+    if (st.chestOpen && st.chest) {
+        for (int i = 0; i < Chest::SIZE; ++i) {
+            const glm::vec2 p = L.chestPos(i);
+            drawSlotCount(b, st.chest->slots[static_cast<size_t>(i)], p.x, p.y, pt, s);
+            drawDurability(b, st.chest->slots[static_cast<size_t>(i)], p.x, p.y, pt, s);
+        }
+    }
     if (st.furnaceOpen) {
         const ItemStack* fs[3] = {&st.furnaceIn, &st.furnaceFuel, &st.furnaceOut};
         for (int i = 0; i < 3; ++i) {
@@ -302,6 +379,8 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     if (hoverPal >= 0) hoverItem = creativeItem(hoverPal);
     else if (hoverSlot >= 0 && inv && !inv->slots[hoverSlot].empty()) hoverItem = inv->slots[hoverSlot].id;
     else if (hoverCraft >= 0 && !st.craftCells[hoverCraft].empty()) hoverItem = st.craftCells[hoverCraft].id;
+    else if (hoverChest >= 0 && st.chest && !st.chest->slots[static_cast<size_t>(hoverChest)].empty())
+        hoverItem = st.chest->slots[static_cast<size_t>(hoverChest)].id;
     else if (hoverFurnace == 0 && !st.furnaceIn.empty()) hoverItem = st.furnaceIn.id;
     else if (hoverFurnace == 1 && !st.furnaceFuel.empty()) hoverItem = st.furnaceFuel.id;
     else if (hoverFurnace == 2 && !st.furnaceOut.empty()) hoverItem = st.furnaceOut.id;
@@ -312,6 +391,72 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
         float tx = st.mouse.x + 10 * s, ty = st.mouse.y - 12 * s;
         b.rect(tx - 3 * s, ty - 3 * s, tx + tw + 3 * s, ty + 8 * s + 3 * s, glm::vec4(0.08f, 0.0f, 0.12f, 0.92f));
         b.text(tx, ty, s, name);
+    }
+
+    // Rezeptbuch
+    if (st.book.open) {
+        const BookLayout B = BookLayout::make(L, w, h);
+        b.rect(B.pos.x - 2 * s, B.pos.y - 2 * s, B.pos.x + B.size.x + 2 * s, B.pos.y + B.size.y + 2 * s, glm::vec4(0.05f, 0.05f, 0.07f, 0.95f));
+        b.rect(B.pos.x, B.pos.y, B.pos.x + B.size.x, B.pos.y + B.size.y, glm::vec4(0.30f, 0.31f, 0.35f, 0.97f));
+        b.text(B.pos.x + 7 * s, B.pos.y + 6 * s, s, "Rezepte", glm::vec4(1.0f));
+        const bool hf = B.hitFilter(st.mouse);
+        {
+            const float x0 = B.filterPos.x, y0 = B.filterPos.y, x1 = x0 + B.filterSize.x, y1 = y0 + B.filterSize.y;
+            b.rect(x0 - s, y0 - s, x1 + s, y1 + s, glm::vec4(0.02f, 0.02f, 0.03f, 0.95f));
+            glm::vec4 fill = st.book.onlyCraftable ? glm::vec4(0.26f, 0.42f, 0.66f, 1.0f) : glm::vec4(0.30f, 0.31f, 0.36f, 1.0f);
+            if (hf) fill += glm::vec4(0.12f, 0.12f, 0.14f, 0.0f);
+            b.rect(x0, y0, x1, y1, fill);
+            const std::string label = st.book.onlyCraftable ? "Nur machbare" : "Alle zeigen";
+            b.text(std::floor(x0 + (B.filterSize.x - textWidthPx(label) * s) * 0.5f), y0 + 2.0f * s, s, label);
+        }
+        const int total = static_cast<int>(st.book.entries.size());
+        const int hoverEntry = B.hitEntry(st.mouse, total, st.book.scroll);
+        for (int vi = 0; vi < B.cols * B.rows; ++vi) {
+            const int idx = st.book.scroll * B.cols + vi;
+            if (idx >= total) break;
+            const BookEntryHud& e = st.book.entries[static_cast<size_t>(idx)];
+            const glm::vec2 p = B.entryPos(vi);
+            b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, e.craftable ? glm::vec4(0.16f, 0.30f, 0.16f, 1.0f) : slotBg);
+            if (idx == hoverEntry) b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, hoverFx);
+            if (e.craftable) {  // gruener Rand
+                const glm::vec4 g(0.35f, 0.85f, 0.35f, 0.9f);
+                b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + 2 * s, g);
+                b.rect(p.x + s, p.y + pt - 2 * s, p.x + pt - s, p.y + pt - s, g);
+                b.rect(p.x + s, p.y + s, p.x + 2 * s, p.y + pt - s, g);
+                b.rect(p.x + pt - 2 * s, p.y + s, p.x + pt - s, p.y + pt - s, g);
+            }
+            b.itemIcon(e.result.id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
+            if (!e.craftable) b.rect(p.x + s, p.y + s, p.x + pt - s, p.y + pt - s, glm::vec4(0.0f, 0.0f, 0.0f, 0.45f));
+            drawSlotCount(b, e.result, p.x, p.y, pt, s);
+        }
+        if (total == 0) b.text(B.pos.x + 7 * s, B.gridTop.y + 4 * s, s, "Nichts zu zeigen", glm::vec4(0.8f));
+        // Bildlaufleiste
+        if (B.maxScroll(total) > 0) {
+            const float tx = B.pos.x + B.size.x - 4.0f * s, ty0 = B.gridTop.y, th = B.rows * pt;
+            b.rect(tx, ty0, tx + 2.0f * s, ty0 + th, glm::vec4(0, 0, 0, 0.4f));
+            const float frac = static_cast<float>(B.rows) / static_cast<float>((total + B.cols - 1) / B.cols);
+            const float hh = std::max(6.0f * s, th * frac);
+            const float yy = ty0 + (th - hh) * static_cast<float>(st.book.scroll) / static_cast<float>(B.maxScroll(total));
+            b.rect(tx, yy, tx + 2.0f * s, yy + hh, glm::vec4(0.85f, 0.85f, 0.9f, 0.9f));
+        }
+        // Hinweis: Zutaten
+        if (hoverEntry >= 0 && st.cursor.empty()) {
+            const BookEntryHud& e = st.book.entries[static_cast<size_t>(hoverEntry)];
+            std::vector<std::string> lines;
+            lines.push_back(std::string(itemInfo(e.result.id).name) + (e.result.count > 1 ? " x" + std::to_string(e.result.count) : ""));
+            for (const Ingredient& ing : e.ingredients)
+                lines.push_back(std::to_string(ing.count) + "x " + itemInfo(ing.item).name);
+            if (!e.fits) lines.push_back("Braucht eine Werkbank");
+            else if (e.craftable) lines.push_back("Klick: Raster fuellen");
+            float tw = 0.0f;
+            for (const std::string& ln : lines) tw = std::max(tw, textWidthPx(ln) * s);
+            float tx = st.mouse.x + 10 * s, ty = st.mouse.y - 12 * s;
+            if (tx + tw + 6 * s > static_cast<float>(w)) tx = st.mouse.x - tw - 12 * s;
+            const float th = static_cast<float>(lines.size()) * 10.0f * s;
+            b.rect(tx - 3 * s, ty - 3 * s, tx + tw + 3 * s, ty + th + 1 * s, glm::vec4(0.08f, 0.0f, 0.12f, 0.92f));
+            for (size_t i = 0; i < lines.size(); ++i)
+                b.text(tx, ty + static_cast<float>(i) * 10.0f * s, s, lines[i], i == 0 ? glm::vec4(1.0f) : glm::vec4(0.75f, 0.75f, 0.85f, 1.0f));
+        }
     }
 
     // Gehaltener Stapel

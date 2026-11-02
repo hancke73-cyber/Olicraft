@@ -2480,6 +2480,58 @@ static void testNewBlocksAndRecipes() {
     }
 }
 
+static void testChestsAndSaveV5() {
+    // Truhe: Ablegen, Stapeln, Voll
+    Chest c;
+    CHECK(c.isEmpty() && c.add(STONE, 100) == 0 && c.slots[0].count == 64 && c.slots[1].count == 36);
+    CHECK(c.add(STONE, 28) == 0 && c.slots[1].count == 64);
+    CHECK(c.add(ITEM_IRON_PICKAXE, 1, 5) == 0 && c.slots[2].damage == 5);
+    for (int i = 0; i < Chest::SIZE; ++i) c.add(DIRT, 64);
+    CHECK(c.add(SAND, 1) == 1);
+
+    // World: anlegen, finden, entfernen, Export/Import (leere Truhen werden nicht gespeichert)
+    World w(1);
+    w.setMeshingEnabled(false);
+    CHECK(w.findChest(3, 70, 4) == nullptr);
+    w.chestAt(3, 70, 4).add(ITEM_DIAMOND, 7);
+    w.chestAt(-5, 65, -9);  // leer
+    CHECK(w.chestCount() == 2 && w.findChest(3, 70, 4)->slots[0].count == 7);
+    std::vector<ChestSave> out;
+    w.exportChests(out);
+    CHECK(out.size() == 1 && out[0].x == 3 && out[0].y == 70 && out[0].z == 4);
+    World w2(1);
+    w2.importChests(out);
+    CHECK(w2.findChest(3, 70, 4) && w2.findChest(3, 70, 4)->slots[0].id == ITEM_DIAMOND);
+    Chest taken;
+    CHECK(w2.removeChest(3, 70, 4, &taken) && taken.slots[0].count == 7 && w2.findChest(3, 70, 4) == nullptr && !w2.removeChest(3, 70, 4, nullptr));
+
+    // Speicherdatei Version 5: Truhen und Wiedereinstiegspunkt
+    std::filesystem::remove_all("olicraft_test_save5");
+    SaveFile sf;
+    sf.seed = 9;
+    sf.player.hasInventory = true;
+    sf.player.hasSpawn = true;
+    sf.player.spawn = glm::vec3(7.5f, 64.0f, -3.5f);
+    sf.chests = out;
+    sf.chests[0].chest.slots[26] = {ITEM_IRON_PICKAXE, 1, 12};
+    std::string err;
+    CHECK(writeSaveFile("olicraft_test_save5/w.dat", sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile("olicraft_test_save5/w.dat", back, &err));
+    CHECK(back.chests.size() == 1 && back.chests[0].chest.slots[0].id == ITEM_DIAMOND && back.chests[0].chest.slots[0].count == 7);
+    CHECK(back.chests[0].chest.slots[26].id == ITEM_IRON_PICKAXE && back.chests[0].chest.slots[26].damage == 12);
+    CHECK(back.player.hasSpawn && back.player.spawn == glm::vec3(7.5f, 64.0f, -3.5f));
+    // Abgeschnittene Datei wird abgelehnt
+    {
+        std::ifstream in("olicraft_test_save5/w.dat", std::ios::binary);
+        std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        std::ofstream o("olicraft_test_save5/cut.dat", std::ios::binary);
+        o.write(data.data(), static_cast<std::streamsize>(data.size() / 2));
+    }
+    CHECK(!readSaveFile("olicraft_test_save5/cut.dat", back, &err));
+    std::filesystem::remove_all("olicraft_test_save5");
+}
+
 static void testSpawn() {
     for (int32_t seed : {1, 42, 777, 123456}) {
         World w(seed);
@@ -2513,6 +2565,7 @@ int main() {
     testPlayerSkins();
     testSky();
     testNewBlocksAndRecipes();
+    testChestsAndSaveV5();
     testCraftingAndTools();
     testOresAndFurnace();
     testSkinsAndModels();

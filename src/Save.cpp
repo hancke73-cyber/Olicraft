@@ -11,7 +11,7 @@ namespace oc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x52434C4Fu;  // "OLCR" (little endian)
-constexpr uint32_t VERSION = 4;
+constexpr uint32_t VERSION = 5;
 
 class Writer {
 public:
@@ -151,6 +151,22 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
                 w.f32(fs.furnace.burnTotal);
                 w.f32(fs.furnace.cookTime);
             }
+            // Version 5: Truhen und Wiedereinstiegspunkt
+            w.u32(static_cast<uint32_t>(save.chests.size()));
+            for (const ChestSave& cs : save.chests) {
+                w.i32(cs.x);
+                w.i32(cs.y);
+                w.i32(cs.z);
+                for (const ItemStack& st : cs.chest.slots) {
+                    w.u16(st.empty() ? 0 : st.id);
+                    w.u8(static_cast<uint8_t>(st.empty() ? 0 : st.count));
+                    w.u16(static_cast<uint16_t>(st.empty() ? 0 : std::min(st.damage, 65535)));
+                }
+            }
+            w.u8(save.player.hasSpawn ? 1 : 0);
+            w.f32(save.player.spawn.x);
+            w.f32(save.player.spawn.y);
+            w.f32(save.player.spawn.z);
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
                 w.i32(c.cx);
@@ -245,6 +261,38 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
             }
             save.furnaces.push_back(fs);
         }
+    }
+    if (version >= 5) {
+        const uint32_t ccount = r.u32();
+        if (!r.ok() || ccount > 100000u) {
+            if (error) *error = "Beschaedigte Speicherdatei";
+            return false;
+        }
+        for (uint32_t i = 0; i < ccount; ++i) {
+            ChestSave cs;
+            cs.x = r.i32();
+            cs.y = r.i32();
+            cs.z = r.i32();
+            for (ItemStack& st : cs.chest.slots) {
+                ItemId id = r.u16();
+                int cnt = r.u8();
+                int dmg = r.u16();
+                if (itemValid(id) && cnt > 0) {
+                    st.id = id;
+                    st.count = std::min(cnt, itemInfo(id).maxStack);
+                    st.damage = std::min(dmg, std::max(0, itemInfo(id).maxDurability));
+                }
+            }
+            if (!r.ok()) {
+                if (error) *error = "Beschaedigte Speicherdatei";
+                return false;
+            }
+            save.chests.push_back(cs);
+        }
+        save.player.hasSpawn = r.u8() != 0;
+        save.player.spawn.x = r.f32();
+        save.player.spawn.y = r.f32();
+        save.player.spawn.z = r.f32();
     }
     uint32_t n = r.u32();
     if (!r.ok() || n > 10000000u) {

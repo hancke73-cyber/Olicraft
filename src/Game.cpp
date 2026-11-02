@@ -159,6 +159,7 @@ bool Game::init() {
     if (loaded) {
         world_->importChunks(sf.chunks);
         world_->importFurnaces(sf.furnaces);
+        world_->importChests(sf.chests);
         player_.pos = sf.player.pos;
         player_.yaw = sf.player.yaw;
         player_.pitch = sf.player.pitch;
@@ -174,7 +175,7 @@ bool Game::init() {
             creative_ = true;
             for (int i = 0; i < Inventory::HOTBAR; ++i) inventory_.slots[i] = {DEFAULT_HOTBAR[i], 64};
         }
-        spawnPoint_ = player_.pos;
+        spawnPoint_ = sf.player.hasSpawn ? sf.player.spawn : player_.pos;
     } else {
         player_.pos = world_->findSpawn();
         player_.yaw = -90.0f;
@@ -202,6 +203,22 @@ bool Game::init() {
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     if (opt_.demo == "inv") openInventory();
+    if (opt_.demo == "chest") {
+        inventory_.clear();
+        inventory_.add(PLANKS, 20);
+        inventory_.add(ITEM_STICK, 12);
+        inventory_.add(CHEST, 2);
+        const glm::ivec3 cp(static_cast<int>(std::floor(player_.pos.x)) + 2, static_cast<int>(std::floor(player_.pos.y)),
+                            static_cast<int>(std::floor(player_.pos.z)));
+        world_->setBlock(cp.x, cp.y, cp.z, CHEST);
+        Chest& ch = world_->chestAt(cp.x, cp.y, cp.z);
+        ch.add(ITEM_DIAMOND, 12);
+        ch.add(IRON_BLOCK, 3);
+        ch.add(ITEM_IRON_PICKAXE, 1, 40);
+        ch.add(WOOL_RED, 64);
+        ch.add(FLOWER_BLUE, 9);
+        openChest(cp);
+    }
     if (opt_.demo == "furnace") {
         inventory_.clear();
         inventory_.add(IRON_ORE, 12);
@@ -422,6 +439,8 @@ void Game::openInventory(bool table) {
     if (dead_) return;
     inventoryOpen_ = true;
     furnaceWindow_ = false;
+    chestWindow_ = false;
+    bookScroll_ = 0;
     craftSize_ = table ? 3 : (creative_ ? 0 : 2);
     paletteWindow_ = creative_ && !table;
     for (ItemStack& c : craft_) c.clear();
@@ -437,6 +456,32 @@ void Game::openFurnace(const glm::ivec3& pos) {
     furnaceWindow_ = true;
     furnacePos_ = pos;
     world_->furnaceAt(pos.x, pos.y, pos.z);
+}
+
+void Game::openChest(const glm::ivec3& pos) {
+    openInventory(false);
+    craftSize_ = 0;
+    paletteWindow_ = false;
+    chestWindow_ = true;
+    chestPos_ = pos;
+    world_->chestAt(pos.x, pos.y, pos.z);
+}
+
+void Game::useBed(const glm::ivec3& pos) {
+    spawnPoint_ = glm::vec3(pos.x + 0.5f, pos.y + 1.0f, pos.z + 0.5f);
+    if (Renderer::sunHeight(timeOfDay_) > 0.05f) {
+        showMessage("Wiedereinstiegspunkt gesetzt (schlafen nur nachts)");
+        return;
+    }
+    for (const Mob& m : entities_.mobs())
+        if (!m.dead() && mobSpec(m.type).hostile && glm::length(m.pos - spawnPoint_) < 10.0f) {
+            showMessage("Du kannst nicht schlafen: Monster in der Naehe");
+            return;
+        }
+    timeOfDay_ = 0.02f;  // Sonnenaufgang
+    ++dayCount_;
+    if (!creative_) health_ = 20;
+    showMessage("Gut geschlafen. Wiedereinstiegspunkt gesetzt");
 }
 
 void Game::closeInventory() {
@@ -464,6 +509,7 @@ void Game::closeInventory() {
     craftSize_ = 0;
     paletteWindow_ = false;
     furnaceWindow_ = false;
+    chestWindow_ = false;
     firstMouse_ = true;
     breakTimer_ = placeTimer_ = attackTimer_ = 0.3f;
     if (!paused_) glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -491,11 +537,147 @@ void Game::dropSelected(bool all) {
                         1.5f);
 }
 
+std::vector<Game::BookItem> Game::buildBook() const {
+    // Vorrat: Rucksack und Handwerksraster
+    auto have = [&](ItemId id) {
+        int n = inventory_.count(id);
+        for (const ItemStack& cs : craft_)
+            if (!cs.empty() && cs.id == id) n += cs.count;
+        return n;
+    };
+    struct Group {
+        ItemId id;
+        int count;
+        std::vector<const Recipe*> variants;
+    };
+    std::vector<Group> groups;
+    for (const Recipe& r : recipes()) {
+        bool found = false;
+        for (Group& g : groups)
+            if (g.id == r.result.id && g.count == r.result.count) {
+                g.variants.push_back(&r);
+                found = true;
+                break;
+            }
+        if (!found) groups.push_back({r.result.id, r.result.count, {&r}});
+    }
+    std::vector<BookItem> items;
+    for (const Group& g : groups) {
+        BookItem best;
+        for (const Recipe* r : g.variants) {
+            BookItem it;
+            it.recipe = r;
+            it.hud.result = r->result;
+            it.hud.fits = r->gridNeeded() <= craftSize_;
+            it.hud.ingredients = recipeIngredients(*r);
+            bool ok = true;
+            for (const Ingredient& ing : it.hud.ingredients) ok = ok && (creative_ || have(ing.item) >= ing.count);
+            it.hud.craftable = ok && it.hud.fits;
+            if (!best.recipe || (it.hud.craftable && !best.hud.craftable)) best = it;
+        }
+        items.push_back(best);
+    }
+    std::stable_partition(items.begin(), items.end(), [](const BookItem& b) { return b.hud.craftable; });
+    if (bookOnlyCraftable_) items.erase(std::remove_if(items.begin(), items.end(), [](const BookItem& b) { return !b.hud.craftable; }), items.end());
+    return items;
+}
+
+void Game::clampBookScroll(int total) {
+    const InvLayout L = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_);
+    const BookLayout B = BookLayout::make(L, fbW_, fbH_);
+    bookScroll_ = std::max(0, std::min(bookScroll_, B.maxScroll(total)));
+}
+
+// Raster nach dem Rezept belegen: das Raster wird zuerst in den Rucksack zurueckgelegt, dann je Feld eine Zutat entnommen
+void Game::autofillRecipe(const Recipe& r) {
+    const int n = craftSize_;
+    if (r.gridNeeded() > n) {
+        showMessage("Dafuer braucht man eine Werkbank");
+        return;
+    }
+    Inventory trial = inventory_;
+    for (const ItemStack& cs : craft_)
+        if (!cs.empty() && trial.add(cs.id, cs.count, cs.damage) > 0) {
+            showMessage("Rucksack voll");
+            return;
+        }
+    const std::vector<ItemId> layout = recipeLayout(r, n);
+    ItemStack cells[9];
+    for (int i = 0; i < n * n; ++i) {
+        const ItemId want = layout[static_cast<size_t>(i)];
+        if (want == ITEM_NONE) continue;
+        if (creative_) {
+            cells[i] = {want, 1, 0};
+            continue;
+        }
+        int slot = -1;
+        for (int k = 0; k < Inventory::SIZE && slot < 0; ++k)
+            if (!trial.slots[static_cast<size_t>(k)].empty() && trial.slots[static_cast<size_t>(k)].id == want) slot = k;
+        if (slot < 0) {
+            showMessage("Es fehlen Zutaten");
+            return;
+        }
+        cells[i] = {want, 1, trial.slots[static_cast<size_t>(slot)].damage};
+        trial.take(slot, 1);
+    }
+    inventory_ = trial;
+    for (int i = 0; i < 9; ++i) craft_[i] = cells[i];
+    uiSound(SoundId::Click, 0.6f);
+}
+
 void Game::inventoryClick(int button, int mods) {
     const bool right = button == GLFW_MOUSE_BUTTON_RIGHT;
-    const InvLayout layout = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_);
+    const InvLayout layout = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_);
     const glm::vec2 m = mousePx();
     uiSound(SoundId::Click, 0.4f);
+
+    // Rezeptbuch
+    if (bookVisible()) {
+        const BookLayout B = BookLayout::make(layout, fbW_, fbH_);
+        if (B.hitFilter(m)) {
+            bookOnlyCraftable_ = !bookOnlyCraftable_;
+            bookScroll_ = 0;
+            return;
+        }
+        if (B.inside(m)) {
+            const std::vector<BookItem> list = buildBook();
+            clampBookScroll(static_cast<int>(list.size()));
+            const int idx = B.hitEntry(m, static_cast<int>(list.size()), bookScroll_);
+            if (idx >= 0 && !right) autofillRecipe(*list[static_cast<size_t>(idx)].recipe);
+            return;
+        }
+    }
+
+    // Truhe
+    if (chestWindow_) {
+        Chest* ch = world_->findChest(chestPos_.x, chestPos_.y, chestPos_.z);
+        if (ch) {
+            const int cs = layout.hitChest(m);
+            if (cs >= 0) {
+                ItemStack& st = ch->slots[static_cast<size_t>(cs)];
+                if ((mods & GLFW_MOD_SHIFT) && !right) {
+                    if (!st.empty()) {
+                        const int left = inventory_.add(st.id, st.count, st.damage);
+                        if (left <= 0) st.clear();
+                        else st.count = left;
+                    }
+                } else {
+                    Inventory::click(st, cursor_, right);
+                }
+                return;
+            }
+            const int is = layout.hitSlot(m);
+            if (is >= 0 && (mods & GLFW_MOD_SHIFT) && !right) {  // Rucksack -> Truhe
+                ItemStack& st = inventory_.slots[static_cast<size_t>(is)];
+                if (!st.empty()) {
+                    const int left = ch->add(st.id, st.count, st.damage);
+                    if (left <= 0) st.clear();
+                    else st.count = left;
+                }
+                return;
+            }
+        }
+    }
 
     if (furnaceWindow_) {
         Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z);
@@ -660,6 +842,15 @@ void Game::handleKey(int key, int action, int mods) {
 void Game::handleScroll(double dy) {
     if (paused_ && screen_ == MenuScreen::Editor) {
         editorScroll(dy);
+        return;
+    }
+    if (inventoryOpen_ && bookVisible() && !paused_) {
+        const InvLayout L = InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_);
+        const BookLayout B = BookLayout::make(L, fbW_, fbH_);
+        if (B.inside(mousePx())) {
+            bookScroll_ += dy > 0 ? -1 : (dy < 0 ? 1 : 0);
+            clampBookScroll(static_cast<int>(buildBook().size()));
+        }
         return;
     }
     if (paused_ || inventoryOpen_ || dead_) return;
@@ -1006,6 +1197,14 @@ void Game::breakBlock(const glm::ivec3& p) {
                     entities_.spawnItem(*st, glm::vec3(p.x + 0.5f, p.y + 0.4f, p.z + 0.5f), glm::vec3(0.0f, 2.5f, 0.0f), 0.4f);
         }
     }
+    if (b == CHEST) {  // Inhalt faellt heraus
+        Chest content;
+        if (world_->removeChest(p.x, p.y, p.z, &content))
+            for (const ItemStack& st : content.slots)
+                if (!st.empty())
+                    entities_.spawnItem(st, glm::vec3(p.x + 0.5f, p.y + 0.4f, p.z + 0.5f),
+                                        glm::vec3(static_cast<float>(hash3(p.x, p.y, p.z, st.id) & 7u) / 4.0f - 1.0f, 2.5f, 0.5f), 0.4f);
+    }
     world_->setBlock(p.x, p.y, p.z, AIR);
     playSound(blockSound(blockMaterial(b)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f));
     if (!creative_) {
@@ -1033,6 +1232,14 @@ void Game::placeBlockOrUse() {
         }
         if (tb == FURNACE || tb == FURNACE_LIT) {
             openFurnace(target_.block);
+            return;
+        }
+        if (tb == CHEST) {
+            openChest(target_.block);
+            return;
+        }
+        if (tb == BED) {
+            useBed(target_.block);
             return;
         }
     }
@@ -2119,6 +2326,118 @@ int Game::selfTest() {
         std::filesystem::remove_all(sdir);
     }
 
+    // 20. Rezeptbuch, Truhe, Bett, Kaktus, Pflanzen
+    {
+        dead_ = false;
+        creative_ = false;
+        paused_ = false;
+        health_ = 20;
+        invulnerable_ = 0.0f;
+        cursor_.clear();
+        entities_.clear();
+        inventory_.clear();
+        for (int x = 6; x <= 14; ++x)
+            for (int z = -12; z <= -2; ++z) {
+                for (int y = gy; y <= gy + 4; ++y) world_->setBlock(x, y, z, AIR);
+                world_->setBlock(x, gy - 1, z, x % 2 ? STONE : GRASS);
+            }
+        // Rezeptbuch: Truhe (8 Bretter) ist herstellbar, Ofen (8 Bruchstein) nicht
+        inventory_.add(PLANKS, 8);
+        openInventory(true);
+        {
+            const std::vector<BookItem> book = buildBook();
+            SCHECK(!book.empty() && book[0].hud.craftable);
+            const BookItem* chestItem = nullptr;
+            const BookItem* furnaceItem = nullptr;
+            for (const BookItem& it : book) {
+                if (it.hud.result.id == CHEST) chestItem = &it;
+                if (it.hud.result.id == FURNACE) furnaceItem = &it;
+            }
+            SCHECK(chestItem && chestItem->hud.craftable && furnaceItem && !furnaceItem->hud.craftable);
+            if (chestItem) {
+                autofillRecipe(*chestItem->recipe);
+                SCHECK(matchRecipe(craft_, craftSize_).id == CHEST && inventory_.count(PLANKS) == 0);
+                // Klick auf das Ergebnis, Raster leeren
+                for (ItemStack& cs : craft_) cs.clear();
+            }
+            bookOnlyCraftable_ = true;
+            inventory_.add(PLANKS, 8);
+            const std::vector<BookItem> onlyOk = buildBook();
+            bool allOk = !onlyOk.empty();
+            for (const BookItem& it : onlyOk) allOk = allOk && it.hud.craftable;
+            SCHECK(allOk && onlyOk.size() < book.size() + 8);
+            bookOnlyCraftable_ = false;
+            // im Inventar (2x2) passen Rezepte fuer 3x3 nicht
+            closeInventory();
+            openInventory(false);
+            bool bigNotFit = false;
+            for (const BookItem& it : buildBook())
+                if (it.recipe->gridNeeded() == 3) bigNotFit = !it.hud.fits;
+            SCHECK(bigNotFit);
+            closeInventory();
+        }
+        // Truhe: setzen, oeffnen, befuellen, speichern
+        inventory_.clear();
+        world_->setBlock(9, gy, -9, CHEST);
+        openChest(glm::ivec3(9, gy, -9));
+        SCHECK(inventoryOpen_ && chestWindow_ && world_->findChest(9, gy, -9) != nullptr);
+        world_->chestAt(9, gy, -9).add(ITEM_DIAMOND, 5);
+        world_->chestAt(9, gy, -9).slots[26] = {ITEM_IRON_PICKAXE, 1, 7};
+        closeInventory();
+        SCHECK(!chestWindow_ && !inventoryOpen_);
+        // Truhe abbauen: Inhalt faellt heraus
+        world_->setBlock(11, gy, -9, CHEST);
+        world_->chestAt(11, gy, -9).add(COAL_BLOCK, 3);
+        breakBlock(glm::ivec3(11, gy, -9));
+        SCHECK(world_->getBlock(11, gy, -9) == AIR && world_->findChest(11, gy, -9) == nullptr);
+        SCHECK(!entities_.items().empty());
+        entities_.clear();
+        // Bett: tagsueber nur Wiedereinstiegspunkt, nachts schlafen
+        world_->setBlock(7, gy, -5, BED);
+        timeOfDay_ = 0.25f;
+        useBed(glm::ivec3(7, gy, -5));
+        SCHECK(std::fabs(timeOfDay_ - 0.25f) < 1e-4f && spawnPoint_ == glm::vec3(7.5f, gy + 1.0f, -4.5f));
+        timeOfDay_ = 0.80f;
+        const int dayBefore = dayCount_;
+        health_ = 10;
+        useBed(glm::ivec3(7, gy, -5));
+        SCHECK(timeOfDay_ < 0.1f && dayCount_ == dayBefore + 1 && health_ == 20);
+        // Monster in der Naehe verhindern das Schlafen
+        timeOfDay_ = 0.80f;
+        entities_.spawnMob(MobType::Zombie, glm::vec3(8.5f, static_cast<float>(gy), -5.5f));
+        useBed(glm::ivec3(7, gy, -5));
+        SCHECK(std::fabs(timeOfDay_ - 0.80f) < 1e-4f);
+        entities_.clear();
+        // Kaktus verletzt bei Beruehrung
+        world_->setBlock(12, gy, -3, CACTUS);
+        player_.pos = glm::vec3(11.6f, static_cast<float>(gy), -2.5f);
+        player_.vel = glm::vec3(0.0f);
+        health_ = 20;
+        invulnerable_ = 0.0f;
+        for (int i = 0; i < 4; ++i) updateSurvival(0.2f);
+        SCHECK(health_ < 20);
+        world_->setBlock(12, gy, -3, AIR);
+        // Pflanzen: Blume auf Gras setzen, auf Stein nicht; Gras wird ersetzt
+        inventory_.clear();
+        inventory_.slots[0] = {FLOWER_RED, 5};
+        slot_ = 0;
+        placeTimer_ = 0.0f;
+        target_ = world_->raycast(glm::vec3(8.5f, gy + 1.5f, -8.5f), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f);  // x = 8: Gras
+        SCHECK(target_.hit && world_->getBlock(8, gy - 1, -9) == GRASS);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(8, gy, -9) == FLOWER_RED && inventory_.slots[0].count == 4);
+        placeTimer_ = 0.0f;
+        target_ = world_->raycast(glm::vec3(9.5f, gy + 1.5f, -7.5f), glm::vec3(0.0f, -1.0f, 0.0f), 5.0f);  // x = 9: Stein
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(9, gy - 1, -8) == STONE && world_->getBlock(9, gy, -8) == AIR && inventory_.slots[0].count == 4);
+        // Beute: Blume abbauen, danach liegt sie als Gegenstand da
+        entities_.clear();
+        breakBlock(glm::ivec3(8, gy, -9));
+        SCHECK(world_->getBlock(8, gy, -9) == AIR && !entities_.items().empty() && entities_.items()[0].stack.id == FLOWER_RED);
+        entities_.clear();
+        inventory_.clear();
+    }
+
     // 11. Speichern: Inventar, Gesundheit, Modus
     const std::string path = "olicraft_selftest/world.dat";
     std::filesystem::remove_all("olicraft_selftest");
@@ -2136,6 +2455,9 @@ int Game::selfTest() {
     SCHECK(sf.player.hasInventory && sf.player.health == 9 && !sf.player.creative && sf.player.slot == 4);
     SCHECK(sf.player.inventory.slots[4] == ItemStack({LOG, 12}) && sf.player.inventory.slots[30] == ItemStack({ITEM_MEAT, 3}));
     SCHECK(!sf.chunks.empty());
+    SCHECK(sf.chests.size() == 1 && sf.chests[0].x == 9 && sf.chests[0].chest.slots[0].id == ITEM_DIAMOND && sf.chests[0].chest.slots[0].count == 5);
+    SCHECK(sf.chests[0].chest.slots[26].id == ITEM_IRON_PICKAXE && sf.chests[0].chest.slots[26].damage == 7);
+    SCHECK(sf.player.hasSpawn && sf.player.spawn == spawnPoint_);
     std::filesystem::remove_all("olicraft_selftest");
 
 #undef SCHECK
@@ -2196,6 +2518,16 @@ void Game::render() {
     h.inventoryOpen = inventoryOpen_;
     h.paletteOpen = paletteWindow_;
     h.furnaceOpen = furnaceWindow_;
+    h.chestOpen = chestWindow_;
+    h.chest = chestWindow_ ? world_->findChest(chestPos_.x, chestPos_.y, chestPos_.z) : nullptr;
+    if (bookVisible()) {
+        const std::vector<BookItem> list = buildBook();
+        clampBookScroll(static_cast<int>(list.size()));
+        h.book.open = true;
+        h.book.scroll = bookScroll_;
+        h.book.onlyCraftable = bookOnlyCraftable_;
+        for (const BookItem& it : list) h.book.entries.push_back(it.hud);
+    }
     if (furnaceWindow_) {
         if (const Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z)) {
             h.furnaceIn = fu->input;
@@ -2274,6 +2606,9 @@ bool Game::saveWorld() {
     if (!cursor_.empty()) sf.player.inventory.add(cursor_.id, cursor_.count);
     world_->exportModified(sf.chunks);
     world_->exportFurnaces(sf.furnaces);
+    world_->exportChests(sf.chests);
+    sf.player.hasSpawn = true;
+    sf.player.spawn = spawnPoint_;
     std::string err;
     if (!writeSaveFile(opt_.savePath, sf, &err)) {
         std::fprintf(stderr, "Speichern fehlgeschlagen: %s\n", err.c_str());

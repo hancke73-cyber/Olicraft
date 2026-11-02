@@ -5,6 +5,8 @@
 #include <glm/glm.hpp>
 
 #include "GuiTexture.h"
+#include "Chest.h"
+#include "Crafting.h"
 #include "Inventory.h"
 #include "EditorUi.h"
 #include "Items.h"
@@ -47,6 +49,8 @@ struct InvLayout {
     bool creative = false;  // Auswahlfeld mit allen Gegenstaenden (Kreativ-Inventar)
     int craftSize = 0;      // 0 = kein Handwerksfeld, 2 = Handwerk im Inventar, 3 = Werkbank
     bool furnace = false;   // Ofenfenster (nutzt den Platz des 3x3-Rasters)
+    bool chest = false;     // Truhenfenster (3 Reihen zu 9 Plaetzen anstelle des Handwerksrasters)
+    glm::vec2 chestTop{0.0f};
     glm::vec2 panelPos{0.0f}, panelSize{0.0f};
     glm::vec2 craftTop{0.0f};    // linke obere Ecke des Handwerksrasters
     glm::vec2 resultPos{0.0f};   // Ergebnisfeld
@@ -55,7 +59,7 @@ struct InvLayout {
     glm::vec2 hotbarTop{0.0f};   // linke obere Ecke der Hotbar im Fenster
     static constexpr int PALETTE_COLS = 9;
 
-    static InvLayout make(int w, int h, bool creative, int craftSize = 0, bool furnace = false);
+    static InvLayout make(int w, int h, bool creative, int craftSize = 0, bool furnace = false, bool chest = false);
     float pitch() const { return 18.0f * s; }
     glm::vec2 slotPos(int index) const;     // Inventar-Slot 0..35
     glm::vec2 palettePos(int index) const;  // Auswahlfeld (Kreativ)
@@ -66,7 +70,40 @@ struct InvLayout {
     glm::vec2 furnaceSlotPos(int which) const;  // 0 Eingabe, 1 Brennstoff, 2 Ausgabe
     int hitFurnace(glm::vec2 m) const;          // -1: keins
     glm::vec2 craftPos(int index) const;
+    glm::vec2 chestPos(int index) const;  // Truhenplatz 0..26
+    int hitChest(glm::vec2 m) const;      // -1: keiner
     bool inside(glm::vec2 m) const;
+};
+
+// Rezeptbuch neben dem Handwerksfenster: Liste aller Rezepte, herstellbare zuerst. Klick fuellt das Raster.
+struct BookEntryHud {
+    ItemStack result;
+    bool craftable = false;  // Zutaten vorhanden (und Raster gross genug)
+    bool fits = true;        // passt ins aktuelle Raster (sonst wird eine Werkbank gebraucht)
+    std::vector<Ingredient> ingredients;
+};
+
+struct BookHud {
+    bool open = false;
+    std::vector<BookEntryHud> entries;
+    int scroll = 0;            // erste sichtbare Zeile
+    bool onlyCraftable = false;
+};
+
+struct BookLayout {
+    float s = 1.0f;
+    glm::vec2 pos{0.0f}, size{0.0f};
+    glm::vec2 gridTop{0.0f};
+    glm::vec2 filterPos{0.0f}, filterSize{0.0f};
+    int cols = 6, rows = 1;
+
+    static BookLayout make(const InvLayout& inv, int windowW, int windowH);
+    float pitch() const { return 18.0f * s; }
+    glm::vec2 entryPos(int visibleIndex) const;       // visibleIndex = Position im sichtbaren Ausschnitt
+    int hitEntry(glm::vec2 m, int total, int scroll) const;  // Index in die Eintragsliste oder -1
+    bool hitFilter(glm::vec2 m) const;
+    bool inside(glm::vec2 m) const;
+    int maxScroll(int total) const;  // groesste sinnvolle erste Zeile
 };
 
 struct HudState {
@@ -80,6 +117,9 @@ struct HudState {
     bool inventoryOpen = false;
     bool paletteOpen = false;      // Kreativ-Auswahl statt Handwerk
     bool furnaceOpen = false;
+    bool chestOpen = false;
+    const Chest* chest = nullptr;
+    BookHud book;
     ItemStack furnaceIn, furnaceFuel, furnaceOut;
     float furnaceBurn = 0.0f;      // Flamme: Rest der Brenndauer 0..1
     float furnaceCook = 0.0f;      // Pfeil: Fortschritt 0..1

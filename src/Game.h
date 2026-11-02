@@ -8,6 +8,7 @@
 #include "Audio.h"
 #include "Block.h"
 #include "Camera.h"
+#include "Crafting.h"
 #include "EditorUi.h"
 #include "TextureEditor.h"
 #include "Entities.h"
@@ -93,6 +94,17 @@ private:
     void toggleFullscreen();
     void openInventory(bool table = false);
     void openFurnace(const glm::ivec3& pos);
+    void openChest(const glm::ivec3& pos);
+    void useBed(const glm::ivec3& pos);
+    // Rezeptbuch
+    struct BookItem {
+        const Recipe* recipe = nullptr;
+        BookEntryHud hud;
+    };
+    std::vector<BookItem> buildBook() const;
+    bool bookVisible() const { return inventoryOpen_ && craftSize_ > 0 && !furnaceWindow_ && !chestWindow_; }
+    void autofillRecipe(const Recipe& r);
+    void clampBookScroll(int total);
     void useHeldTool(int amount);
     void closeInventory();
     void inventoryClick(int button, int mods);
@@ -145,6 +157,10 @@ private:
     bool paletteWindow_ = false;  // Kreativ-Auswahl im Inventarfenster
     bool furnaceWindow_ = false;  // Ofenfenster (craftSize_ == 3 belegt den Platz)
     glm::ivec3 furnacePos_{0};
+    bool chestWindow_ = false;    // Truhenfenster
+    glm::ivec3 chestPos_{0};
+    int bookScroll_ = 0;          // erste sichtbare Zeile des Rezeptbuchs
+    bool bookOnlyCraftable_ = false;
 
     bool creative_ = false;
     int health_ = 20;

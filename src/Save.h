@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include "Block.h"
+#include "Chest.h"
 #include "Furnace.h"
 #include "Inventory.h"
 
@@ -22,6 +23,8 @@ struct PlayerState {
     bool creative = false;
     bool hasInventory = false;  // false bei alten Spielstaenden (Version 1)
     Inventory inventory;
+    bool hasSpawn = false;  // Version 5: Wiedereinstiegspunkt (Bett)
+    glm::vec3 spawn{0.0f};
 };
 
 struct SavedChunk {
@@ -34,11 +37,17 @@ struct FurnaceSave {
     Furnace furnace;
 };
 
+struct ChestSave {
+    int32_t x = 0, y = 0, z = 0;
+    Chest chest;
+};
+
 struct SaveFile {
     int32_t seed = 0;
     PlayerState player;
     std::vector<SavedChunk> chunks;
     std::vector<FurnaceSave> furnaces;
+    std::vector<ChestSave> chests;
 };
 
 std::vector<uint8_t> rleEncode(const std::vector<BlockId>& blocks);

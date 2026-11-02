@@ -9,6 +9,7 @@
 
 #include "Block.h"
 #include "Chunk.h"
+#include "Chest.h"
 #include "Furnace.h"
 #include "Save.h"
 #include "TerrainGen.h"
@@ -96,6 +97,13 @@ public:
     size_t furnaceCount() const { return furnaces_.size(); }
     void exportFurnaces(std::vector<FurnaceSave>& out) const;
     void importFurnaces(const std::vector<FurnaceSave>& in);
+    // Truhen
+    Chest& chestAt(int x, int y, int z);  // legt bei Bedarf an
+    Chest* findChest(int x, int y, int z);
+    bool removeChest(int x, int y, int z, Chest* out);
+    size_t chestCount() const { return chests_.size(); }
+    void exportChests(std::vector<ChestSave>& out) const;
+    void importChests(const std::vector<ChestSave>& in);
 
     RayHit raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist) const;
 
@@ -153,6 +161,11 @@ private:
         Furnace f;
     };
     std::unordered_map<uint64_t, FurnaceEntry> furnaces_;
+    struct ChestEntry {
+        glm::ivec3 pos;
+        Chest c;
+    };
+    std::unordered_map<uint64_t, ChestEntry> chests_;
 };
 
 }  // namespace oc
