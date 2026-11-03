@@ -3458,6 +3458,47 @@ static void testStairCorners() {
     }
 }
 
+static void testItemIcons() {
+    // Vollblock: 3 Flaechen, Teilformen: mehr oder niedriger, alles bleibt im Symbolfeld
+    auto quads = [&](ItemId id) {
+        HudBatch b;
+        b.itemIcon(id, 100.0f, 100.0f, 10.0f);
+        return b.verts.size() / 6;
+    };
+    CHECK(quads(STONE) == 3);
+    CHECK(quads(STAIRS_BASE) == 6);                  // Treppe: Platte und hohe Stufe, nicht nur ein Block
+    CHECK(quads(SLAB_BASE) == 3);
+    CHECK(quads(FENCE) == 15 && quads(WALL_COBBLE) == 9);
+    CHECK(quads(BED) == 3);
+    CHECK(quads(TORCH) == 1 && quads(ITEM_IRON_PICKAXE) == 1);  // flache Symbole bleiben flach
+    for (int i = 0; i < creativeItemCount(); ++i) {
+        HudBatch b;
+        b.itemIcon(creativeItem(i), 100.0f, 100.0f, 10.0f);
+        CHECK(!b.verts.empty() && b.verts.size() % 6 == 0);
+    }
+    // Die Treppe ist oben kleiner als ein Block: hoechster Punkt auf der Hoehe des Vollblocks, aber Platte unten voll breit
+    {
+        HudBatch full, stair, slab;
+        full.itemIcon(STONE, 100.0f, 100.0f, 10.0f);
+        stair.itemIcon(STAIRS_BASE, 100.0f, 100.0f, 10.0f);
+        slab.itemIcon(SLAB_BASE, 100.0f, 100.0f, 10.0f);
+        auto bounds = [](const HudBatch& b, float& minY, float& maxY, float& minX, float& maxX) {
+            minY = minX = 1e9f;
+            maxY = maxX = -1e9f;
+            for (const auto& v : b.verts) {
+                minY = std::min(minY, v.y); maxY = std::max(maxY, v.y);
+                minX = std::min(minX, v.x); maxX = std::max(maxX, v.x);
+            }
+        };
+        float fy0, fy1, fx0, fx1, sy0, sy1, sx0, sx1, py0, py1, px0, px1;
+        bounds(full, fy0, fy1, fx0, fx1);
+        bounds(stair, sy0, sy1, sx0, sx1);
+        bounds(slab, py0, py1, px0, px1);
+        CHECK(std::fabs(sy0 - fy0) < 1.0f && std::fabs(sy1 - fy1) < 1.0f && std::fabs(sx0 - fx0) < 0.1f && std::fabs(sx1 - fx1) < 0.1f);
+        CHECK(py1 - py0 < fy1 - fy0 - 3.0f);  // Platte ist niedriger
+    }
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -3533,30 +3574,17 @@ static void testParticlesAndGraphics() {
     std::filesystem::create_directories("olicraft_test_gfx");
     const std::string path = "olicraft_test_gfx/g.cfg";
     Settings s;
-    s.shadows = 2; s.clouds = false; s.particles = false; s.texFilter = 1; s.anisotropy = 4; s.blockStyle = 1;
+    s.shadows = 2; s.clouds = false; s.particles = false; s.texFilter = 1; s.anisotropy = 4;
     CHECK(saveSettings(path, s));
     Settings r;
     CHECK(loadSettings(path, r));
-    CHECK(r.shadows == 2 && !r.clouds && !r.particles && r.texFilter == 1 && r.anisotropy == 4 && r.blockStyle == 1);
-    CHECK(Settings().blockStyle == 0);  // Standardstil
-    {
-        // Stil-Knopf im Grafikmenue, Beschriftung wechselt
-        MenuState ms;
-        auto label = [&](int style) {
-            ms.blockStyle = style;
-            for (const Widget& w : buildMenu(MenuScreen::Graphics, ms, 1280, 720).widgets)
-                if (w.id == W_GFX_STYLE) return w.text;
-            return std::string();
-        };
-        CHECK(label(0) == "Stil: Standard" && label(1) == "Stil: Kloetzchen");
-    }
+    CHECK(r.shadows == 2 && !r.clouds && !r.particles && r.texFilter == 1 && r.anisotropy == 4);
     {
         std::ofstream f(path);
-        f << "shadows=9\ntex_filter=-3\nanisotropy=64\nblock_style=7\n";
+        f << "shadows=9\ntex_filter=-3\nanisotropy=64\n";
     }
     Settings c;
     CHECK(loadSettings(path, c));
-    CHECK(c.blockStyle == 1);
     CHECK(c.shadows == 2 && c.texFilter == 0 && (c.anisotropy == 16 || c.anisotropy == 8 || c.anisotropy == 4 || c.anisotropy == 2 || c.anisotropy == 1));
     std::filesystem::remove_all("olicraft_test_gfx");
 
@@ -3708,6 +3736,7 @@ int main() {
     testArmor();
     testParticlesAndGraphics();
     testWorlds();
+    testItemIcons();
     testStairCorners();
     testCreativeTabsAndGui();
     testCraftingAndTools();

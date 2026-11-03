@@ -77,8 +77,6 @@ uniform int uShadowOn;
 uniform float uShadowStrength;
 uniform vec3 uLightDir;     // Richtung zur Sonne (kamerarelativ)
 uniform float uShadowTexel;
-uniform vec3 uCam;          // Kameraposition in der Welt (ortsfeste Muster)
-uniform int uBrick;         // 1: Stil Kloetzchen
 out vec4 FragColor;
 
 float shadowFactor(float ndl) {
@@ -109,12 +107,6 @@ void main() {
     }
     vec4 t = texture(uAtlas, uv);
     if (uCutout == 1 && t.a < 0.5) discard;
-    // Kloetzchen: satte Farben (mehr Saettigung, etwas Kontrast), nur fuer feste Flaechen der Welt
-    bool brick = uBrick == 1 && uAnim == 1 && !water && !lava;
-    if (brick) {
-        float lum = dot(t.rgb, vec3(0.299, 0.587, 0.114));
-        t.rgb = clamp((mix(vec3(lum), t.rgb, 1.55) - 0.5) * 1.08 + 0.5, 0.0, 1.0);
-    }
     float cave = min(0.40, uSun);
     float skyL = vSky > 1.5 ? 1.0 : vSky;
     float sunTop = uSun;
@@ -131,34 +123,6 @@ void main() {
     vec3 light = max(vec3(sunPart), blk * vec3(1.0, 0.83, 0.60));  // Fackellicht ist warm
     vec3 c = t.rgb * vShade * light * uTint;
     if (water) c += vec3(0.05, 0.07, 0.09) * (0.5 + 0.5 * sin(uTime * 1.7 + vPos.x * 3.0 + vPos.z * 2.0)) * sunPart;
-    if (brick) {
-        vec3 nrm = normalize(cross(dFdx(vPos), dFdy(vPos)));
-        if (dot(nrm, vPos) > 0.0) nrm = -nrm;  // nach aussen, zur Kamera hin
-        vec3 an = abs(nrm);
-        if (max(an.x, max(an.y, an.z)) > 0.97) {  // nur achsparallele Flaechen (keine Kreuzpflanzen)
-            vec3 wp = vPos + uCam;
-            vec2 f = an.y > 0.97 ? fract(wp.xz) : (an.x > 0.97 ? fract(wp.zy) : fract(wp.xy));
-            // abgeschraegte Kanten: links und oben hell, rechts und unten dunkel
-            const float bw = 0.085;
-            float k = (1.0 - smoothstep(0.0, bw, f.x)) * 0.20 - (1.0 - smoothstep(0.0, bw, 1.0 - f.x)) * 0.26
-                    + (1.0 - smoothstep(0.0, bw, f.y)) * 0.20 - (1.0 - smoothstep(0.0, bw, 1.0 - f.y)) * 0.26;
-            c *= 1.0 + k;
-            if (nrm.y > 0.97) {  // Noppen auf den Oberseiten
-                vec2 q = f - 0.5;
-                float r = length(q);
-                const float R = 0.27;
-                float inside = 1.0 - smoothstep(R - 0.03, R, r);
-                float ring = (1.0 - smoothstep(R, R + 0.06, r)) * (1.0 - inside);
-                float dome = 1.0 - clamp(r / R, 0.0, 1.0);
-                c *= 1.0 - 0.30 * ring;
-                c *= 1.0 + inside * (0.10 + 0.22 * dome);
-                c += vec3(0.35) * inside * pow(clamp(1.0 - length(q - vec2(-0.09, -0.09)) / 0.13, 0.0, 1.0), 2.0) * sunPart;
-            }
-            // Glanz: die Sonne spiegelt sich leicht (nicht in Hoehlen)
-            vec3 h = normalize(uLightDir + normalize(-vPos));
-            c += vec3(1.0, 0.96, 0.88) * pow(max(dot(nrm, h), 0.0), 40.0) * 0.30 * sunPart * (vSky > 1.5 ? 0.0 : 1.0);
-        }
-    }
     float f = clamp((vDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
     c = mix(c, uFogColor, f);
     FragColor = vec4(c, uCutout == 1 ? 1.0 : t.a);
@@ -838,7 +802,6 @@ void Renderer::drawWorld(const World& world, const FrameInfo& f, const glm::vec3
     chunkShader_.setFloat("uTime", f.time);
     chunkShader_.setVec3("uCam", f.camPos);
     chunkShader_.setInt("uShadowOn", shadowsOn && shadowTex_ ? 1 : 0);
-    chunkShader_.setInt("uBrick", f.blockStyle == 1 ? 1 : 0);
     chunkShader_.setFloat("uShadowStrength", shadowStrength);
     chunkShader_.setVec3("uLightDir", glm::vec3(sunDir));
     chunkShader_.setFloat("uShadowTexel", shadowTexel_);

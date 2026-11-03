@@ -57,6 +57,59 @@ void HudBatch::itemIcon(ItemId id, float cx, float cy, float s) {
     }
     const UVRect top = tileUV(info.iconTop), side = tileUV(info.iconSide);
     const float w = 0.866f * s;
+    // Teilformen (Treppe, Platte, Zaun, Mauer, Bett, Acker) als Quader in derselben Schraegansicht wie der Vollblock
+    const Shape shape = id < BLOCK_COUNT ? blockInfo(static_cast<BlockId>(id)).shape : SH_FULL;
+    if (shape != SH_FULL) {
+        struct Part { float p0, p1, q0, q1, h0, h1; };
+        Part parts[5];
+        int np = 0;
+        auto add = [&](float p0, float p1, float q0, float q1, float h0, float h1) { parts[np++] = Part{p0, p1, q0, q1, h0, h1}; };
+        switch (shape) {
+            case SH_STAIRS: add(0, 1, 0, 1, 0, 0.5f); add(0, 0.5f, 0, 1, 0.5f, 1); break;  // hohe Stufe hinten
+            case SH_SLAB: add(0, 1, 0, 1, 0, 0.5f); break;
+            case SH_FENCE:
+                add(0.375f, 0.625f, 0.375f, 0.625f, 0, 1);
+                add(0.44f, 0.56f, 0.625f, 1, 0.6f, 0.8f);
+                add(0.44f, 0.56f, 0.625f, 1, 0.2f, 0.4f);
+                add(0.625f, 1, 0.44f, 0.56f, 0.6f, 0.8f);
+                add(0.625f, 1, 0.44f, 0.56f, 0.2f, 0.4f);
+                break;
+            case SH_WALL:
+                add(0.25f, 0.75f, 0.25f, 0.75f, 0, 1);
+                add(0.3125f, 0.6875f, 0.75f, 1, 0, 0.8f);
+                add(0.75f, 1, 0.3125f, 0.6875f, 0, 0.8f);
+                break;
+            case SH_BED: add(0, 1, 0, 1, 0, 0.56f); break;
+            case SH_FARMLAND: add(0, 1, 0, 1, 0, 0.94f); break;
+            default: add(0, 1, 0, 1, 0, 1); break;
+        }
+        // Punkt in der Schraegansicht: p laeuft nach links-vorn, q nach rechts-vorn, h nach oben
+        auto P = [&](float pp, float qq, float hh) { return glm::vec2(cx + (qq - pp) * w, cy - s + (pp + qq) * 0.5f * s + (1.0f - hh) * s); };
+        for (int i = 0; i < np; ++i) {
+            const Part& b = parts[i];
+            {   // Oberseite
+                const glm::vec2 pt[4] = {P(b.p0, b.q0, b.h1), P(b.p0, b.q1, b.h1), P(b.p1, b.q1, b.h1), P(b.p1, b.q0, b.h1)};
+                auto U = [&](float q) { return top.u0 + (top.u1 - top.u0) * q; };
+                auto V = [&](float pp) { return top.v1 - (top.v1 - top.v0) * pp; };
+                const glm::vec2 uv[4] = {{U(b.q0), V(b.p0)}, {U(b.q1), V(b.p0)}, {U(b.q1), V(b.p1)}, {U(b.q0), V(b.p1)}};
+                quad(pt, uv, glm::vec4(1.0f), HUD_TEX_ATLAS);
+            }
+            auto SV = [&](float hh) { return side.v0 + (side.v1 - side.v0) * hh; };
+            {   // linke Seite (p = p1)
+                const glm::vec2 pt[4] = {P(b.p1, b.q0, b.h1), P(b.p1, b.q1, b.h1), P(b.p1, b.q1, b.h0), P(b.p1, b.q0, b.h0)};
+                auto U = [&](float q) { return side.u0 + (side.u1 - side.u0) * q; };
+                const glm::vec2 uv[4] = {{U(b.q0), SV(b.h1)}, {U(b.q1), SV(b.h1)}, {U(b.q1), SV(b.h0)}, {U(b.q0), SV(b.h0)}};
+                quad(pt, uv, glm::vec4(0.78f, 0.78f, 0.78f, 1.0f), HUD_TEX_ATLAS);
+            }
+            {   // rechte Seite (q = q1)
+                const glm::vec2 pt[4] = {P(b.p1, b.q1, b.h1), P(b.p0, b.q1, b.h1), P(b.p0, b.q1, b.h0), P(b.p1, b.q1, b.h0)};
+                auto U = [&](float pp) { return side.u0 + (side.u1 - side.u0) * (1.0f - pp); };
+                const glm::vec2 uv[4] = {{U(b.p1), SV(b.h1)}, {U(b.p0), SV(b.h1)}, {U(b.p0), SV(b.h0)}, {U(b.p1), SV(b.h0)}};
+                quad(pt, uv, glm::vec4(0.58f, 0.58f, 0.58f, 1.0f), HUD_TEX_ATLAS);
+            }
+        }
+        return;
+    }
     {
         const glm::vec2 p[4] = {{cx, cy - s}, {cx + w, cy - 0.5f * s}, {cx, cy}, {cx - w, cy - 0.5f * s}};
         const glm::vec2 uv[4] = {{top.u0, top.v1}, {top.u1, top.v1}, {top.u1, top.v0}, {top.u0, top.v0}};

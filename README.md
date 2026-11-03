@@ -40,7 +40,6 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Blocklicht (0 bis 15, Ausbreitung wie in Minecraft, warmes Licht): Fackeln (Stufe 14), Lava (15) und brennende Öfen (13) beleuchten ihre Umgebung, Licht läuft über Chunkgrenzen und wird beim Entfernen korrekt nachgefüllt. Fackeln stehen auf dem Boden oder hängen an Wänden (nie an der Decke), fallen ab, wenn der Träger fehlt, brechen sofort und halten Zombies fern (sie erscheinen nur bei Licht 6 oder weniger)
 - Hauptmenü beim Start: Titel "OliCraft" in großer Schrift, dahinter dreht sich langsam eine Beispielwelt. Darunter die Weltliste (neueste zuerst, Mausrad, Pfeiltasten, Doppelklick oder Enter startet) mit den Knöpfen Spielen, Neue Welt, Einstellungen, Beenden. Jede Welt ist eine eigene Datei `saves/<Name>.dat`, die alte `saves/world.dat` erscheint als Welt "world". Neue Welt: Name (nur Buchstaben, Ziffern, Leerzeichen, - und _, höchstens 24 Zeichen, doppelte Namen bekommen " 2"), Seed (leer ist zufällig) und Spielmodus. Das Pause-Menü hat "Hauptmenü" (speichert die Welt). Mit `--no-menu` startet das Spiel direkt
 - Grafik (Einstellungen, Grafik): Schatten als Shadow-Map (aus, mittel, hoch), Wolken (zwei Schichten, ziehen mit dem Wind), animiertes Wasser (leichte Wellen und fließende Textur), Partikel (Block-Bruchstücke beim Abbauen, Spritzer, Rauch und Flammen an Fackeln und Öfen, Funken über Lava, Blut und Staub bei Mobs), Texturfilter (Pixel scharf oder weich) und anisotrope Filterung (1x bis 16x, nur wenn die Grafikkarte sie bietet)
-- Stil "Klötzchen" (Grafik, Stil): satte Farben, Glanz der Sonne auf den Flächen, abgeschrägte Kanten an jedem Block und Noppen auf den Oberseiten wie bei Steckbausteinen. Die Berechnung liegt im Shader und gilt für alle festen Blockflächen; Wasser, Lava und Kreuzpflanzen bleiben unverändert; zum Testen gibt es `--style 0|1`
 - Pause-Menü (Esc) und Einstellungsmenü: Sichtweite, Mausempfindlichkeit, Sichtfeld, drei Lautstärkeregler, GUI-Größe (Auto oder 1x bis 4x für HUD, Menüs und Inventar; wird bei kleinen Fenstern begrenzt), VSync, Vollbild, Spielmodus, Textur-Editor. Die Werte stehen in `settings.cfg` und gelten beim nächsten Start
 - Speichern und Laden je Welt: Seed, Position, Hotbar, Tageszeit und alle vom Spieler veränderten Chunks
 - Screenshots als BMP
@@ -140,7 +139,6 @@ cmake --build build -j
 --fullscreen       Vollbild
 --no-vsync         VSync aus
 --no-save          Nichts laden oder speichern
---style N          Grafikstil für diesen Lauf: 0 Standard, 1 Klötzchen
 --no-menu          Ohne Hauptmenü direkt ins Spiel
 --save-path PFAD   Speicherdatei für --no-menu und die Entwicklungsoptionen (Standard: saves/world.dat)
 --saves-dir PFAD   Ordner der Welten im Hauptmenü (Standard: saves)
@@ -198,6 +196,7 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 1. **Steampunk:** Dampfmaschinen, Rohre, Zahnräder, Maschinen und Fahrzeuge mit Dampfantrieb.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
 3. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
+0. **Gemerkt, vom Nutzer gemeldet:** Im Kreativ-Inventar und an der Werkbank gibt es keine Rüstungsplätze (sie gibt es nur im Survival-Inventar mit 2x2-Raster). Dort soll man Rüstung anlegen können. Den Stil "Klötzchen" gibt es nicht mehr.
 4. **Weitere Bausteine:** Eimer, Schilder, glatte Dachkeile (Platz für Block-IDs nötig).
 5. **Dörfer ausbauen:** Zombie-Überfälle, Kirche.
 

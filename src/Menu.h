@@ -37,7 +37,6 @@ enum WidgetId {
     W_GFX_PARTICLES,
     W_GFX_FILTER,
     W_GFX_ANISO,
-    W_GFX_STYLE,
     W_GUI_SIZE,
     W_TO_MAIN,
     W_VSYNC,
@@ -116,7 +115,6 @@ struct MenuState {
     bool clouds = true, particles = true;
     int texFilter = 0, anisotropy = 8;
     int guiSize = 0;
-    int blockStyle = 0;
     bool fullscreen = false;
     bool creative = false;
 };

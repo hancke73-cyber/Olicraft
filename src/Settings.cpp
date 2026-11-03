@@ -19,7 +19,6 @@ void Settings::clamp() {
     shadows = std::max(0, std::min(2, shadows));
     texFilter = std::max(0, std::min(1, texFilter));
     guiSize = std::max(0, std::min(4, guiSize));
-    blockStyle = std::max(0, std::min(1, blockStyle));
     // Anisotropie auf eine erlaubte Stufe runden
     int a = 1;
     while (a * 2 <= anisotropy && a < 16) a *= 2;
@@ -57,9 +56,6 @@ bool loadSettings(const std::string& path, Settings& s) {
         } else if (key == "shadows" || key == "tex_filter" || key == "anisotropy") {
             long v = std::strtol(val.c_str(), &end, 10);
             if (end != val.c_str()) (key == "shadows" ? s.shadows : key == "tex_filter" ? s.texFilter : s.anisotropy) = static_cast<int>(v);
-        } else if (key == "block_style") {
-            long v = std::strtol(val.c_str(), &end, 10);
-            if (end != val.c_str()) s.blockStyle = static_cast<int>(v);
         } else if (key == "gui_size") {
             long v = std::strtol(val.c_str(), &end, 10);
             if (end != val.c_str()) s.guiSize = static_cast<int>(v);
@@ -90,7 +86,6 @@ bool saveSettings(const std::string& path, const Settings& s) {
     f << "tex_filter=" << s.texFilter << "\n";
     f << "anisotropy=" << s.anisotropy << "\n";
     f << "gui_size=" << s.guiSize << "\n";
-    f << "block_style=" << s.blockStyle << "\n";
     f << "player_skin=" << s.playerSkin + 1 << "\n";
     std::snprintf(buf, sizeof(buf), "%.2f", s.masterVolume);
     f << "master_volume=" << buf << "\n";
