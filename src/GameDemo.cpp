@@ -179,6 +179,12 @@ void Game::applyDemo() {
         put(55, 0, 5, LIFT);
         put(55, 1, 5, LIFT);
         put(55, 2, 5, LIFT);
+        // Wasserleitung: Pumpe, Wasserrohre mit Knick, Auslass, Kessel am Ende
+        put(58, 0, 0, PUMP);
+        for (int k = 1; k <= 3; ++k) put(58 + k, 0, 0, WATER_PIPE);
+        put(61, 1, 0, WATER_PIPE);
+        put(61, 2, 0, OUTLET);
+        put(62, 0, 0, BOILER);
         // Bogen mit umgedrehten Treppen unter der Decke
         for (int z = 0; z <= 2; ++z) {
             for (int y = 0; y <= 2; ++y) {

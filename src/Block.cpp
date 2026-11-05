@@ -172,6 +172,9 @@ struct InfoTable {
                 infos[makeConveyor(f)].drop = makeConveyor(0);
             }
             cube(LIFT, "Dampflift", TILE_LIFT, TILE_LIFT, 1.5f, SH_LIFT, false, false);
+            cube(WATER_PIPE, "Wasserrohr", TILE_WATER_PIPE, TILE_WATER_PIPE, 1.5f, SH_PIPE, false);
+            cube(PUMP, "Dampfpumpe", TILE_BRASS, TILE_PUMP, 3.0f);
+            cube(OUTLET, "Wasserauslass", TILE_OUTLET, TILE_OUTLET, 3.0f);
         }
         // Schilder (nicht fest, aber anklickbar)
         for (int w = 0; w < 2; ++w)

@@ -1203,6 +1203,32 @@ void drawPipeTile(TileCanvas& c) {
         for (int y = 0; y < 16; ++y) put(c, x, y, {120, 84, 34, 255});
 }
 
+void drawWaterPipeTile(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int d = static_cast<int>((rnd(x, y, TILE_WATER_PIPE) - 0.5f) * 10) + (y > 8 ? -14 : (y < 4 ? 16 : 0));
+            c.set(x, y, shade({92, 132, 150, 255}, d));  // blaugraues Metall
+        }
+    for (int x : {2, 13})
+        for (int y = 0; y < 16; ++y) put(c, x, y, {52, 78, 96, 255});
+}
+
+void drawPumpTile(TileCanvas& c) {
+    fillNoise(c, TILE_PUMP, {84, 92, 104, 255}, 14);
+    for (int y = 3; y <= 12; ++y)  // Pumpenzylinder mit Kolbenstange
+        for (int x = 5; x <= 10; ++x) put(c, x, y, shade({188, 144, 62, 255}, (x - 5) * 8 - 16));
+    for (int y = 1; y <= 4; ++y) put(c, 7, y, {200, 204, 212, 255});
+    for (int x = 4; x <= 11; ++x) put(c, x, 13, {60, 120, 190, 255});  // Wasseranschluss
+    rivets(c, {170, 174, 184, 255}, 1);
+}
+
+void drawOutletTile(TileCanvas& c) {
+    fillNoise(c, TILE_OUTLET, {92, 132, 150, 255}, 12);
+    disc(c, 7.5f, 7.5f, 4.6f, {52, 78, 96, 255}, TILE_OUTLET);
+    disc(c, 7.5f, 7.5f, 2.8f, {36, 90, 170, 255}, TILE_OUTLET);  // Duese mit Wasser
+    rivets(c, {200, 214, 224, 255}, 1);
+}
+
 void drawShaftTile(TileCanvas& c) {
     for (int y = 0; y < TILE_PX; ++y)
         for (int x = 0; x < TILE_PX; ++x) {
@@ -1545,6 +1571,9 @@ std::vector<uint8_t> generateAtlasPixels() {
         drawConveyorTile(cv, d);
     }
     make(TILE_LIFT, drawLiftTile);
+    make(TILE_WATER_PIPE, drawWaterPipeTile);
+    make(TILE_PUMP, drawPumpTile);
+    make(TILE_OUTLET, drawOutletTile);
     make(TILE_TAR, drawTarItem);
     make(TILE_FUEL_OIL, drawFuelOilItem);
     make(TILE_SALT, drawSaltItem);

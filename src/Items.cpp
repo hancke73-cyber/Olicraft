@@ -26,7 +26,7 @@ static const std::vector<ItemId> TAB_ITEMS[CREATIVE_TAB_COUNT] = {
     {TALL_GRASS, FERN, FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE, MUSHROOM_RED, MUSHROOM_BROWN, DEAD_BUSH,
      SUGAR_CANE, BERRY_BUSH, CACTUS, ITEM_SEEDS},
     // Stationen
-    {CRAFTING_TABLE, FURNACE, CHEST, BED, BOILER, PIPE, SHAFT, MOTOR, STILL, DRILL_BASE, CONVEYOR_BASE, LIFT},
+    {CRAFTING_TABLE, FURNACE, CHEST, BED, BOILER, PIPE, SHAFT, MOTOR, STILL, DRILL_BASE, CONVEYOR_BASE, LIFT, PUMP, WATER_PIPE, OUTLET},
     // Werkzeuge und Ruestung
     {ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD, ITEM_HOE_WOOD,
      ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD, ITEM_HOE_STONE,
@@ -101,6 +101,12 @@ bool itemValid(ItemId id) {
     ARM("Goldhelm", 2, 0, 77, 2), ARM("Goldbrustpanzer", 2, 1, 112, 5), ARM("Goldhose", 2, 2, 105, 3), ARM("Goldstiefel", 2, 3, 91, 1), \
     ARM("Diamanthelm", 3, 0, 363, 3), ARM("Diamantbrustpanzer", 3, 1, 528, 8), ARM("Diamanthose", 3, 2, 495, 6), ARM("Diamantstiefel", 3, 3, 429, 3)
 
+// Bloecke, deren Symbol flach (Kachel statt Wuerfel) gezeichnet wird
+static bool flatIcon(BlockId b) {
+    return b == TORCH || isPlant(b) || isPane(b) || isLantern(b) || isGate(b) || isLadder(b) || isSign(b) || b == PIPE || b == WATER_PIPE ||
+           b == SHAFT || b == LIFT || isConveyor(b);
+}
+
 const ItemInfo& itemInfo(ItemId id) {
     static ItemInfo cache[BLOCK_COUNT];
     static bool init = false;
@@ -108,7 +114,7 @@ const ItemInfo& itemInfo(ItemId id) {
     if (!init) {
         for (int i = 1; i < BLOCK_COUNT; ++i) {
             const BlockInfo& bi = blockInfo(static_cast<BlockId>(i));
-            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i)) || isLadder(static_cast<BlockId>(i)) || isSign(static_cast<BlockId>(i)) || static_cast<BlockId>(i) == PIPE || static_cast<BlockId>(i) == SHAFT || static_cast<BlockId>(i) == LIFT || isConveyor(static_cast<BlockId>(i))};
+            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, flatIcon(static_cast<BlockId>(i))};
         }
         init = true;
     }

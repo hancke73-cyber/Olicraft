@@ -22,7 +22,7 @@ inline bool shapeConnects(BlockId self, BlockId other) {
         case SH_FENCE: return isFence(other) || isGate(other) || isFullSolidBlock(other);
         case SH_WALL: return isWall(other) || isGate(other) || isFullSolidBlock(other);
         case SH_PANE: return isPane(other) || isFullSolidBlock(other) || other == GLASS;
-        case SH_PIPE: return isSteamPart(other);
+        case SH_PIPE: return self == WATER_PIPE ? isWaterPart(other) : isSteamPart(other);
         case SH_SHAFT: return isMechPart(other);
         default: return false;
     }

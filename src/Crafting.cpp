@@ -116,6 +116,9 @@ std::vector<Recipe> buildRecipes() {
     v.push_back(make({"III", "IMI", "IKI"}, {{'I', ITEM_IRON_INGOT}, {'M', MOTOR}, {'K', ITEM_IRON_PICKAXE}}, {DRILL_BASE, 1}));
     v.push_back(make({"III", "SSS"}, {{'I', ITEM_IRON_INGOT}, {'S', ITEM_STICK}}, {CONVEYOR_BASE, 6}));
     v.push_back(make({"I I", "GIG", "I I"}, {{'I', ITEM_IRON_INGOT}, {'G', GLASS}}, {LIFT, 2}));
+    v.push_back(make({"I I", "I I", "I I"}, {{'I', ITEM_IRON_INGOT}}, {WATER_PIPE, 6}));
+    v.push_back(make({"IWI", "IBI", "III"}, {{'I', ITEM_IRON_INGOT}, {'W', WATER_PIPE}, {'B', ITEM_BUCKET}}, {PUMP, 1}));
+    v.push_back(make({"III", " W "}, {{'I', ITEM_IRON_INGOT}, {'W', WATER_PIPE}}, {OUTLET, 1}));
     v.push_back(make({"PPP", "PPP", " S "}, {{'P', PLANKS}, {'S', ITEM_STICK}}, {SIGN_BASE, 3}));
     // Landwirtschaft
     v.push_back(make({"WWW"}, {{'W', ITEM_WHEAT}}, {ITEM_BREAD, 1}));

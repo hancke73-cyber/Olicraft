@@ -10,22 +10,11 @@
 
 namespace oc {
 
-namespace {
-
-// Schluessel wie bei Oefen und Truhen (gleiche Formel wie in World.cpp)
-uint64_t machineKey(int x, int y, int z) {
-    return (static_cast<uint64_t>(static_cast<uint32_t>(x) & 0xFFFFFFu) << 32) |
-           (static_cast<uint64_t>(static_cast<uint32_t>(z) & 0xFFFFFFu) << 8) | static_cast<uint64_t>(y & 0xFF);
-}
-
-const int DIR6[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}, {0, -1, 0}};  // wie die Bohrerrichtungen 0..5
-
-}  // namespace
-
 MachineKind machineKindOf(BlockId id) {
     if (isBoiler(id)) return MachineKind::Boiler;
     if (id == STILL) return MachineKind::Still;
     if (isDrill(id)) return MachineKind::Drill;
+    if (id == PUMP) return MachineKind::Pump;
     return MachineKind::Motor;
 }
 
@@ -220,6 +209,8 @@ void World::stepMachines(float dt) {
         drillHasTarget[i] = drillTarget(e->pos, drillFacing(getBlock(e->pos.x, e->pos.y, e->pos.z)), drillTargets[i]) ? 1 : 0;
     }
 
+    planPipelines(list);
+
     // Antriebsnetze aufbauen (von Motoren und Bohrern aus)
     for (MachineEntry* e : list) {
         if (e->m.kind != MachineKind::Motor && e->m.kind != MachineKind::Drill) continue;
@@ -242,6 +233,7 @@ void World::stepMachines(float dt) {
         if (it == mechOf.end()) continue;
         Comp& c = mech[static_cast<size_t>(it->second)];
         if (e->m.kind == MachineKind::Drill && drillHasTarget[i]) c.demand += DRILL_POWER;
+        if (e->m.kind == MachineKind::Pump && e->m.wantsFlow) c.demand += PUMP_POWER;
         if (e->m.kind == MachineKind::Motor) ++c.producers;
     }
     for (Comp& c : mech) {
@@ -253,7 +245,7 @@ void World::stepMachines(float dt) {
     std::vector<int> steamIdOf(list.size(), -1);
     for (size_t i = 0; i < list.size(); ++i) {
         MachineEntry* e = list[i];
-        if (e->m.kind == MachineKind::Drill) continue;
+        if (e->m.kind == MachineKind::Drill || e->m.kind == MachineKind::Pump) continue;
         const uint64_t k = machineKey(e->pos.x, e->pos.y, e->pos.z);
         auto it = steamOf.find(k);
         if (it == steamOf.end()) {
@@ -335,6 +327,8 @@ void World::stepMachines(float dt) {
         c.sat = c.supply > 0.0f ? (c.demand > 0.0f ? std::min(1.0f, c.supply / c.demand) : 1.0f) : 0.0f;
         for (const glm::ivec3& p : mechCells[ci]) power_[machineKey(p.x, p.y, p.z)] = c.sat;
     }
+
+    runPipelines(dt);
 
     // Maschinen arbeiten
     for (size_t i = 0; i < list.size(); ++i) {
@@ -423,8 +417,17 @@ std::array<std::string, 3> machineInfo(World& w, const glm::ivec3& p) {
         glm::ivec3 t;
         if (w.drillTarget(p, drillFacing(b), t)) out[2] = std::string("Ziel: ") + blockInfo(w.getBlock(t.x, t.y, t.z)).name;
         else out[2] = "Kein Ziel in Reichweite";
+    } else if (b == PUMP && m) {
+        glm::ivec3 src;
+        out[1] = "Antrieb " + pct(w.powerAt(p.x, p.y, p.z));
+        if (!w.pumpIntake(p, src)) out[2] = "Kein Wasser in Reichweite";
+        else out[2] = m->working ? "Pumpt" : (m->wantsFlow ? "Antrieb fehlt" : "Kein Bedarf");
     } else if (b == PIPE) {
         out[1] = "Leitet Dampf";
+    } else if (b == WATER_PIPE) {
+        out[1] = "Leitet Wasser";
+    } else if (b == OUTLET) {
+        out[1] = w.getBlock(p.x, p.y - 1, p.z) == AIR ? "Setzt Wasser darunter" : "Ausgang belegt";
     } else if (isMechPart(b)) {
         out[1] = "Antrieb " + pct(w.powerAt(p.x, p.y, p.z));
     }

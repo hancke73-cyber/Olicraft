@@ -10,8 +10,16 @@
 
 namespace oc {
 
+// Schluessel wie bei Oefen und Truhen (gleiche Formel wie in World.cpp)
+inline uint64_t machineKey(int x, int y, int z) {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(x) & 0xFFFFFFu) << 32) |
+           (static_cast<uint64_t>(static_cast<uint32_t>(z) & 0xFFFFFFu) << 8) | static_cast<uint64_t>(y & 0xFF);
+}
+// Nachbarrichtungen, gleiche Reihenfolge wie die Bohrerrichtungen: +X, -X, +Z, -Z, oben, unten
+inline constexpr int DIR6[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}, {0, -1, 0}};
+
 // Zustand einer Dampfmaschine (Kessel, Destille, Bohrer, Motor), wird mit dem Spielstand gespeichert.
-enum class MachineKind : uint8_t { Boiler = 0, Still = 1, Drill = 2, Motor = 3 };
+enum class MachineKind : uint8_t { Boiler = 0, Still = 1, Drill = 2, Motor = 3, Pump = 4 };
 
 struct Machine {
     MachineKind kind = MachineKind::Boiler;
@@ -26,7 +34,10 @@ struct Machine {
     float load = 0.0f;       // Kessel: Auslastung, Motor: Leistung, Destille und Bohrer: Geschwindigkeit (0..1)
     float steam = 0.0f;      // Dampfversorgung des Netzes 0..1
     float spin = 0.0f;       // Motor: Drehwinkel fuer die Anzeige
+    float pumped = 0.0f;     // Pumpe: Vorrat der Leitung in ml (laeuft zwischen den Schritten mit)
+    float drained = 0.0f;    // Pumpe: ml seit der letzten Entnahme einer endlichen Quelle
     bool working = false;
+    bool wantsFlow = false;  // Pumpe: hat Wasser in Reichweite und jemand braucht es (bestimmt den Bedarf an Antrieb)
 
     bool burning() const { return burnTime > 0.0f; }
 };
@@ -43,6 +54,10 @@ constexpr float DRILL_POWER = 2.0f;
 constexpr float CONVEYOR_POWER = 0.2f;
 constexpr float LIFT_POWER = 0.3f;
 constexpr int DRILL_RANGE = 16;
+constexpr float PUMP_POWER = 1.0f;       // Antriebsbedarf einer arbeitenden Pumpe
+constexpr float PUMP_FLOW = 60.0f;       // ml Wasser je Sekunde bei voller Versorgung
+constexpr float OUTLET_COST = 250.0f;    // ml je Quellblock am Wasserauslass
+constexpr float WATER_SOURCE_ML = 1000.0f;  // so viel Wasser enthaelt eine endliche Quelle
 constexpr float BELT_SPEED = 1.6f;   // Bloecke je Sekunde bei voller Versorgung
 constexpr float LIFT_SPEED = 3.0f;   // Steiggeschwindigkeit im Dampflift
 

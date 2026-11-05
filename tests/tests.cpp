@@ -4225,6 +4225,67 @@ static void testSteampunkToggle() {
     CHECK(recipes().size() == allRecipes && creativeItemCount() == allCreative);
 }
 
+static void testPumps() {
+    World w(9);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 3);
+    const int gy = 100;
+    for (int x = -4; x <= 8; ++x)
+        for (int z = -3; z <= 5; ++z) {
+            for (int y = gy - 1; y < gy + 5; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 2, z, STONE);
+        }
+    std::vector<MachineSave> none;
+    w.importMachines(none);
+    auto run = [&](float seconds) {
+        for (float t = 0.0f; t < seconds; t += 0.25f) w.tick(0.25f);
+    };
+    // Teich links der Pumpe: die mittlere Quelle hat zwei Quellnachbarn (unendlich)
+    for (int z = -1; z <= 1; ++z) {  // Becken aus Stein, damit nichts ueber den Boden fliesst
+        w.setBlock(-1, gy - 1, z, STONE);
+        w.setBlock(-2, gy, z, STONE);
+        w.setBlock(-1, gy, z, WATER);
+    }
+    w.setBlock(-1, gy, -2, STONE);
+    w.setBlock(-1, gy, 2, STONE);
+    w.setBlock(0, gy, -1, STONE);
+    w.setBlock(0, gy, 0, PUMP);
+    w.setBlock(0, gy, 1, SHAFT);
+    w.setBlock(0, gy, 2, MOTOR);
+    w.setBlock(1, gy, 2, PIPE);
+    w.setBlock(2, gy, 2, BOILER);
+    for (int x = 1; x <= 3; ++x) w.setBlock(x, gy, 0, WATER_PIPE);
+    w.setBlock(4, gy, 0, OUTLET);
+    w.setBlock(3, gy, 1, BOILER);  // zweiter Kessel am Ende der Leitung
+    CHECK(w.machineCount() == 4 && w.findMachine(0, gy, 0) && w.findMachine(0, gy, 0)->kind == MachineKind::Pump);
+    Machine& steamBoiler = *w.findMachine(2, gy, 2);
+    steamBoiler.slots[0] = {ITEM_COAL, 4, 0};
+    steamBoiler.water = 800.0f;
+    Machine& tank = *w.findMachine(3, gy, 1);
+    CHECK(tank.water == 0.0f);
+    run(40.0f);
+    CHECK(w.powerAt(0, gy, 0) > 0.5f);                          // Pumpe hat Antrieb
+    CHECK(tank.water > 1500.0f);                                // Kessel am Leitungsende gefuellt
+    CHECK(w.getBlock(-1, gy, 0) == WATER);                      // Teich bleibt (unendlich)
+    // Ohne Bedarf ruht die Pumpe, auch ihr Antrieb
+    run(60.0f);
+    CHECK(w.getBlock(4, gy - 1, 0) == WATER);                   // Auslass setzt Quelle darunter, sobald die Kessel voll sind
+    CHECK(tank.water >= BOILER_WATER_MAX - 1.0f && !w.findMachine(0, gy, 0)->wantsFlow);
+    // Endliche Quelle: einzelner Block versiegt
+    w.setBlock(-1, gy, 1, AIR);
+    w.setBlock(-1, gy, -1, AIR);
+    w.setBlock(4, gy - 1, 0, AIR);
+    tank.water = 0.0f;
+    run(90.0f);
+    CHECK(w.getBlock(-1, gy, 0) != WATER);
+    CHECK(tank.water > 800.0f && tank.water < BOILER_WATER_MAX - 1.0f);
+    // Ohne Wasser in Reichweite pumpt sie nicht
+    CHECK(!w.findMachine(0, gy, 0)->working);
+    // Wasserrohre verbinden sich nicht mit Dampfrohren
+    CHECK(!isWaterPart(PIPE) && !isSteamPart(WATER_PIPE) && isWaterPart(OUTLET) && isMechPart(PUMP) && isMachineBlock(PUMP));
+    CHECK(shapeConnects(WATER_PIPE, PUMP) && !shapeConnects(WATER_PIPE, PIPE) && !shapeConnects(PIPE, WATER_PIPE));
+}
+
 static void testSteamSimulation() {
     World w(9);
     w.setMeshingEnabled(false);
@@ -4781,6 +4842,7 @@ int main() {
     testSigns();
     testSteamBlocks();
     testSteamSimulation();
+    testPumps();
     testSteampunkToggle();
     testMechFlow();
     testChurch();
