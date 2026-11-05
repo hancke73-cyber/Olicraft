@@ -145,6 +145,10 @@ private:
     void placeBlockOrUse();
     void useBucket();
     void openSign(const glm::ivec3& pos);
+    void openMachine(const glm::ivec3& pos);
+    // Plaetze des Maschinenfensters (wie beim Ofen: 0 Eingabe, 1 Brennstoff, 2 Ausgabe), nullptr: nicht benutzt
+    ItemStack* machineSlot(Machine& m, int uiSlot) const;
+    bool machineSlotAccepts(const Machine& m, int uiSlot, const ItemStack& s) const;
     void damagePlayer(int amount, const glm::vec3& knockback);
     void die();
     void respawn();
@@ -188,6 +192,8 @@ private:
     std::string creativeQuery_;   // Suchtext
     std::vector<ItemId> searchResults_;
     bool furnaceWindow_ = false;  // Ofenfenster (craftSize_ == 3 belegt den Platz)
+    bool machineWindow_ = false;  // Kessel oder Destille (nutzt das Ofenfenster)
+    glm::ivec3 machinePos_{0};
     glm::ivec3 furnacePos_{0};
     bool chestWindow_ = false;    // Truhenfenster
     bool tradeWindow_ = false;    // Handelsfenster

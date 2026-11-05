@@ -434,6 +434,7 @@ void Game::applySave(const SaveFile& sf) {
     world_->importFurnaces(sf.furnaces);
     world_->importChests(sf.chests);
     world_->importSigns(sf.signs);
+    world_->importMachines(sf.machines);
     player_.pos = sf.player.pos;
     player_.yaw = sf.player.yaw;
     player_.pitch = sf.player.pitch;
@@ -775,6 +776,59 @@ void Game::openSign(const glm::ivec3& pos) {
     if (const SignText* t = world_->findSign(pos.x, pos.y, pos.z)) signText_ = *t;
 }
 
+// Angaben zur angesehenen Dampfmaschine (Name, Zustand, Antrieb)
+std::array<std::string, 3> machineInfo(World& w, const glm::ivec3& p) {
+    std::array<std::string, 3> out;
+    auto pct = [](float v) { return std::to_string(static_cast<int>(std::lround(std::max(0.0f, std::min(1.0f, v)) * 100.0f))) + " %"; };
+    const BlockId b = w.getBlock(p.x, p.y, p.z);
+    out[0] = blockInfo(b).name;
+    const Machine* m = w.findMachine(p.x, p.y, p.z);
+    if (isBoiler(b) && m) {
+        out[1] = "Wasser " + pct(m->water / BOILER_WATER_MAX) + (m->burning() ? "   brennt" : "   aus");
+        out[2] = m->burning() ? "Last " + pct(m->load) : (m->slots[0].empty() ? "Brennstoff fehlt" : (m->water <= 0.0f ? "Wasser fehlt" : "wartet auf Bedarf"));
+    } else if (b == STILL && m) {
+        if (m->working) out[1] = "Arbeitet " + pct(m->progress);
+        else if (m->slots[0].empty()) out[1] = "Leer";
+        else if (!stillRecipe(m->slots[0].id)) out[1] = "Unbekannter Stoff";
+        else out[1] = m->steam > 0.0f ? "Ausgabe voll" : "Dampf fehlt";
+        out[2] = "Dampf " + pct(m->steam);
+    } else if (b == MOTOR && m) {
+        out[1] = "Leistung " + pct(m->load);
+        out[2] = m->steam <= 0.0f ? "kein Dampf" : (m->steam < 0.99f ? "Dampf knapp" : "");
+    } else if (isDrill(b) && m) {
+        out[1] = "Antrieb " + pct(w.powerAt(p.x, p.y, p.z));
+        glm::ivec3 t;
+        if (w.drillTarget(p, drillFacing(b), t)) out[2] = std::string("Ziel: ") + blockInfo(w.getBlock(t.x, t.y, t.z)).name;
+        else out[2] = "Kein Ziel in Reichweite";
+    } else if (b == PIPE) {
+        out[1] = "Leitet Dampf";
+    } else if (isMechPart(b)) {
+        out[1] = "Antrieb " + pct(w.powerAt(p.x, p.y, p.z));
+    }
+    return out;
+}
+
+void Game::openMachine(const glm::ivec3& pos) {
+    openInventory(true);
+    furnaceWindow_ = true;
+    machineWindow_ = true;
+    machinePos_ = pos;
+    world_->machineAt(pos.x, pos.y, pos.z);
+}
+
+ItemStack* Game::machineSlot(Machine& m, int ui) const {
+    if (m.kind == MachineKind::Boiler) return ui == 0 ? &m.slots[1] : (ui == 1 ? &m.slots[0] : nullptr);
+    if (m.kind == MachineKind::Still) return ui == 0 ? &m.slots[0] : (ui == 1 ? &m.slots[2] : &m.slots[1]);
+    return nullptr;
+}
+
+bool Game::machineSlotAccepts(const Machine& m, int ui, const ItemStack& s) const {
+    if (s.empty()) return true;
+    if (m.kind == MachineKind::Boiler) return ui == 0 ? (s.id == ITEM_BUCKET_WATER || s.id == ITEM_BUCKET_DISTILLED) : (ui == 1 && boilerFuelSeconds(s.id) > 0.0f);
+    if (m.kind == MachineKind::Still) return ui == 0 && stillRecipe(s.id) != nullptr;
+    return false;
+}
+
 void Game::openFurnace(const glm::ivec3& pos) {
     openInventory(true);
     furnaceWindow_ = true;
@@ -887,6 +941,7 @@ void Game::closeInventory() {
     craftSize_ = 0;
     paletteWindow_ = false;
     furnaceWindow_ = false;
+    machineWindow_ = false;
     chestWindow_ = false;
     tradeWindow_ = false;
     firstMouse_ = true;
@@ -1068,7 +1123,33 @@ void Game::inventoryClick(int button, int mods) {
         }
     }
 
-    if (furnaceWindow_) {
+    if (furnaceWindow_ && machineWindow_) {
+        Machine* mach = world_->findMachine(machinePos_.x, machinePos_.y, machinePos_.z);
+        const int fslot = layout.hitFurnace(m);
+        ItemStack* st = mach && fslot >= 0 ? machineSlot(*mach, fslot) : nullptr;
+        if (st) {
+            const bool output = mach->kind == MachineKind::Still && fslot != 0;
+            if ((mods & GLFW_MOD_SHIFT) && !right) {
+                if (!st->empty()) {  // in den Rucksack verschieben
+                    const int left = inventory_.add(st->id, st->count, st->damage);
+                    if (left <= 0) st->clear();
+                    else st->count = left;
+                }
+            } else if (output) {  // Ausgabe: nur entnehmen
+                if (cursor_.empty()) {
+                    cursor_ = *st;
+                    st->clear();
+                } else if (cursor_.sameKind(*st) && cursor_.count + st->count <= itemInfo(cursor_.id).maxStack) {
+                    cursor_.count += st->count;
+                    st->clear();
+                }
+            } else if (cursor_.empty() || machineSlotAccepts(*mach, fslot, cursor_)) {
+                Inventory::click(*st, cursor_, right);
+            }
+            return;
+        }
+        if (fslot >= 0) return;  // unbenutzter Platz
+    } else if (furnaceWindow_) {
         Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z);
         const int fslot = layout.hitFurnace(m);
         if (fu && fslot >= 0) {
@@ -1679,6 +1760,8 @@ void Game::update(float dt) {
         statusTimer_ = std::max(0.0f, statusTimer_ - dt);
         itemNameTimer_ = std::max(0.0f, itemNameTimer_ - dt);
         world_->tick(dt);
+        for (const MachineDrop& d : world_->takeMachineDrops())
+            entities_.spawnItem(d.item, glm::vec3(d.pos) + glm::vec3(0.5f, 1.1f, 0.5f), glm::vec3(0.0f, 2.0f, 0.0f), 0.4f);
         for (const glm::ivec3& p : world_->takeTorchDrops())
             if (!creative_) entities_.spawnItem({TORCH, 1}, glm::vec3(p.x + 0.5f, p.y + 0.2f, p.z + 0.5f), glm::vec3(0.0f, 2.0f, 0.0f), 0.3f);
         for (const World::PlantDrop& d : world_->takePlantDrops()) {
@@ -1736,6 +1819,13 @@ void Game::breakBlock(const glm::ivec3& pIn) {
                 if (!st->empty())
                     entities_.spawnItem(*st, glm::vec3(p.x + 0.5f, p.y + 0.4f, p.z + 0.5f), glm::vec3(0.0f, 2.5f, 0.0f), 0.4f);
         }
+    }
+    if (isMachineBlock(b)) {  // Inhalt von Kessel und Destille faellt heraus
+        Machine content;
+        if (world_->removeMachine(p.x, p.y, p.z, &content) && !creative_)
+            for (const ItemStack& st : content.slots)
+                if (!st.empty())
+                    entities_.spawnItem(st, glm::vec3(p.x + 0.5f, p.y + 0.4f, p.z + 0.5f), glm::vec3(0.0f, 2.5f, 0.0f), 0.4f);
     }
     if (b == CHEST) {  // Inhalt faellt heraus
         Chest content;
@@ -1795,6 +1885,10 @@ void Game::placeBlockOrUse() {
         }
         if (isSign(tb)) {
             openSign(target_.block);
+            return;
+        }
+        if (isBoiler(tb) || tb == STILL) {
+            openMachine(target_.block);
             return;
         }
         if (isDoor(tb) || isGate(tb)) {
@@ -1919,6 +2013,11 @@ void Game::placeBlockOrUse() {
             else if (target_.normal.y < 0) top = true;
             else top = hitPoint.y - static_cast<float>(p.y) > 0.5f;
             id = makeStairs(stairMaterial(id), lookDir, top);
+        } else if (isDrill(id)) {
+            // der Bohrer zeigt in Blickrichtung, bei steilem Blick nach oben oder unten
+            id = makeDrill(f.y > 0.75f ? 4 : (f.y < -0.75f ? 5 : lookDir));
+        } else if (isConveyor(id)) {
+            id = makeConveyor(lookDir);  // das Band laeuft in Blickrichtung
         } else if (isSign(id)) {
             // Von oben auf einen Block: Stehschild, dessen Vorderseite zum Spieler zeigt; an eine Seitenflaeche: Wandschild
             if (target_.normal.y > 0) id = makeSign(false, lookDir ^ 1);
@@ -4019,6 +4118,158 @@ int Game::selfTest() {
         inventory_.clear();
     }
 
+    // 29. Dampfmaschinen im Spiel: setzen, Fenster, Anzeige, Beute, Abbauen
+    {
+        setPaused(false);
+        creative_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        entities_.clear();
+        for (int x = 40; x <= 47; ++x)
+            for (int z = -6; z <= 6; ++z) {
+                for (int y = gy; y <= gy + 5; ++y) world_->setBlock(x, y, z, AIR);
+                world_->setBlock(x, gy - 1, z, STONE);
+            }
+        player_.pos = glm::vec3(41.5f, static_cast<float>(gy), -4.5f);
+        player_.vel = glm::vec3(0.0f);
+        auto lookAt = [&](float tx, float ty, float tz) {
+            const glm::vec3 d = glm::normalize(glm::vec3(tx, ty, tz) - player_.eyePos());
+            player_.yaw = glm::degrees(std::atan2(d.z, d.x));
+            player_.pitch = glm::degrees(std::asin(d.y));
+        };
+        auto clickAt = [&](glm::vec2 fbPos, int button, int mods) {
+            const double sx = static_cast<double>(winW_cur_) / fbW_, sy = static_cast<double>(winH_cur_) / fbH_;
+            curX_ = fbPos.x * sx;
+            curY_ = fbPos.y * sy;
+            inventoryClick(button, mods);
+        };
+        auto place = [&](ItemId item, float tx, float tz) {  // von oben auf den Boden bei (tx, tz) setzen
+            inventory_.slots[0] = {item, 8};
+            slot_ = 0;
+            placeTimer_ = 0.0f;
+            lookAt(tx, static_cast<float>(gy), tz);
+            target_ = world_->raycast(player_.eyePos(), player_.front(), 6.0f);
+            placeBlockOrUse();
+        };
+        // Bohrer zuerst: Blick nach +x (Gelaende fuer den Treffer unter dem Blick), danach Kessel, Rohr, Motor davor
+        inventory_.slots[0] = {DRILL_BASE, 4};
+        slot_ = 0;
+        placeTimer_ = 0.0f;
+        player_.pos = glm::vec3(41.5f, static_cast<float>(gy), -3.5f);
+        player_.yaw = 0.0f;
+        player_.pitch = -40.0f;
+        target_ = world_->raycast(player_.eyePos(), player_.front(), 8.0f);
+        placeBlockOrUse();
+        SCHECK(isDrill(world_->getBlock(43, gy, -4)) && drillFacing(world_->getBlock(43, gy, -4)) == 0);
+        player_.pos = glm::vec3(41.5f, static_cast<float>(gy), -7.5f);
+        place(BOILER, 40.5f, -3.5f);
+        place(PIPE, 41.5f, -3.5f);
+        place(MOTOR, 42.5f, -3.5f);
+        SCHECK(world_->getBlock(40, gy, -4) == BOILER && world_->getBlock(41, gy, -4) == PIPE && world_->getBlock(42, gy, -4) == MOTOR);
+        SCHECK(world_->findMachine(40, gy, -4) && world_->findMachine(42, gy, -4) && world_->findMachine(43, gy, -4));
+        // Foerderband in Blickrichtung
+        inventory_.slots[0] = {CONVEYOR_BASE, 4};
+        placeTimer_ = 0.0f;
+        player_.yaw = 90.0f;
+        player_.pitch = -40.0f;
+        player_.pos = glm::vec3(46.5f, static_cast<float>(gy), -4.5f);
+        target_ = world_->raycast(player_.eyePos(), player_.front(), 8.0f);
+        const glm::ivec3 cp = target_.block + target_.normal;
+        placeBlockOrUse();
+        SCHECK(isConveyor(world_->getBlock(cp.x, cp.y, cp.z)) && conveyorFacing(world_->getBlock(cp.x, cp.y, cp.z)) == 2);
+        world_->setBlock(cp.x, cp.y, cp.z, AIR);
+        // Kesselfenster: Rechtsklick, Plaetze mit Annahmeregeln
+        player_.pos = glm::vec3(40.5f, static_cast<float>(gy), -6.5f);
+        lookAt(40.5f, gy + 0.5f, -3.5f);
+        target_ = world_->raycast(player_.eyePos(), player_.front(), 6.0f);
+        SCHECK(target_.hit && target_.block == glm::ivec3(40, gy, -4));
+        inventory_.slots[0] = {ITEM_NONE, 0};
+        placeBlockOrUse();
+        SCHECK(inventoryOpen_ && furnaceWindow_ && machineWindow_ && machinePos_ == glm::ivec3(40, gy, -4));
+        const glm::vec2 half = glm::vec2(invLayout().pitch() * 0.5f);
+        Machine* bm = world_->findMachine(40, gy, -4);
+        SCHECK(bm != nullptr);
+        cursor_ = {STONE, 5, 0};  // Stein ist weder Wasser noch Brennstoff
+        clickAt(invLayout().furnaceSlotPos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        clickAt(invLayout().furnaceSlotPos(1) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.id == STONE && bm->slots[0].empty() && bm->slots[1].empty());
+        cursor_ = {ITEM_BUCKET_WATER, 1, 0};
+        clickAt(invLayout().furnaceSlotPos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.empty() && bm->slots[1].id == ITEM_BUCKET_WATER);  // Wassereimer im oberen Platz
+        cursor_ = {ITEM_COAL, 7, 0};
+        clickAt(invLayout().furnaceSlotPos(1) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.empty() && bm->slots[0] == ItemStack({ITEM_COAL, 7}));
+        clickAt(invLayout().furnaceSlotPos(2) + half, GLFW_MOUSE_BUTTON_LEFT, 0);  // dritter Platz ist beim Kessel unbenutzt
+        SCHECK(cursor_.empty());
+        closeInventory();
+        SCHECK(!machineWindow_ && !furnaceWindow_);
+        // Anzeige: Name und Zustand
+        {
+            const std::array<std::string, 3> info = machineInfo(*world_, glm::ivec3(40, gy, -4));
+            SCHECK(info[0] == "Dampfkessel" && info[1].find("Wasser") == 0);
+        }
+        // Der Antrieb laeuft: Kessel zuendet, Motor dreht, Bohrer bricht Steine vor sich
+        const glm::ivec3 dp = [&]() {
+            for (int x = 40; x <= 47; ++x)
+                for (int z = -6; z <= 6; ++z)
+                    if (isDrill(world_->getBlock(x, gy, z))) return glm::ivec3(x, gy, z);
+            return glm::ivec3(0, -1, 0);
+        }();
+        SCHECK(dp.y >= 0);
+        if (dp.y >= 0) {
+            const int df = drillFacing(world_->getBlock(dp.x, dp.y, dp.z));
+            const int ddx = df == 0 ? 1 : (df == 1 ? -1 : 0), ddz = df == 2 ? 1 : (df == 3 ? -1 : 0);
+            for (int d = 1; d <= 3; ++d) world_->setBlock(dp.x + ddx * d, gy, dp.z + ddz * d, STONE);
+            const bool touching = std::abs(dp.x - 42) + std::abs(dp.z - (-4)) == 1;
+            SCHECK(touching);  // der Bohrer steht am Motor
+            for (int i = 0; i < 80; ++i) world_->tick(0.25f);
+            SCHECK(world_->getBlock(40, gy, -4) == BOILER_LIT || bm->burnTime > 0.0f || bm->slots[0].count < 7);
+            SCHECK(world_->findMachine(42, gy, -4) && world_->findMachine(42, gy, -4)->spin > 1.0f);
+            SCHECK(world_->getBlock(dp.x + ddx, gy, dp.z + ddz) == AIR);
+            // Beute: Gegenstaende fallen aus dem Bohrer
+            for (int i = 0; i < 40; ++i) {
+                for (const MachineDrop& d : world_->takeMachineDrops()) entities_.spawnItem(d.item, glm::vec3(d.pos) + glm::vec3(0.5f), glm::vec3(0.0f), 0.0f);
+                world_->tick(0.25f);
+            }
+            const std::array<std::string, 3> di = machineInfo(*world_, dp);
+            SCHECK(di[0] == "Bohrmaschine" && di[1].find("Antrieb") == 0);
+        }
+        // Destille: Eingabe nur mit Rezept, Ausgaben nur entnehmen, Beute nach dem Abbauen
+        world_->setBlock(44, gy, 2, BOILER);
+        world_->setBlock(45, gy, 2, PIPE);
+        world_->setBlock(46, gy, 2, STILL);
+        Machine* b2 = world_->findMachine(44, gy, 2);
+        b2->slots[0] = {ITEM_COAL, 2, 0};
+        b2->water = 800.0f;
+        openMachine(glm::ivec3(46, gy, 2));
+        SCHECK(machineWindow_);
+        Machine* st = world_->findMachine(46, gy, 2);
+        cursor_ = {STONE, 1, 0};
+        clickAt(invLayout().furnaceSlotPos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.id == STONE && st->slots[0].empty());
+        cursor_ = {ITEM_COAL, 2, 0};
+        clickAt(invLayout().furnaceSlotPos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.empty() && st->slots[0] == ItemStack({ITEM_COAL, 2}));
+        cursor_ = {ITEM_TAR, 1, 0};
+        clickAt(invLayout().furnaceSlotPos(2) + half, GLFW_MOUSE_BUTTON_LEFT, 0);  // Ausgabe nimmt nichts an
+        SCHECK(cursor_.id == ITEM_TAR && st->slots[1].empty());
+        cursor_.clear();
+        for (int i = 0; i < 70; ++i) world_->tick(0.25f);
+        SCHECK(st->slots[1].id == ITEM_TAR && st->slots[1].count == 2);
+        clickAt(invLayout().furnaceSlotPos(2) + half, GLFW_MOUSE_BUTTON_LEFT, 0);  // Ergebnis entnehmen
+        SCHECK(cursor_.id == ITEM_TAR && cursor_.count == 2 && st->slots[1].empty());
+        closeInventory();
+        SCHECK(inventory_.count(ITEM_TAR) == 2);
+        // Abbauen: Inhalt faellt heraus, Maschine verschwindet
+        st->slots[0] = {ITEM_COAL, 3, 0};
+        entities_.clear();
+        breakBlock(glm::ivec3(46, gy, 2));
+        SCHECK(world_->getBlock(46, gy, 2) == AIR && !world_->findMachine(46, gy, 2) && !entities_.items().empty());
+        inventory_.clear();
+        entities_.clear();
+        world_->tick(0.3f);
+    }
+
 #undef SCHECK
     std::printf("Selbsttest: %d Pruefungen, %d fehlgeschlagen\n", checks, failed);
     return failed;
@@ -4097,6 +4348,11 @@ void Game::render() {
         h.signOpen = true;
         for (size_t i = 0; i < 4; ++i) h.signLines[i] = signText_.lines[i];
         h.signLine = signLine_;
+    } else if (target_.hit && !inventoryOpen_ && !dead_ &&
+               (isMachineBlock(world_->getBlock(target_.block.x, target_.block.y, target_.block.z)) || isSteamPart(world_->getBlock(target_.block.x, target_.block.y, target_.block.z)) ||
+                isMechPart(world_->getBlock(target_.block.x, target_.block.y, target_.block.z)))) {
+        h.infoLines = machineInfo(*world_, target_.block);
+        h.infoShow = true;
     } else if (target_.hit && !inventoryOpen_ && !dead_ && isSign(world_->getBlock(target_.block.x, target_.block.y, target_.block.z))) {
         if (const SignText* t = world_->findSign(target_.block.x, target_.block.y, target_.block.z)) {
             h.signShow = true;
@@ -4139,7 +4395,21 @@ void Game::render() {
         h.book.onlyCraftable = bookOnlyCraftable_;
         for (const BookItem& it : list) h.book.entries.push_back(it.hud);
     }
-    if (furnaceWindow_) {
+    if (furnaceWindow_ && machineWindow_) {
+        if (Machine* mach = world_->findMachine(machinePos_.x, machinePos_.y, machinePos_.z)) {
+            h.machineMode = mach->kind == MachineKind::Boiler ? 1 : 2;
+            h.windowTitle = mach->kind == MachineKind::Boiler ? "Dampfkessel" : "Destillierapparat";
+            if (const ItemStack* s0 = machineSlot(*mach, 0)) h.furnaceIn = *s0;
+            if (const ItemStack* s1 = machineSlot(*mach, 1)) h.furnaceFuel = *s1;
+            if (const ItemStack* s2 = machineSlot(*mach, 2)) h.furnaceOut = *s2;
+            h.furnaceBurn = mach->burnTotal > 0.0f ? mach->burnTime / mach->burnTotal : 0.0f;
+            h.furnaceCook = mach->progress;
+            h.machineWater = mach->water / BOILER_WATER_MAX;
+            h.machinePurity = mach->purity;
+            h.machineSteam = mach->steam;
+            h.machineLoad = mach->load;
+        }
+    } else if (furnaceWindow_) {
         if (const Furnace* fu = world_->findFurnace(furnacePos_.x, furnacePos_.y, furnacePos_.z)) {
             h.furnaceIn = fu->input;
             h.furnaceFuel = fu->fuel;
@@ -4219,6 +4489,7 @@ bool Game::saveWorld() {
     world_->exportFurnaces(sf.furnaces);
     world_->exportChests(sf.chests);
     world_->exportSigns(sf.signs);
+    world_->exportMachines(sf.machines);
     sf.player.hasSpawn = true;
     sf.player.spawn = spawnPoint_;
     std::string err;

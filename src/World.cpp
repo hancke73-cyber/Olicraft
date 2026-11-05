@@ -88,6 +88,7 @@ bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
     c->set(lx, y, lz, b);
     c->modified = true;
     if (isSign(oldB) && !isSign(b)) signs_.erase(furnaceKey(x, y, z));  // der Text verschwindet mit dem Schild
+    if (isMachineBlock(oldB) && (!isMachineBlock(b) || machineKindOf(b) != machineKindOf(oldB))) removeMachine(x, y, z, nullptr);
     if (isMachineBlock(b) && !findMachine(x, y, z)) machineAt(x, y, z);  // neue Maschine bekommt ihren Zustand
     if (isCrop(oldB) || isCrop(b)) {
         const int32_t idx = Chunk::index(lx, y, lz);

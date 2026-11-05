@@ -157,6 +157,14 @@ struct HudState {
     };
     std::vector<TradeRowHud> trades;
     ItemStack furnaceIn, furnaceFuel, furnaceOut;
+    // Dampfmaschinen nutzen das Ofenfenster: 1 Kessel, 2 Destille (0 = Ofen)
+    int machineMode = 0;
+    float machineWater = 0.0f;     // Kessel: Tankfuellung 0..1
+    float machinePurity = 0.0f;    // Kessel: Anteil destilliertes Wasser 0..1
+    float machineSteam = 0.0f;     // Versorgung des Dampfnetzes 0..1
+    float machineLoad = 0.0f;      // Auslastung bzw. Geschwindigkeit 0..1
+    std::array<std::string, 3> infoLines;  // Anzeige der angesehenen Maschine (Kopfzeile, Werte)
+    bool infoShow = false;
     float furnaceBurn = 0.0f;      // Flamme: Rest der Brenndauer 0..1
     float furnaceCook = 0.0f;      // Pfeil: Fortschritt 0..1
     int craftSize = 0;             // 0, 2 oder 3

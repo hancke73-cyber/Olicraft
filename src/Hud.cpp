@@ -512,14 +512,44 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
     // Ofen: Eingabe, Brennstoff, Flamme, Fortschrittspfeil, Ausgabe
     const int hoverFurnace = L.hitFurnace(st.mouse);
     if (st.furnaceOpen) {
-        for (int i = 0; i < 3; ++i) slotRect(L.furnaceSlotPos(i), i == hoverFurnace);
+        const bool boiler = st.machineMode == 1, still = st.machineMode == 2;
+        for (int i = 0; i < 3; ++i)
+            if (!(boiler && i == 2)) slotRect(L.furnaceSlotPos(i), i == hoverFurnace);
         const ItemStack* fs[3] = {&st.furnaceIn, &st.furnaceFuel, &st.furnaceOut};
         for (int i = 0; i < 3; ++i) {
             const glm::vec2 p = L.furnaceSlotPos(i);
             if (!fs[i]->empty()) b.itemIcon(fs[i]->id, p.x + pt * 0.5f, p.y + pt * 0.5f, 6.3f * s);
         }
+        if (boiler || still) {  // Beschriftung neben den Plaetzen und Anzeigen
+            const glm::vec4 dim(0.72f, 0.75f, 0.82f, 1.0f);
+            const float tx = L.furnaceSlotPos(0).x + pt * 1.15f;
+            if (boiler) {
+                b.text(tx + pt * 0.5f, L.furnaceSlotPos(0).y + pt * 0.5f - 3.5f * s, s, "Wasser", dim);
+                b.text(tx + pt * 0.5f, L.furnaceSlotPos(1).y + pt * 0.5f - 3.5f * s, s, "Brennstoff", dim);
+            } else {
+                b.text(tx, L.furnaceSlotPos(0).y + pt * 0.5f - 3.5f * s, s, "Eingabe", dim);
+                b.text(L.craftTop.x + 4.2f * pt, L.furnaceSlotPos(1).y + pt * 0.5f - 3.5f * s, s, "Nebenprodukt", dim);
+                b.text(L.craftTop.x + 4.2f * pt, L.resultPos.y + pt * 0.5f - 3.5f * s, s, "Ergebnis", dim);
+            }
+            // Anzeigen: Tank (blau, bei reinem Wasser heller), Dampf (grau)
+            const float gx = L.craftTop.x + (boiler ? 3.3f : 3.3f) * pt, gy0 = L.craftTop.y, gw = 0.5f * pt, gh = (boiler ? 3.0f : 3.0f) * pt;
+            auto bar = [&](float x, float fill, glm::vec4 col, const char* label) {
+                b.rect(x - s, gy0 - s, x + gw + s, gy0 + gh + s, glm::vec4(0.02f, 0.02f, 0.03f, 1.0f));
+                b.rect(x, gy0, x + gw, gy0 + gh, glm::vec4(0.12f, 0.12f, 0.15f, 1.0f));
+                const float f = std::max(0.0f, std::min(1.0f, fill));
+                b.rect(x, gy0 + gh * (1.0f - f), x + gw, gy0 + gh, col);
+                b.text(x - 1.0f * s, gy0 + gh + 3.0f * s, s * 0.8f, label, glm::vec4(0.8f, 0.82f, 0.9f, 1.0f));
+            };
+            if (boiler) {
+                const glm::vec4 water = glm::mix(glm::vec4(0.15f, 0.38f, 0.85f, 1.0f), glm::vec4(0.55f, 0.92f, 0.95f, 1.0f), st.machinePurity);
+                bar(gx, st.machineWater, water, "Tank");
+                bar(gx + 1.1f * pt, st.machineLoad, glm::vec4(0.88f, 0.88f, 0.92f, 1.0f), "Last");
+            } else {
+                bar(gx - 0.2f * pt, st.machineSteam, glm::vec4(0.82f, 0.84f, 0.9f, 1.0f), "Dampf");
+            }
+        }
         // Flamme zwischen Eingabe und Brennstoff
-        {
+        if (!still) {
             const glm::vec2 p = L.furnaceSlotPos(0) + glm::vec2(pt * 0.25f, pt * 1.15f);
             const float fw = pt * 0.5f, fh = pt * 0.6f;
             b.rect(p.x, p.y, p.x + fw, p.y + fh, glm::vec4(0.12f, 0.1f, 0.1f, 1.0f));
@@ -527,7 +557,7 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
             b.rect(p.x, p.y + fh * (1.0f - fill), p.x + fw, p.y + fh, glm::vec4(1.0f, 0.55f, 0.1f, 1.0f));
         }
         // Pfeil: Fortschritt
-        {
+        if (!boiler) {
             const float ax = L.craftTop.x + 2.2f * pt, ay = L.resultPos.y + pt * 0.5f - 3.0f * s, aw = 3.0f * pt;
             b.rect(ax, ay, ax + aw, ay + 6.0f * s, glm::vec4(0.12f, 0.12f, 0.15f, 1.0f));
             b.rect(ax, ay, ax + aw * std::max(0.0f, std::min(1.0f, st.furnaceCook)), ay + 6.0f * s,
@@ -883,6 +913,24 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
             b.rect(cx - bw * 0.5f, by, cx + bw * 0.5f * (2.0f * std::min(1.0f, st.breakProgress) - 1.0f), by + 2 * s,
                    glm::vec4(0.9f, 0.9f, 0.9f, 0.95f));
         }
+    }
+
+    // Angaben zur angesehenen Dampfmaschine
+    if (st.infoShow && !st.inventoryOpen && !st.dead) {
+        const float ts = std::max(1.0f, s);
+        const float lineH = 10.0f * ts, padX = 6.0f * ts, padY = 4.0f * ts;
+        float tw = 0.0f;
+        int lines = 0;
+        for (int i = 0; i < 3; ++i) {
+            tw = std::max(tw, textWidthPx(st.infoLines[static_cast<size_t>(i)]) * ts);
+            if (!st.infoLines[static_cast<size_t>(i)].empty()) lines = i + 1;
+        }
+        const float bw = tw + 2.0f * padX, bh = lines * lineH + 2.0f * padY;
+        const float x0 = std::floor((W - bw) * 0.5f), y0 = std::floor(H * 0.58f);
+        b.rect(x0 - ts, y0 - ts, x0 + bw + ts, y0 + bh + ts, glm::vec4(0.06f, 0.05f, 0.04f, 0.92f));
+        b.rect(x0, y0, x0 + bw, y0 + bh, glm::vec4(0.20f, 0.16f, 0.10f, 0.92f));
+        for (int i = 0; i < lines; ++i)
+            b.text(std::floor(x0 + padX), std::floor(y0 + padY + i * lineH + ts), ts, st.infoLines[static_cast<size_t>(i)], i == 0 ? glm::vec4(0.96f, 0.82f, 0.42f, 1.0f) : glm::vec4(0.86f, 0.88f, 0.92f, 1.0f));
     }
 
     // Text des angesehenen Schilds
