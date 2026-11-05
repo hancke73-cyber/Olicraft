@@ -4415,6 +4415,95 @@ static void testVehicles() {
     vehicleHull(ship, lo, hi);
     CHECK(hi.y > 4.0f && hi.x > 3.0f);                              // Hohe Huelle mit Ballon
     CHECK(balloonSizeOf(ITEM_BALLOON_L) == 2 && balloonItemOf(1) == ITEM_BALLOON_M && balloonSizeOf(ITEM_STICK) == -1);
+    // Erweiterung aus: Fahrzeuge ruhen
+    ship.anchored = false;
+    const glm::vec3 before = ship.pos;
+    setSteampunkEnabled(false);
+    for (int i = 0; i < 40; ++i) vm.update(0.05f, w, sid, fw);
+    CHECK(ship.pos == before);
+    setSteampunkEnabled(true);
+}
+
+static void testGolems() {
+    World w(42);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 3);
+    const int gy = 100;
+    for (int x = -30; x <= 30; ++x)
+        for (int z = -30; z <= 30; ++z) {
+            for (int y = gy; y < gy + 12; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    Player player;
+    player.pos = glm::vec3(0.5f, static_cast<float>(gy), 0.5f);
+    Inventory inv;
+    EntityEnv env;
+    env.allowSpawns = false;
+    env.daylight = 0.2f;  // Nacht: Zombies bleiben
+    EntityManager em(7);
+    CHECK(mobSpec(MobType::Golem).health == 60 && !mobSpec(MobType::Golem).hostile && modelParts(SKIN_GOLEM).size() == 8);
+    // Der Golem greift einen Zombie in der Naehe an und besiegt ihn
+    Mob& golem = em.spawnMob(MobType::Golem, glm::vec3(10.5f, static_cast<float>(gy), 10.5f));
+    golem.owned = true;
+    em.spawnMob(MobType::Zombie, glm::vec3(16.5f, static_cast<float>(gy), 10.5f));
+    for (int i = 0; i < 200; ++i) em.update(0.05f, w, player, inv, env);
+    int zombies = 0;
+    for (const Mob& m : em.mobs()) zombies += m.type == MobType::Zombie && !m.dead() ? 1 : 0;
+    CHECK(zombies == 0);
+    CHECK(em.countMobs(false) == 0 && em.countMobs(true) == 0);  // Golems zaehlen nicht zum Tierlimit
+    // Erweiterung aus: der Golem rueht sich nicht gegen Zombies
+    {
+        setSteampunkEnabled(false);
+        Mob& z = em.spawnMob(MobType::Zombie, glm::vec3(12.5f, static_cast<float>(gy), 10.5f));
+        const int hp = z.health;
+        for (int i = 0; i < 100; ++i) em.update(0.05f, w, player, inv, env);
+        bool untouched = false;
+        for (const Mob& m : em.mobs()) untouched = untouched || (m.type == MobType::Zombie && !m.dead() && m.health == hp);
+        CHECK(untouched);
+        setSteampunkEnabled(true);
+        for (int i = 0; i < 200; ++i) em.update(0.05f, w, player, inv, env);
+        int alive = 0;
+        for (const Mob& m : em.mobs()) alive += m.type == MobType::Zombie && !m.dead() ? 1 : 0;
+        CHECK(alive == 0);
+    }
+    // Ohne Feind folgt der eigene Golem dem Spieler, ein Dorfwaechter bleibt am Anker
+    player.pos = glm::vec3(-20.5f, static_cast<float>(gy), -20.5f);
+    Mob* g = nullptr;
+    for (Mob& m : em.mobs())
+        if (m.type == MobType::Golem) g = &m;
+    CHECK(g != nullptr);
+    if (g) {
+        const float d0 = glm::length(glm::vec2(g->pos.x - player.pos.x, g->pos.z - player.pos.z));
+        for (int i = 0; i < 400; ++i) em.update(0.05f, w, player, inv, env);
+        const float d1 = glm::length(glm::vec2(g->pos.x - player.pos.x, g->pos.z - player.pos.z));
+        CHECK(d0 > 30.0f && d1 < 12.0f);
+        g->owned = false;
+        g->hasHome = true;
+        g->anchorX = 25.0f;
+        g->anchorZ = 25.0f;
+        g->anchorR = 6.0f;
+        g->pos = glm::vec3(25.5f, static_cast<float>(gy), 25.5f);
+        for (int i = 0; i < 800; ++i) em.update(0.05f, w, player, inv, env);
+        CHECK(glm::length(glm::vec2(g->pos.x - 25.0f, g->pos.z - 25.0f)) < 14.0f);
+        // Ein Treffer macht ihn nicht zum Fluechtling, Beute enthaelt Eisen
+        g->panicTimer = 0.0f;
+        em.hurtMob(*g, 5, glm::vec3(0.0f));
+        CHECK(g->panicTimer == 0.0f && g->health == 55);
+        em.hurtMob(*g, 100, glm::vec3(0.0f));
+        int iron = 0;
+        for (const ItemEntity& it : em.items()) iron += it.stack.id == ITEM_IRON_INGOT ? it.stack.count : 0;
+        CHECK(iron >= 2);
+    }
+    // Spielstand: gebaute Golems bleiben erhalten
+    std::filesystem::create_directories("olicraft_test_savegolem");
+    SaveFile sf;
+    sf.seed = 3;
+    sf.golems = {glm::vec3(1.5f, 64.0f, -2.5f), glm::vec3(30.0f, 70.0f, 4.0f)};
+    std::string err;
+    CHECK(writeSaveFile("olicraft_test_savegolem/g.dat", sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile("olicraft_test_savegolem/g.dat", back, &err) && back.golems.size() == 2 && back.golems[1] == sf.golems[1]);
+    std::filesystem::remove_all("olicraft_test_savegolem");
 }
 
 static void testSteamSimulation() {
@@ -4974,6 +5063,7 @@ int main() {
     testSteamBlocks();
     testSteamSimulation();
     testVehicles();
+    testGolems();
     testPumps();
     testSteampunkToggle();
     testVehicleSave();

@@ -112,6 +112,7 @@ void VehicleManager::remove(int id) {
 // ---------------------------------------------------------------------------------------------------------------
 
 void VehicleManager::update(float dt, World& world, int riderId, const VehicleInput& in) {
+    if (!steampunkEnabled()) return;  // Erweiterung aus: Fahrzeuge ruhen
     for (Vehicle& v : list_) {
         const int bx = static_cast<int>(std::floor(v.pos.x)), bz = static_cast<int>(std::floor(v.pos.z));
         if (!world.isChunkLoaded(floorDiv(bx, CHUNK_W), floorDiv(bz, CHUNK_W))) continue;  // im nicht geladenen Bereich ruhen sie

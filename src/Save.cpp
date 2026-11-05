@@ -12,7 +12,7 @@ namespace oc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x52434C4Fu;  // "OLCR" (little endian)
-constexpr uint32_t VERSION = 8;  // 7: Gegenstands-IDs ab 256 (vorher ab 200), 8: Fahrzeuge
+constexpr uint32_t VERSION = 9;  // 7: Gegenstands-IDs ab 256 (vorher ab 200), 8: Fahrzeuge, 9: gebaute Golems
 
 class Writer {
 public:
@@ -227,6 +227,13 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
                 w.f32(v.engine.purity);
                 w.f32(v.engine.burnTime);
                 w.f32(v.engine.burnTotal);
+            }
+            // Version 9: gebaute Dampfgolems
+            w.u32(static_cast<uint32_t>(save.golems.size()));
+            for (const glm::vec3& g : save.golems) {
+                w.f32(g.x);
+                w.f32(g.y);
+                w.f32(g.z);
             }
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
@@ -494,6 +501,24 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
                 return false;
             }
             save.vehicles.push_back(v);
+        }
+    }
+    if (version >= 9) {
+        const uint32_t gcount = r.u32();
+        if (!r.ok() || gcount > 10000u) {
+            if (error) *error = "Beschaedigte Speicherdatei";
+            return false;
+        }
+        for (uint32_t i = 0; i < gcount; ++i) {
+            glm::vec3 g;
+            g.x = r.f32();
+            g.y = r.f32();
+            g.z = r.f32();
+            if (!r.ok() || !std::isfinite(g.x + g.y + g.z)) {
+                if (error) *error = "Beschaedigte Speicherdatei";
+                return false;
+            }
+            save.golems.push_back(g);
         }
     }
     uint32_t n = r.u32();

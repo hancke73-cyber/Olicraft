@@ -81,6 +81,7 @@ bool Game::updateVehicles(float dt, const MoveInput& in) {
     vin.forward = in.forward;
     vin.turn = in.strafe;
     vin.lift = (in.jump ? 1.0f : 0.0f) - (in.sneak ? 1.0f : 0.0f);
+    if (!steampunkEnabled() && ridingId_ != 0) dismountVehicle();  // ohne die Erweiterung ruhen die Fahrzeuge
     vehicles_.update(dt, *world_, ridingId_, vin);
     if (ridingId_ == 0) return false;
     Vehicle* v = vehicles_.find(ridingId_);
@@ -125,6 +126,7 @@ bool Game::useVehicleItem(ItemStack& sel) {
 // Rechtsklick auf ein Fahrzeug: mit Bauteil in der Hand ausbauen, sonst einsteigen; mit Umschalt der Bordkessel
 void Game::interactVehicle(Vehicle& v) {
     placeTimer_ = 0.35f;
+    if (!steampunkEnabled()) return;
     ItemStack& sel = inventory_.slots[slot_];
     const bool shift = glfwGetKey(window_, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window_, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
     if (shift) {

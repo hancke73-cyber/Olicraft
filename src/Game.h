@@ -148,6 +148,8 @@ private:
     static constexpr float REACH_VEHICLE = 6.0f;
     bool updateVehicles(float dt, const MoveInput& in);
     bool useVehicleItem(ItemStack& sel);
+    bool tryBuildGolem(const glm::ivec3& head);  // GameGolems.cpp
+    bool tryBuildGolemNear(const glm::ivec3& placed);
     void interactVehicle(Vehicle& v);
     void hitVehicle(Vehicle& v);
     void mountVehicle(Vehicle& v);

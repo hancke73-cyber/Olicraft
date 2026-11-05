@@ -59,6 +59,7 @@ struct SaveFile {
     std::vector<SignSave> signs;
     std::vector<MachineSave> machines;
     std::vector<Vehicle> vehicles;
+    std::vector<glm::vec3> golems;  // vom Spieler gebaute Dampfgolems (Fusspunkt)
 };
 
 std::vector<uint8_t> rleEncode(const std::vector<BlockId>& blocks);

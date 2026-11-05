@@ -1791,6 +1791,58 @@ int Game::selfTest() {
         vehicles_.clear();
     }
 
+    // 31. Dampfgolem: Lampe auf Kessel auf Eisenblock mit Eisenarmen erweckt ihn (nur mit Steampunk), Beute und Spielstand
+    {
+        setPaused(false);
+        creative_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        entities_.clear();
+        for (int x = 40; x <= 46; ++x)
+            for (int z = -6; z <= 6; ++z) {
+                for (int y = gy; y <= gy + 6; ++y) world_->setBlock(x, y, z, AIR);
+                world_->setBlock(x, gy - 1, z, STONE);
+            }
+        // Rumpf aufstellen; der Spieler setzt als letztes Teil den Eisenblock der Beine auf den Boden (Klick auf den Kessel oeffnet sein Fenster)
+        auto build = [&](int x, int z, bool bothArms) {
+            world_->setBlock(x, gy + 1, z, BOILER);
+            world_->setBlock(x, gy + 2, z, LAMP);
+            world_->setBlock(x + 1, gy + 1, z, IRON_BLOCK);
+            if (bothArms) world_->setBlock(x - 1, gy + 1, z, IRON_BLOCK);
+            player_.pos = glm::vec3(x + 0.5f, static_cast<float>(gy), z - 3.0f);
+            const glm::vec3 d = glm::normalize(glm::vec3(x + 0.5f, gy - 0.01f, z + 0.5f) - player_.eyePos());
+            player_.yaw = glm::degrees(std::atan2(d.z, d.x));
+            player_.pitch = glm::degrees(std::asin(d.y));
+            inventory_.slots[0] = {IRON_BLOCK, 2};
+            slot_ = 0;
+            placeTimer_ = 0.0f;
+            target_ = world_->raycast(player_.eyePos(), player_.front(), 6.0f);
+            placeBlockOrUse();
+        };
+        auto countGolems = [&]() {
+            int n = 0;
+            for (const Mob& m : entities_.mobs()) n += m.type == MobType::Golem && m.owned ? 1 : 0;
+            return n;
+        };
+        setSteampunkEnabled(false);
+        build(43, 2, true);
+        SCHECK(countGolems() == 0 && world_->getBlock(43, gy, 2) == IRON_BLOCK);  // ohne die Erweiterung bleibt es ein Bauwerk
+        for (int y = gy; y <= gy + 2; ++y)
+            for (int x = 42; x <= 44; ++x) world_->setBlock(x, y, 2, AIR);
+        inventory_.clear();
+        setSteampunkEnabled(true);
+        build(43, 2, true);
+        SCHECK(countGolems() == 1);
+        SCHECK(world_->getBlock(43, gy, 2) == AIR && world_->getBlock(43, gy + 1, 2) == AIR && world_->getBlock(42, gy + 1, 2) == AIR &&
+               world_->getBlock(44, gy + 1, 2) == AIR && world_->getBlock(43, gy + 2, 2) == AIR && !world_->findMachine(43, gy + 1, 2));
+        SCHECK(inventory_.slots[0].count == 1);
+        // Ohne linken Arm entsteht kein Golem
+        build(41, -2, false);
+        SCHECK(countGolems() == 1 && world_->getBlock(41, gy, -2) == IRON_BLOCK && world_->getBlock(41, gy + 2, -2) == LAMP);
+        inventory_.clear();
+        entities_.clear();
+    }
+
 #undef SCHECK
     std::printf("Selbsttest: %d Pruefungen, %d fehlgeschlagen\n", checks, failed);
     return failed;

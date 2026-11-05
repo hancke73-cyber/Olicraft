@@ -444,6 +444,7 @@ void Game::applySave(const SaveFile& sf) {
     world_->importSigns(sf.signs);
     world_->importMachines(sf.machines);
     for (const Vehicle& v : sf.vehicles) vehicles_.add(v);
+    for (const glm::vec3& g : sf.golems) entities_.spawnMob(MobType::Golem, g).owned = true;
     player_.pos = sf.player.pos;
     player_.yaw = sf.player.yaw;
     player_.pitch = sf.player.pitch;
@@ -2091,6 +2092,7 @@ void Game::placeBlockOrUse() {
         playSound(blockSound(blockMaterial(id)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f), 0.8f, 0.85f);
         if (!creative_) inventory_.take(slot_, 1);
         if (isSign(id)) openSign(p);  // gleich beschriften
+        if (id == LAMP || id == BOILER || id == IRON_BLOCK) tryBuildGolemNear(p);
     }
 }
 
@@ -2622,6 +2624,8 @@ bool Game::saveWorld() {
     world_->exportSigns(sf.signs);
     world_->exportMachines(sf.machines);
     sf.vehicles = vehicles_.list();
+    for (const Mob& m : entities_.mobs())
+        if (m.type == MobType::Golem && m.owned && !m.dead()) sf.golems.push_back(m.pos);
     sf.player.hasSpawn = true;
     sf.player.spawn = spawnPoint_;
     std::string err;

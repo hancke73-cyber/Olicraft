@@ -20,12 +20,13 @@ namespace {
 constexpr float PI = 3.14159265358979f;
 constexpr float GRAVITY = 28.0f;
 
-const MobSpec SPECS[5] = {
+const MobSpec SPECS[6] = {
     {"Schwein", 0.8f, 0.85f, 10, 1.4f, false},
     {"Kuh", 0.85f, 1.45f, 10, 1.2f, false},
     {"Schaf", 0.8f, 1.25f, 8, 1.3f, false},
     {"Zombie", 0.6f, 1.9f, 20, 2.5f, true},
     {"Dorfbewohner", 0.6f, 1.9f, 20, 1.3f, false},
+    {"Dampfgolem", 1.1f, 2.2f, 60, 2.2f, false},
 };
 
 bool skyExposed(const World& w, int x, int y, int z) {
@@ -144,6 +145,7 @@ SkinId skinOf(MobType t) {
         case MobType::Cow: return SKIN_COW;
         case MobType::Sheep: return SKIN_SHEEP;
         case MobType::Villager: return SKIN_VILLAGER;
+        case MobType::Golem: return SKIN_GOLEM;
         default: return SKIN_ZOMBIE;
     }
 }
@@ -186,7 +188,7 @@ Mob& EntityManager::spawnMob(MobType type, const glm::vec3& pos) {
 int EntityManager::countMobs(bool hostile) const {
     int n = 0;
     for (const Mob& m : mobs_)
-        if (!m.dead() && m.type != MobType::Villager && mobSpec(m.type).hostile == hostile) ++n;
+        if (!m.dead() && m.type != MobType::Villager && m.type != MobType::Golem && mobSpec(m.type).hostile == hostile) ++n;
     return n;
 }
 
@@ -194,12 +196,13 @@ void EntityManager::emitMobSound(const Mob& m, int kind) {
     if (kind == 1 && effects_.size() < 64) effects_.push_back({0, m.pos + glm::vec3(0.0f, mobSpec(m.type).height * 0.6f, 0.0f)});
     if (kind == 2 && effects_.size() < 64) effects_.push_back({1, m.pos + glm::vec3(0.0f, 0.1f, 0.0f)});
     if (soundEvents_.size() > 64) return;
-    static const SoundId ids[5][4] = {
+    static const SoundId ids[6][4] = {
         {SoundId::PigIdle, SoundId::PigHurt, SoundId::PigDeath, SoundId::PigIdle},
         {SoundId::CowIdle, SoundId::CowHurt, SoundId::CowDeath, SoundId::CowIdle},
         {SoundId::SheepIdle, SoundId::SheepHurt, SoundId::SheepDeath, SoundId::SheepIdle},
         {SoundId::ZombieIdle, SoundId::ZombieHurt, SoundId::ZombieDeath, SoundId::ZombieAttack},
-        {SoundId::VillagerIdle, SoundId::VillagerHurt, SoundId::VillagerDeath, SoundId::VillagerIdle}};
+        {SoundId::VillagerIdle, SoundId::VillagerHurt, SoundId::VillagerDeath, SoundId::VillagerIdle},
+        {SoundId::StepStone, SoundId::BlockStone, SoundId::BlockStone, SoundId::ZombieAttack}};
     const float pitch = rng_.range(0.92f, 1.08f);
     soundEvents_.push_back({ids[static_cast<int>(m.type)][kind], m.pos.x, m.pos.y + mobSpec(m.type).height * 0.8f, m.pos.z,
                             1.0f, pitch});
@@ -220,6 +223,10 @@ void EntityManager::dropLoot(const Mob& m) {
             spawnItem({WOOL_WHITE, rng_.irange(1, 2)}, m.pos + glm::vec3(0.0f, 0.6f, 0.0f),
                       glm::vec3(rng_.range(-1.5f, 1.5f), 4.0f, rng_.range(-1.5f, 1.5f)), 0.4f);
             break;
+        case MobType::Golem:  // Metall und Kohle aus dem Kessel
+            spawnItem({ITEM_IRON_INGOT, rng_.irange(2, 4)}, m.pos + glm::vec3(0.0f, 0.8f, 0.0f), glm::vec3(rng_.range(-1.5f, 1.5f), 4.0f, rng_.range(-1.5f, 1.5f)), 0.4f);
+            spawnItem({ITEM_COAL, rng_.irange(1, 3)}, m.pos + glm::vec3(0.0f, 0.8f, 0.0f), glm::vec3(rng_.range(-1.5f, 1.5f), 4.0f, rng_.range(-1.5f, 1.5f)), 0.4f);
+            break;
         default: n = 0; break;
     }
     if (n > 0)
@@ -238,7 +245,7 @@ void EntityManager::hurtMob(Mob& m, int damage, const glm::vec3& from) {
     m.vel.z += away.y * 5.5f;
     m.vel.y = 5.0f;
     m.onGround = false;
-    if (!mobSpec(m.type).hostile) {
+    if (!mobSpec(m.type).hostile && m.type != MobType::Golem) {
         m.panicTimer = 4.0f;
         m.fleeDir = away;
     }
@@ -403,6 +410,8 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
             targetYaw = std::atan2(want.y, want.x);
         } else if (m.type == MobType::Villager && villagerBrain(m, dt, world, env, want, speed, lookAtTarget, targetYaw)) {
             // Tagesablauf: Arbeit, nach Hause, schlafen
+        } else if (m.type == MobType::Golem && golemBrain(m, world, player, env, want, speed, lookAtTarget, targetYaw)) {
+            // Wachen: Zombies angreifen, dem Besitzer folgen
         } else {
             m.stateTimer -= dt;
             if (m.state == Mob::Idle) {
@@ -589,6 +598,58 @@ bool EntityManager::followPath(Mob& m, World& world, const glm::ivec3& goal, flo
     return false;
 }
 
+// Dampfgolem: greift Zombies in der Naehe an (auch solche, die den Spieler bedraengen), folgt sonst seinem Besitzer.
+// Rueckgabe true: Ziel gesetzt (sonst laeuft er normal umher, im Dorf im Bereich um den Ankerpunkt).
+bool EntityManager::golemBrain(Mob& m, World& world, const Player& player, const EntityEnv& env, glm::vec2& want, float& speed, bool& look, float& yaw) {
+    (void)world;
+    if (!steampunkEnabled()) return false;  // Erweiterung aus: Golems stehen nur herum
+    const MobSpec& sp = mobSpec(m.type);
+    Mob* prey = nullptr;
+    float best = 1e9f;
+    const glm::vec3 pp = player.pos;
+    const float toPlayer = glm::length(glm::vec2(pp.x - m.pos.x, pp.z - m.pos.z));
+    for (Mob& z : mobs_) {
+        if (z.dead() || z.type != MobType::Zombie) continue;
+        const float d = glm::length(glm::vec2(z.pos.x - m.pos.x, z.pos.z - m.pos.z));
+        const float dp = glm::length(glm::vec2(z.pos.x - pp.x, z.pos.z - pp.z));
+        const bool threatensPlayer = !env.playerDead && dp < 14.0f && toPlayer < 40.0f;
+        if (std::fabs(z.pos.y - m.pos.y) > 6.0f || (d > 18.0f && !threatensPlayer) || d > 40.0f) continue;
+        if (d < best) {
+            best = d;
+            prey = &z;
+        }
+    }
+    if (prey) {
+        const glm::vec2 dir = normalized2(glm::vec2(prey->pos.x - m.pos.x, prey->pos.z - m.pos.z), glm::vec2(1, 0));
+        want = dir;
+        speed = sp.speed;
+        look = true;
+        yaw = std::atan2(dir.y, dir.x);
+        if (best < 2.3f && m.attackCooldown <= 0.0f) {
+            m.attackCooldown = 1.1f;
+            emitMobSound(m, 3);
+            hurtMob(*prey, 9, m.pos);
+            prey->vel.y = 7.0f;  // schleudert den Gegner hoch
+        }
+        if (best < 1.6f) speed = 0.0f;
+        return true;
+    }
+    if (m.owned && !env.playerDead && toPlayer < 48.0f) {
+        if (toPlayer > 5.0f) {  // folgt, haelt aber Abstand
+            const glm::vec2 dir = normalized2(glm::vec2(pp.x - m.pos.x, pp.z - m.pos.z), glm::vec2(1, 0));
+            want = dir;
+            speed = toPlayer > 12.0f ? sp.speed * 1.2f : sp.speed * 0.8f;
+            look = true;
+            yaw = std::atan2(dir.y, dir.x);
+        } else if (toPlayer > 1e-3f) {
+            look = true;
+            yaw = std::atan2(pp.z - m.pos.z, pp.x - m.pos.x);
+        }
+        return true;
+    }
+    return false;
+}
+
 // Tagesablauf eines Dorfbewohners: tagsueber am Arbeitsplatz, abends ins Haus, nachts im Bett.
 // Rueckgabe true: Ziel gesetzt (sonst laeuft er normal umher, im Bereich um den Arbeitsplatz).
 bool EntityManager::villagerBrain(Mob& m, float dt, World& world, const EntityEnv& env, glm::vec2& want, float& speed, bool& look, float& yaw) {
@@ -744,6 +805,20 @@ void EntityManager::spawnVillagers(World& world, const Player& player) {
             m.anchorZ = static_cast<float>(v->center.y);
             ++index;
         }
+        // Ein Dampfgolem wacht ueber das Dorf (nur mit eingeschalteter Steampunk-Erweiterung)
+        if (steampunkEnabled() && !v->villagerSpawns.empty()) {
+            const glm::ivec3 sp = v->villagerSpawns.front();
+            int y = sp.y;
+            while (y > 1 && !isSolid(world.getBlock(sp.x, y - 1, sp.z))) --y;
+            Mob& g = spawnMob(MobType::Golem, glm::vec3(sp.x + 1.5f, static_cast<float>(y), sp.z + 1.5f));
+            g.hasHome = true;
+            g.homeX = v->center.x;
+            g.homeZ = v->center.y;
+            g.villageId = v->id;
+            g.anchorX = static_cast<float>(v->center.x);
+            g.anchorZ = static_cast<float>(v->center.y);
+            g.anchorR = 20.0f;
+        }
         // Tiere im Stall
         for (const Village::AnimalSpawn& a : v->animalSpawns) {
             static const MobType kinds[3] = {MobType::Pig, MobType::Cow, MobType::Sheep};
@@ -835,7 +910,7 @@ void EntityManager::update(float dt, World& world, const Player& player, Invento
         const int cx = floorDiv(static_cast<int>(std::floor(m.pos.x)), CHUNK_W);
         const int cz = floorDiv(static_cast<int>(std::floor(m.pos.z)), CHUNK_W);
         const float dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
-        bool remove = m.pos.y < -20.0f || ((dx * dx + dz * dz) > 100.0f * 100.0f && m.type != MobType::Villager) || (m.dead() && m.deathTimer > 1.0f);
+        bool remove = m.pos.y < -20.0f || ((dx * dx + dz * dz) > 100.0f * 100.0f && m.type != MobType::Villager && m.type != MobType::Golem) || (m.dead() && m.deathTimer > 1.0f);
         if (!remove && world.isChunkLoaded(cx, cz)) updateMob(m, dt, world, player, env);
         if (remove) {
             mobs_[i] = mobs_.back();

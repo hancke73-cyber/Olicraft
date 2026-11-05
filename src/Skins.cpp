@@ -25,6 +25,7 @@ const SkinInfo SKINS[SKIN_COUNT] = {
     {"Ruestung Eisen", "skin_armor_iron.png", 64, 32},
     {"Ruestung Gold", "skin_armor_gold.png", 64, 32},
     {"Ruestung Diamant", "skin_armor_diamond.png", 64, 32},
+    {"Dampfgolem", "skin_golem.png", 64, 64},
 };
 
 struct Rgb {
@@ -278,6 +279,58 @@ std::vector<uint8_t> generatePlayerSkinPixels(int slot) {
     return img.px;
 }
 
+// Dampfgolem: Eisenplatten mit Nieten, Messingkessel auf dem Ruecken, gluehende Augen
+void paintGolem(Img& img) {
+    const std::vector<ModelPart>& parts = modelParts(SKIN_GOLEM);
+    // Reihenfolge wie in Models.cpp: Kopf, Rumpf, Kessel, Schornstein, Arme (2), Beine (2)
+    const Rgb colors[7] = {{104, 108, 118}, {116, 120, 130}, {188, 142, 62}, {66, 66, 74}, {92, 96, 106}, {92, 96, 106}, {84, 88, 98}};
+    for (size_t i = 0; i < parts.size(); ++i) {
+        const Rgb base = colors[std::min<size_t>(i, 6)];
+        fillPart(img, parts[i], base, 9, 0x6011u + static_cast<uint32_t>(i) * 7u);
+        for (int f = 0; f < 6; ++f) {
+            const NetRect r = skinNetRect(parts[i], f);
+            for (int x = r.x; x < r.x + r.w; ++x) {  // Kanten dunkler, Nieten in den Ecken
+                img.set(x, r.y, {base.r - 34, base.g - 34, base.b - 34});
+                img.set(x, r.y + r.h - 1, {base.r - 34, base.g - 34, base.b - 34});
+            }
+            for (int y = r.y; y < r.y + r.h; ++y) {
+                img.set(r.x, y, {base.r - 34, base.g - 34, base.b - 34});
+                img.set(r.x + r.w - 1, y, {base.r - 34, base.g - 34, base.b - 34});
+            }
+            if (r.w > 3 && r.h > 3) {
+                const Rgb rivet = {base.r + 44, base.g + 44, base.b + 40};
+                img.set(r.x + 1, r.y + 1, rivet);
+                img.set(r.x + r.w - 2, r.y + 1, rivet);
+                img.set(r.x + 1, r.y + r.h - 2, rivet);
+                img.set(r.x + r.w - 2, r.y + r.h - 2, rivet);
+            }
+        }
+    }
+    // Kopf vorn: zwei gluehende Augen und ein Gitter als Mund
+    const NetRect face = skinNetRect(parts[0], 0);
+    for (int dy = 0; dy < 2; ++dy)
+        for (int dx : {1, 4}) {
+            px(img, face, dx, 2 + dy, {255, 190, 60});
+            px(img, face, dx + 1, 2 + dy, {255, 150, 30});
+        }
+    for (int x = 1; x <= 5; ++x) px(img, face, x, 5, {40, 40, 46});
+    // Rumpf vorn: Manometer mit Zeiger und Querplatten
+    const NetRect chest = skinNetRect(parts[1], 0);
+    for (int y = 3; y <= 7; ++y)
+        for (int x = 3; x <= 8; ++x) {
+            const float dx = x - 5.5f, dy = y - 5.0f;
+            if (dx * dx + dy * dy <= 6.0f) px(img, chest, x, y, dx * dx + dy * dy > 4.2f ? Rgb{188, 142, 62} : Rgb{226, 224, 210});
+        }
+    px(img, chest, 5, 4, {200, 40, 30});
+    px(img, chest, 5, 5, {200, 40, 30});
+    for (int x = 1; x < chest.w - 1; ++x) px(img, chest, x, 10, {70, 72, 80});
+    // Kessel: dunkles Band und Warnstreifen
+    for (int f = 0; f < 6; ++f) {
+        const NetRect r = skinNetRect(parts[2], f);
+        for (int x = r.x + 1; x < r.x + r.w - 1; ++x) img.set(x, r.y + r.h / 2, {120, 88, 36});
+    }
+}
+
 std::vector<uint8_t> generateSkinPixels(SkinId id) {
     const SkinInfo& si = skinInfo(id);
     Img img(si.width, si.height);
@@ -296,6 +349,7 @@ std::vector<uint8_t> generateSkinPixels(SkinId id) {
         case SKIN_PIG: paintPig(img); break;
         case SKIN_COW: paintCow(img); break;
         case SKIN_SHEEP: paintSheep(img); break;
+        case SKIN_GOLEM: paintGolem(img); break;
         default: break;
     }
     return img.px;

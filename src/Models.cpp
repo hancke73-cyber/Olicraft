@@ -74,12 +74,24 @@ const std::vector<ModelPart>& partsFor(SkinId id) {
         {{0, 2, 2}, {4, 4, 4}, {0, 12, 2}, A_LEG_B, 32, 0, false, 0.75f, 3},
         {{0, 2, -2}, {4, 4, 4}, {0, 12, -2}, A_LEG_A, 32, 0, true, 0.75f, 3},
     };
+    static const std::vector<ModelPart> golem = {
+        // Kopf, Rumpf, Kessel auf dem Ruecken, Schornstein, Arme (schwingen), Beine; Netze im 64x64-Skin ohne Ueberschneidung
+        {{1, 30, 0}, {7, 7, 7}, {1, 26, 0}, A_HEAD, 0, 0, false},
+        {{0, 19, 0}, {6, 14, 12}, {0, 19, 0}, A_NONE, 0, 16, false},
+        {{-5, 21, 0}, {4, 8, 8}, {-5, 21, 0}, A_NONE, 36, 0, false},
+        {{-5, 28, 3}, {2, 6, 2}, {-5, 28, 3}, A_NONE, 36, 12, false},
+        {{0, 19, 8}, {4, 14, 4}, {0, 26, 8}, A_ARM_SWING_A, 0, 38, false},
+        {{0, 19, -8}, {4, 14, 4}, {0, 26, -8}, A_ARM_SWING_B, 0, 38, true},
+        {{0, 6, 3.5f}, {5, 12, 5}, {0, 12, 3.5f}, A_LEG_B, 20, 38, false},
+        {{0, 6, -3.5f}, {5, 12, 5}, {0, 12, -3.5f}, A_LEG_A, 20, 38, true},
+    };
     if (isArmorSkin(id)) return armor;
     switch (id) {
         case SKIN_PLAYER: return player;
         case SKIN_PIG: return pig;
         case SKIN_COW: return cow;
         case SKIN_SHEEP: return sheep;
+        case SKIN_GOLEM: return golem;
         case SKIN_VILLAGER:
         case SKIN_VILLAGER_LIBRARIAN:
         case SKIN_VILLAGER_SMITH:

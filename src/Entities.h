@@ -54,7 +54,7 @@ struct ItemEntity {
     bool onGround = false;
 };
 
-enum class MobType : uint8_t { Pig, Cow, Sheep, Zombie, Villager };
+enum class MobType : uint8_t { Pig, Cow, Sheep, Zombie, Villager, Golem };
 
 struct MobSpec {
     const char* name;
@@ -96,6 +96,7 @@ struct Mob {
     const Village* village = nullptr;  // Heimatdorf (zeigt in den Zwischenspeicher des Dorfgenerators)
     int bedIndex = -1;                 // Bett im Dorf
     bool sleeping = false;
+    bool owned = false;                // Golem: vom Spieler gebaut (folgt ihm und bleibt im Spielstand), sonst Dorfwaechter
     int route = 0;                     // 0..3 ins Haus hinein, 10..12 hinaus
     float anchorX = 0.0f, anchorZ = 0.0f, anchorR = 22.0f;  // Bleibebereich beim Umherlaufen
     float sleepYaw = 0.0f;
@@ -165,6 +166,7 @@ private:
     bool followPath(Mob& m, World& world, const glm::ivec3& goal, float arrive, glm::vec2& want, float& speed, bool& look, float& yaw, float dt);
     bool villagerBrain(Mob& m, float dt, World& world, const EntityEnv& env, glm::vec2& want, float& speed, bool& look, float& yaw);
     void openDoorsAhead(Mob& m, World& world, const glm::vec2& want);
+    bool golemBrain(Mob& m, World& world, const Player& player, const EntityEnv& env, glm::vec2& want, float& speed, bool& look, float& yaw);
     void updateOpenedDoors(float dt, World& world, const Player& player);
     struct OpenedDoor {
         glm::ivec3 pos;

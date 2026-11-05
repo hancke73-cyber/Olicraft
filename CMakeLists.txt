@@ -51,6 +51,7 @@ add_executable(OliCraft
   src/GameDemo.cpp
   src/GameSelfTest.cpp
   src/GameVehicles.cpp
+  src/GameGolems.cpp
   src/Block.cpp
   src/Noise.cpp
   src/Atlas.cpp

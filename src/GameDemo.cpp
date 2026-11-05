@@ -203,6 +203,11 @@ void Game::applyDemo() {
             ship.modules = 2;
             ship.anchored = true;
         }
+        {  // Dampfgolem neben einem Zombie
+            Mob& g = entities_.spawnMob(MobType::Golem, glm::vec3(ox + 46.5f, static_cast<float>(gy + 1), oz + 6.5f));
+            g.owned = true;
+            g.yaw = 3.14159265f * 1.5f;
+        }
         // Bogen mit umgedrehten Treppen unter der Decke
         for (int z = 0; z <= 2; ++z) {
             for (int y = 0; y <= 2; ++y) {
