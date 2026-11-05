@@ -4203,6 +4203,20 @@ static void testMechFlow() {
     CHECK(!em.items().empty() && em.items()[0].pos.x > 4.0f);
 }
 
+static void testSugarCaneTile() {
+    // Uebereinander gesetzte Stuecke: jede Halmspalte ist ueber die ganze Kachelhoehe durchgehend, sonst entsteht ein Absatz
+    const std::vector<uint8_t> atlas = generateAtlasPixels();
+    const int tx0 = (TILE_SUGAR_CANE % ATLAS_TILES) * TILE_PX, ty0 = (TILE_SUGAR_CANE / ATLAS_TILES) * TILE_PX;
+    int columns = 0;
+    for (int x = 0; x < TILE_PX; ++x) {
+        int filled = 0;
+        for (int y = 0; y < TILE_PX; ++y) filled += atlas[(static_cast<size_t>(ty0 + y) * ATLAS_PX + (tx0 + x)) * 4 + 3] > 0 ? 1 : 0;
+        CHECK(filled == 0 || filled == TILE_PX);
+        columns += filled > 0 ? 1 : 0;
+    }
+    CHECK(columns >= 4);
+}
+
 static void testSteampunkToggle() {
     // Einstellung wird gespeichert und geladen
     Settings s;
@@ -5066,6 +5080,7 @@ int main() {
     testGolems();
     testPumps();
     testSteampunkToggle();
+    testSugarCaneTile();
     testVehicleSave();
     testMechFlow();
     testChurch();

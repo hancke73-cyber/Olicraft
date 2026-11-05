@@ -208,6 +208,8 @@ void Game::applyDemo() {
             g.owned = true;
             g.yaw = 3.14159265f * 1.5f;
         }
+        for (int k = 0; k < 4; ++k) put(30, k, 6, k == 0 ? SAND : SUGAR_CANE);  // Zuckerrohr: Saeule ohne Versatz
+        for (int k = 0; k < 3; ++k) put(32, k, 6, k == 0 ? SAND : SUGAR_CANE);
         // Bogen mit umgedrehten Treppen unter der Decke
         for (int z = 0; z <= 2; ++z) {
             for (int y = 0; y <= 2; ++y) {

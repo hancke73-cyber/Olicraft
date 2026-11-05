@@ -810,16 +810,16 @@ void drawDeadBush(TileCanvas& c) {
     put(c, 3, 8, dark);
     put(c, 11, 9, dark);
 }
+// Zuckerrohr: durchgehende Halme ueber die ganze Kachelhoehe, Knoten im Abstand von 8 Pixeln, damit uebereinander gesetzte
+// Stuecke ohne Luecke und Versatz eine Saeule ergeben
 void drawSugarCane(TileCanvas& c) {
     clearTile(c);
     static const int xs[3] = {3, 8, 12};
-    static const int hs[3] = {13, 15, 11};
     for (int k = 0; k < 3; ++k)
-        for (int y = 0; y < hs[k]; ++y) {
-            const bool node = y % 5 == 4;
+        for (int y = 0; y < TILE_PX; ++y) {
+            const bool node = y % 8 == 7;
             put(c, xs[k], y, node ? Rgba{96, 150, 60, 255} : Rgba{138, 196, 92, 255});
             put(c, xs[k] + 1, y, node ? Rgba{76, 120, 48, 255} : Rgba{110, 166, 72, 255});
-            if (y == hs[k] - 1 || y == hs[k] - 2) put(c, xs[k] - 1 + (k % 2) * 3, y, {110, 170, 74, 255});
         }
 }
 void drawBerryBush(TileCanvas& c) {
