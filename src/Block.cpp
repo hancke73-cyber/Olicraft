@@ -1,4 +1,5 @@
 #include "Block.h"
+#include "Items.h"
 
 namespace oc {
 
@@ -79,9 +80,9 @@ static const BlockInfo BASE_INFOS[BERRY_BUSH + 1] = {
     {"Gaensebluemchen", false, false, false, false, false, true, TILE_FLOWER_WHITE,   TILE_FLOWER_WHITE,   TILE_FLOWER_WHITE,    0.0f, FLOWER_WHITE},
     {"Roter Pilz",     false, false, false, false, false, true,  TILE_MUSHROOM_RED,   TILE_MUSHROOM_RED,   TILE_MUSHROOM_RED,    0.0f, MUSHROOM_RED},
     {"Brauner Pilz",   false, false, false, false, false, true,  TILE_MUSHROOM_BROWN, TILE_MUSHROOM_BROWN, TILE_MUSHROOM_BROWN,  0.0f, MUSHROOM_BROWN},
-    {"Toter Busch",    false, false, false, false, false, true,  TILE_DEAD_BUSH,      TILE_DEAD_BUSH,      TILE_DEAD_BUSH,       0.0f, 201},
+    {"Toter Busch",    false, false, false, false, false, true,  TILE_DEAD_BUSH,      TILE_DEAD_BUSH,      TILE_DEAD_BUSH,       0.0f, ITEM_STICK},
     {"Zuckerrohr",     false, false, false, false, false, true,  TILE_SUGAR_CANE,     TILE_SUGAR_CANE,     TILE_SUGAR_CANE,      0.0f, SUGAR_CANE},
-    {"Beerenstrauch",  false, false, false, false, false, true,  TILE_BERRY_BUSH,     TILE_BERRY_BUSH,     TILE_BERRY_BUSH,      0.0f, 236},
+    {"Beerenstrauch",  false, false, false, false, false, true,  TILE_BERRY_BUSH,     TILE_BERRY_BUSH,     TILE_BERRY_BUSH,      0.0f, ITEM_BERRIES},
 };
 
 namespace {
@@ -113,7 +114,7 @@ struct InfoTable {
                 i.drop = makeSlab(m, false);
             }
         }
-        auto thin = [&](BlockId id, const char* name, Tile tile, float hardness, BlockId drop, ToolClass tool, int tier, Shape shape, bool solid = true) {
+        auto thin = [&](BlockId id, const char* name, Tile tile, float hardness, uint16_t drop, ToolClass tool, int tier, Shape shape, bool solid = true) {
             BlockInfo& i = infos[id];
             i = {name, solid, false, false, false, false, true, tile, tile, tile, hardness, drop, tool, tier, false, shape};
         };
@@ -132,7 +133,7 @@ struct InfoTable {
                     for (int f = 0; f < 4; ++f) {
                         const Tile tile = mat == 0 ? (up ? TILE_DOOR_WOOD_UPPER : TILE_DOOR_WOOD_LOWER) : (up ? TILE_DOOR_IRON_UPPER : TILE_DOOR_IRON_LOWER);
                         thin(makeDoor(mat, up == 1, open == 1, f), mat == 0 ? "Holztuer" : "Eisentuer", tile, mat == 0 ? 1.5f : 4.0f,
-                             static_cast<BlockId>(up ? AIR : (mat == 0 ? 246 : 247)), mat == 0 ? TOOL_AXE : TOOL_PICKAXE, mat == 0 ? 0 : 1, SH_DOOR, open == 0);
+                             static_cast<uint16_t>(up ? 0 : (mat == 0 ? ITEM_DOOR_WOOD : ITEM_DOOR_IRON)), mat == 0 ? TOOL_AXE : TOOL_PICKAXE, mat == 0 ? 0 : 1, SH_DOOR, open == 0);
                     }
         // Tore
         for (int mat = 0; mat < 2; ++mat)
@@ -151,8 +152,8 @@ struct InfoTable {
         // Acker und Feldfruechte
         infos[FARMLAND] = {"Acker", true, false, false, true, false, true, TILE_FARMLAND, TILE_DIRT, TILE_DIRT, 0.3f, DIRT, TOOL_SHOVEL, 0, false, SH_FARMLAND};
         for (int s = 0; s < 4; ++s) {
-            thin(static_cast<BlockId>(WHEAT_0 + s), "Weizen", static_cast<Tile>(TILE_WHEAT_0 + s), 0.0f, static_cast<BlockId>(s == 3 ? 238 : 237), TOOL_NONE, 0, SH_FULL, false);
-            thin(static_cast<BlockId>(CARROT_0 + s), "Karotten", static_cast<Tile>(TILE_CARROT_0 + s), 0.0f, static_cast<BlockId>(240), TOOL_NONE, 0, SH_FULL, false);
+            thin(static_cast<BlockId>(WHEAT_0 + s), "Weizen", static_cast<Tile>(TILE_WHEAT_0 + s), 0.0f, static_cast<uint16_t>(s == 3 ? ITEM_WHEAT : ITEM_SEEDS), TOOL_NONE, 0, SH_FULL, false);
+            thin(static_cast<BlockId>(CARROT_0 + s), "Karotten", static_cast<Tile>(TILE_CARROT_0 + s), 0.0f, static_cast<uint16_t>(ITEM_CARROT), TOOL_NONE, 0, SH_FULL, false);
         }
     }
 };

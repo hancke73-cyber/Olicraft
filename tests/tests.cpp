@@ -740,6 +740,62 @@ static void testSaveV2() {
     std::filesystem::remove_all("olicraft_test_save2");
 }
 
+static void testSaveV6Migration() {
+    // Spielstand der Version 6: Gegenstands-IDs begannen bei 200, sie werden beim Lesen auf 256 aufwaerts umgestellt
+    std::filesystem::create_directories("olicraft_test_save6");
+    {
+        std::ofstream f("olicraft_test_save6/v6.dat", std::ios::binary);
+        auto u8 = [&](uint8_t v) { f.put(static_cast<char>(v)); };
+        auto u16 = [&](uint16_t v) { f.write(reinterpret_cast<const char*>(&v), 2); };
+        auto u32 = [&](uint32_t v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+        auto f32 = [&](float v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+        auto stack = [&](int id, int cnt, int dmg) { u16(static_cast<uint16_t>(id)); u8(static_cast<uint8_t>(cnt)); u16(static_cast<uint16_t>(dmg)); };
+        u32(0x52434C4Fu);
+        u32(6);
+        u32(99);                                   // Seed
+        for (int i = 0; i < 6; ++i) f32(1.0f);     // Position, Blick, Tageszeit
+        u32(2);                                    // Slot
+        u8(0);                                     // Flug
+        u32(15);                                   // Gesundheit
+        u8(0);                                     // Survival
+        u8(3);                                     // drei Inventarplaetze
+        stack(201, 5, 0);                          // Stock (alt 201)
+        stack(STONE, 3, 0);                        // Bloecke bleiben
+        stack(200, 2, 0);                          // Rohes Fleisch (alt 200)
+        u32(1);                                    // ein Ofen
+        u32(1); u32(70); u32(2);
+        stack(0, 0, 0);                            // Eingabe leer
+        stack(210, 4, 0);                          // Brennstoff Kohle (alt 210)
+        stack(0, 0, 0);
+        f32(1.0f); f32(2.0f); f32(3.0f);
+        u32(1);                                    // eine Truhe
+        u32(5); u32(70); u32(6);
+        stack(214, 1, 3);                          // Eisenspitzhacke (alt 214), Abnutzung 3
+        for (int i = 1; i < 27; ++i) stack(0, 0, 0);
+        u8(0); f32(0); f32(0); f32(0);             // kein Wiedereinstiegspunkt
+        u8(4);                                     // vier Ruestungsplaetze
+        stack(253, 1, 7);                          // Eisenhelm (alt 249 + 4)
+        stack(0, 0, 0); stack(0, 0, 0); stack(0, 0, 0);
+        u32(0);                                    // keine Chunks
+    }
+    SaveFile sf;
+    std::string err;
+    CHECK(readSaveFile("olicraft_test_save6/v6.dat", sf, &err));
+    CHECK(sf.seed == 99 && sf.player.health == 15 && sf.player.slot == 2);
+    CHECK(sf.player.inventory.slots[0] == ItemStack({ITEM_STICK, 5}));
+    CHECK(sf.player.inventory.slots[1] == ItemStack({STONE, 3}));
+    CHECK(sf.player.inventory.slots[2] == ItemStack({ITEM_MEAT, 2}));
+    CHECK(sf.furnaces.size() == 1 && sf.furnaces[0].furnace.fuel == ItemStack({ITEM_COAL, 4}) && sf.furnaces[0].furnace.input.empty());
+    CHECK(sf.chests.size() == 1 && sf.chests[0].chest.slots[0].id == ITEM_IRON_PICKAXE && sf.chests[0].chest.slots[0].damage == 3);
+    CHECK(sf.player.inventory.armor[0].id == makeArmorItem(1, 0) && sf.player.inventory.armor[0].damage == 7);
+    // Neue Datei: dieselben Gegenstaende ohne Umrechnung
+    SaveFile back;
+    CHECK(writeSaveFile("olicraft_test_save6/v7.dat", sf, &err) && readSaveFile("olicraft_test_save6/v7.dat", back, &err));
+    CHECK(back.player.inventory.slots[0] == ItemStack({ITEM_STICK, 5}) && back.player.inventory.armor[0].id == makeArmorItem(1, 0));
+    CHECK(ITEM_MEAT == 256 && ITEM_STICK == 257 && ITEM_BASE > 255 && BLOCK_COUNT <= 256);
+    std::filesystem::remove_all("olicraft_test_save6");
+}
+
 static void testEntities() {
     World w(42);
     w.setMeshingEnabled(false);
@@ -3842,6 +3898,7 @@ int main() {
     testSounds();
     testCamera();
     testSaveV2();
+    testSaveV6Migration();
     testEntities();
     std::printf("%d Pruefungen, %d fehlgeschlagen\n", g_checks, g_failed);
     return g_failed == 0 ? 0 : 1;

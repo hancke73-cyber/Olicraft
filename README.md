@@ -181,7 +181,7 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
 | `src/TextureStore.*`, `src/TextureEditor.*`, `src/EditorUi.*`, `src/Image.*` | Texturspeicher mit PNG-Dateien, Editor-Logik (Werkzeuge, Rückgängig, Netze, Vorschau), Editor-Oberfläche |
 | `src/Hud.*`, `src/GuiTexture.*` | HUD, Inventarfenster, Schrift (5x7-Bitmap) und Symbole |
 | `src/Worlds.*` | Weltliste (Dateien im Ordner), Namen prüfen, eindeutige Namen |
-| `src/Save.*` | Speicherformat Version 6 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Rüstung, Öfen, Truhen, Wiedereinstiegspunkt, Gesundheit, Modus; ältere Versionen bleiben lesbar) |
+| `src/Save.*` | Speicherformat Version 7 (RLE je veränderter Chunk, Inventar mit Werkzeug-Abnutzung, Rüstung, Öfen, Truhen, Wiedereinstiegspunkt, Gesundheit, Modus; ältere Versionen bleiben lesbar) |
 | `src/BlockShape.h` | Boxen der Teilformen (Kollision, Strahl, Darstellung) |
 | `src/Village.*`, `src/Trades.*` | Dörfer (Lage, Gebäude, Wege, Beute) und Handelsangebote der Dorfbewohner |
 | `src/Sky.*` | Pixelgrafiken für Sonne, Mondphasen, Lichtkranz und die Sterne |

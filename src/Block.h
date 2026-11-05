@@ -297,7 +297,7 @@ struct BlockInfo {
     bool breakable;
     Tile top, bottom, side;
     float hardness;  // Abbauzeit in Sekunden (Survival, mit blossen Haenden)
-    BlockId drop;    // Block, der beim Abbauen faellt (AIR = nichts)
+    uint16_t drop;   // Block oder Gegenstand, der beim Abbauen faellt (AIR = nichts)
     ToolClass tool = TOOL_NONE;  // passende Werkzeugart
     int minTier = 0;             // noetige Werkzeugstufe, damit der Block etwas fallen laesst (0 = keine)
     bool emissive = false;       // leuchtet (unabhaengig von Tageszeit und Schatten)

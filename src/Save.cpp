@@ -11,7 +11,7 @@ namespace oc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x52434C4Fu;  // "OLCR" (little endian)
-constexpr uint32_t VERSION = 6;
+constexpr uint32_t VERSION = 7;  // 7: Gegenstands-IDs ab 256 (vorher ab 200)
 
 class Writer {
 public:
@@ -234,6 +234,10 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
         return false;
     }
     save = SaveFile{};
+    // Version 6 und aelter: Gegenstaende hatten die IDs 200 bis 264, jetzt 256 bis 320
+    auto migrateItem = [&](ItemId id) -> ItemId {
+        return version < 7 && id >= OLD_ITEM_BASE && id <= OLD_ITEM_BASE + 64 ? static_cast<ItemId>(id - OLD_ITEM_BASE + ITEM_BASE) : id;
+    };
     save.seed = r.i32();
     save.player.pos.x = r.f32();
     save.player.pos.y = r.f32();
@@ -248,7 +252,7 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
         save.player.creative = r.u8() != 0;
         const int invCount = r.u8();
         for (int i = 0; i < invCount; ++i) {
-            ItemId id = r.u16();
+            ItemId id = migrateItem(r.u16());
             int cnt = r.u8();
             int dmg = version >= 3 ? r.u16() : 0;
             if (i < Inventory::SIZE && itemValid(id) && cnt > 0) {
@@ -272,7 +276,7 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
             fs.y = r.i32();
             fs.z = r.i32();
             for (ItemStack* st : {&fs.furnace.input, &fs.furnace.fuel, &fs.furnace.output}) {
-                ItemId id = r.u16();
+                ItemId id = migrateItem(r.u16());
                 int cnt = r.u8();
                 int dmg = r.u16();
                 if (itemValid(id) && cnt > 0) {
@@ -303,7 +307,7 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
             cs.y = r.i32();
             cs.z = r.i32();
             for (ItemStack& st : cs.chest.slots) {
-                ItemId id = r.u16();
+                ItemId id = migrateItem(r.u16());
                 int cnt = r.u8();
                 int dmg = r.u16();
                 if (itemValid(id) && cnt > 0) {
@@ -326,7 +330,7 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
     if (version >= 6) {
         const int n = r.u8();
         for (int i = 0; i < n; ++i) {
-            ItemId id = r.u16();
+            ItemId id = migrateItem(r.u16());
             int cnt = r.u8();
             int dmg = r.u16();
             if (i < 4 && itemValid(id) && isArmorItem(id) && armorSlotOf(id) == i && cnt > 0) {
