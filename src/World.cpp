@@ -88,6 +88,7 @@ bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
     c->set(lx, y, lz, b);
     c->modified = true;
     if (isSign(oldB) && !isSign(b)) signs_.erase(furnaceKey(x, y, z));  // der Text verschwindet mit dem Schild
+    if (isMachineBlock(b) && !findMachine(x, y, z)) machineAt(x, y, z);  // neue Maschine bekommt ihren Zustand
     if (isCrop(oldB) || isCrop(b)) {
         const int32_t idx = Chunk::index(lx, y, lz);
         if (isCrop(oldB) && !isCrop(b)) c->crops.erase(std::remove(c->crops.begin(), c->crops.end(), idx), c->crops.end());
@@ -492,6 +493,7 @@ void World::tickCrops(float dt) {
 
 void World::tick(float dt) {
     tickFurnaces(dt);
+    tickMachines(dt);
     tickCrops(dt);
     for (int kind = 0; kind < 2; ++kind) {
         FluidQueue& q = fluid_[kind];

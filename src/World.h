@@ -115,6 +115,22 @@ public:
     void setSign(int x, int y, int z, const SignText& t);
     void exportSigns(std::vector<SignSave>& out) const;
     void importSigns(const std::vector<SignSave>& in);
+    // Dampfmaschinen: Zustand je Block, Netze werden aus den Nachbarbloecken berechnet (siehe Machines.cpp)
+    Machine* findMachine(int x, int y, int z);
+    Machine& machineAt(int x, int y, int z);  // legt bei Bedarf an (der Block muss eine Maschine sein)
+    bool removeMachine(int x, int y, int z, Machine* out);
+    size_t machineCount() const { return machines_.size(); }
+    // Mechanische Versorgung 0..1 am Block (Welle, Motor, Bohrer, Foerderband, Lift); 0 ohne laufenden Motor
+    float powerAt(int x, int y, int z) const;
+    // Naechster abbaubarer Block vor einem Bohrer an pos in Richtung facing (0 +X, 1 -X, 2 +Z, 3 -Z, 4 oben, 5 unten), sonst false
+    bool drillTarget(const glm::ivec3& pos, int facing, glm::ivec3& out) const;
+    std::vector<MachineDrop> takeMachineDrops() {
+        std::vector<MachineDrop> out;
+        out.swap(machineDrops_);
+        return out;
+    }
+    void exportMachines(std::vector<MachineSave>& out) const;
+    void importMachines(const std::vector<MachineSave>& in);
     void exportChests(std::vector<ChestSave>& out) const;
     void importChests(const std::vector<ChestSave>& in);
 
@@ -189,6 +205,16 @@ private:
         SignText text;
     };
     std::unordered_map<uint64_t, SignEntry> signs_;
+    struct MachineEntry {
+        glm::ivec3 pos;
+        Machine m;
+    };
+    std::unordered_map<uint64_t, MachineEntry> machines_;
+    std::unordered_map<uint64_t, float> power_;  // mechanische Versorgung je Block des Antriebsnetzes
+    std::vector<MachineDrop> machineDrops_;
+    float machineAccum_ = 0.0f;
+    void tickMachines(float dt);
+    void stepMachines(float dt);
 };
 
 }  // namespace oc

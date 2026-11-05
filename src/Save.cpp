@@ -186,6 +186,24 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
                     w.bytes(reinterpret_cast<const uint8_t*>(line.data()), len);
                 }
             }
+            // Version 7: Dampfmaschinen
+            w.u32(static_cast<uint32_t>(save.machines.size()));
+            for (const MachineSave& ms : save.machines) {
+                w.i32(ms.x);
+                w.i32(ms.y);
+                w.i32(ms.z);
+                w.u8(static_cast<uint8_t>(ms.m.kind));
+                for (const ItemStack& st : ms.m.slots) {
+                    w.u16(st.empty() ? 0 : st.id);
+                    w.u8(static_cast<uint8_t>(st.empty() ? 0 : st.count));
+                    w.u16(static_cast<uint16_t>(st.empty() ? 0 : std::min(st.damage, 65535)));
+                }
+                w.f32(ms.m.water);
+                w.f32(ms.m.purity);
+                w.f32(ms.m.burnTime);
+                w.f32(ms.m.burnTotal);
+                w.f32(ms.m.progress);
+            }
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
                 w.i32(c.cx);
@@ -380,6 +398,42 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
                 return false;
             }
             if (!ss.text.empty()) save.signs.push_back(ss);
+        }
+    }
+    if (version >= 7) {
+        const uint32_t mcount = r.u32();
+        if (!r.ok() || mcount > 1000000u) {
+            if (error) *error = "Beschaedigte Speicherdatei";
+            return false;
+        }
+        for (uint32_t i = 0; i < mcount; ++i) {
+            MachineSave ms;
+            ms.x = r.i32();
+            ms.y = r.i32();
+            ms.z = r.i32();
+            const int kind = r.u8();
+            ms.m.kind = static_cast<MachineKind>(kind <= 3 ? kind : 0);
+            for (ItemStack& st : ms.m.slots) {
+                ItemId id = r.u16();
+                int cnt = r.u8();
+                int dmg = r.u16();
+                if (itemValid(id) && cnt > 0) {
+                    st.id = id;
+                    st.count = std::min(cnt, itemInfo(id).maxStack);
+                    st.damage = std::min(dmg, std::max(0, itemInfo(id).maxDurability));
+                }
+            }
+            auto fl = [&](float lo, float hi) { return std::max(lo, std::min(hi, r.f32())); };
+            ms.m.water = fl(0.0f, BOILER_WATER_MAX);
+            ms.m.purity = fl(0.0f, 1.0f);
+            ms.m.burnTime = fl(0.0f, 100000.0f);
+            ms.m.burnTotal = fl(0.0f, 100000.0f);
+            ms.m.progress = fl(0.0f, 1.0f);
+            if (!r.ok()) {
+                if (error) *error = "Beschaedigte Speicherdatei";
+                return false;
+            }
+            save.machines.push_back(ms);
         }
     }
     uint32_t n = r.u32();

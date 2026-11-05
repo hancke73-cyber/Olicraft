@@ -4086,6 +4086,320 @@ static void testSteamBlocks() {
     CHECK(std::string(tileName(TILE_BOILER).name) == "Dampfkessel" && std::string(tileName(TILE_TAR).name) == "Teer");
 }
 
+static void testSteamSimulation() {
+    World w(9);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 3);
+    const int gy = 100;
+    auto flat = [&]() {
+        for (int x = -3; x <= 25; ++x)
+            for (int z = -3; z <= 14; ++z) {
+                for (int y = gy - 1; y < gy + 6; ++y) w.setBlock(x, y, z, AIR);
+                w.setBlock(x, gy - 2, z, STONE);
+            }
+        std::vector<MachineSave> none;
+        w.importMachines(none);
+    };
+    auto clearMachines = [&]() {
+        for (int x = -3; x <= 25; ++x)
+            for (int z = -3; z <= 14; ++z)
+                for (int y = gy - 1; y < gy + 6; ++y) {
+                    w.removeMachine(x, y, z, nullptr);
+                    if (w.getBlock(x, y, z) != AIR) w.setBlock(x, y, z, AIR);
+                }
+        for (int x = -3; x <= 25; ++x)
+            for (int z = -3; z <= 14; ++z) w.setBlock(x, gy - 1, z, AIR);
+        w.takeMachineDrops();
+        w.tick(0.2f);
+    };
+    auto run = [&](float seconds) {
+        for (float t = 0.0f; t < seconds; t += 0.25f) w.tick(0.25f);
+    };
+    flat();
+
+    // Maschinen entstehen beim Setzen, verschwinden mit dem Block
+    CHECK(w.machineCount() == 0);
+    w.setBlock(0, gy, 0, BOILER);
+    w.setBlock(1, gy, 0, PIPE);
+    w.setBlock(2, gy, 0, MOTOR);
+    w.setBlock(3, gy, 0, makeDrill(0));
+    CHECK(w.machineCount() == 3 && w.findMachine(0, gy, 0) && w.findMachine(0, gy, 0)->kind == MachineKind::Boiler);
+    CHECK(w.findMachine(2, gy, 0)->kind == MachineKind::Motor && w.findMachine(3, gy, 0)->kind == MachineKind::Drill && !w.findMachine(1, gy, 0));
+    w.setBlock(3, gy, 0, AIR);
+    w.tick(0.2f);
+    CHECK(w.machineCount() == 2 && !w.findMachine(3, gy, 0));
+    w.setBlock(3, gy, 0, makeDrill(0));
+    for (int x = 4; x <= 9; ++x) w.setBlock(x, gy, 0, STONE);
+
+    // Volle Kette: Kessel + Rohr + Motor + Bohrer arbeitet, bricht Stein, Kohle und Wasser werden verbraucht
+    {
+        Machine& b = *w.findMachine(0, gy, 0);
+        b.slots[0] = {ITEM_COAL, 2, 0};
+        b.water = 500.0f;
+        run(0.5f);
+        CHECK(b.burning() && w.getBlock(0, gy, 0) == BOILER_LIT && b.slots[0].count == 1);
+        CHECK(w.powerAt(3, gy, 0) > 0.99f && w.powerAt(2, gy, 0) > 0.99f && w.powerAt(1, gy, 0) == 0.0f);  // Rohr gehoert nicht zum Antriebsnetz
+        run(14.5f);
+        int cobble = 0;
+        for (const MachineDrop& d : w.takeMachineDrops()) cobble += d.item.id == COBBLE ? d.item.count : 0;
+        CHECK(cobble >= 4 && cobble <= 7);
+        CHECK(w.getBlock(4, gy, 0) == AIR && w.getBlock(5, gy, 0) == AIR);
+        CHECK(b.water < 500.0f && b.water > 300.0f);  // verbraucht, aber nicht alles
+        CHECK(w.findMachine(2, gy, 0)->spin > 1.0f && w.findMachine(2, gy, 0)->working);
+        CHECK(b.steam > 0.99f && b.load > 0.0f && b.load < 1.0f);
+    }
+    // Ohne Wasser, ohne Brennstoff, ohne Bedarf zuendet der Kessel nicht
+    {
+        Machine& b = *w.findMachine(0, gy, 0);
+        b.burnTime = 0.0f;
+        b.slots[0] = {ITEM_COAL, 1, 0};
+        b.water = 0.0f;
+        run(2.0f);
+        CHECK(!b.burning() && w.getBlock(0, gy, 0) == BOILER && w.powerAt(3, gy, 0) == 0.0f && b.slots[0].count == 1);
+        b.water = 500.0f;
+        b.slots[0].clear();
+        run(2.0f);
+        CHECK(!b.burning() && w.powerAt(3, gy, 0) == 0.0f);
+        b.slots[0] = {ITEM_COAL, 1, 0};
+        run(1.0f);
+        CHECK(b.burning() && w.powerAt(3, gy, 0) > 0.99f);
+        // Brennstoff geht aus: Kessel wird wieder dunkel, der Antrieb steht
+        b.burnTime = 0.05f;  // fast aus (ohne Bedarf brennt der Kessel nur mit Mindestlast weiter)
+        b.slots[0].clear();
+        run(2.0f);
+        CHECK(!b.burning() && w.getBlock(0, gy, 0) == BOILER && w.powerAt(3, gy, 0) == 0.0f);
+    }
+    // Der Kessel ohne Verbraucher bleibt aus, auch mit Brennstoff und Wasser
+    clearMachines();
+    flat();
+    {
+        w.setBlock(0, gy, 0, BOILER);
+        w.setBlock(1, gy, 0, PIPE);
+        Machine& b = *w.findMachine(0, gy, 0);
+        b.slots[0] = {ITEM_COAL, 1, 0};
+        b.water = 1000.0f;
+        run(3.0f);
+        CHECK(!b.burning() && b.slots[0].count == 1 && b.water == 1000.0f);
+        // Motor ohne Kessel liefert nichts
+        w.setBlock(2, gy, 0, MOTOR);
+        w.setBlock(3, gy, 0, makeDrill(0));
+        for (int x = 4; x <= 6; ++x) w.setBlock(x, gy, 0, STONE);
+        // Rohr unterbrochen: Kessel und Motor getrennt
+        w.setBlock(1, gy, 0, AIR);
+        run(3.0f);
+        CHECK(!b.burning() && w.powerAt(3, gy, 0) == 0.0f && w.getBlock(4, gy, 0) == STONE);
+        // Rohr wieder da: laeuft
+        w.setBlock(1, gy, 0, PIPE);
+        run(3.0f);
+        CHECK(b.burning() && w.powerAt(3, gy, 0) > 0.99f);
+    }
+    // Ueberlast: viele Foerderbaender senken die Versorgung, weniger Last stellt sie wieder her
+    {
+        for (int z = 1; z <= 14; ++z) w.setBlock(3, gy, z, makeConveyor(2));
+        run(1.0f);
+        const float loaded = w.powerAt(3, gy, 0);
+        CHECK(loaded > 0.5f && loaded < 0.99f && w.powerAt(3, gy, 14) == loaded);  // 14 Baender (2,8) + Bohrer (2) bei 4 Leistung
+        for (int z = 1; z <= 14; ++z) w.setBlock(3, gy, z, AIR);
+        run(1.0f);
+        CHECK(w.powerAt(3, gy, 0) > 0.99f);
+    }
+    // Bohrer: Obsidian und Grundgestein halten ihn an, Wasser und Pflanzen stehen nicht im Weg, Reichweite
+    {
+        glm::ivec3 t;
+        w.setBlock(4, gy, 0, OBSIDIAN);
+        CHECK(!w.drillTarget(glm::ivec3(3, gy, 0), 0, t));
+        w.setBlock(4, gy, 0, BEDROCK);
+        CHECK(!w.drillTarget(glm::ivec3(3, gy, 0), 0, t));
+        w.setBlock(4, gy, 0, WATER);
+        w.setBlock(5, gy, 0, STONE);
+        CHECK(w.drillTarget(glm::ivec3(3, gy, 0), 0, t) && t == glm::ivec3(5, gy, 0));
+        w.setBlock(4, gy, 0, TORCH);
+        CHECK(w.drillTarget(glm::ivec3(3, gy, 0), 0, t) && t == glm::ivec3(5, gy, 0));  // Fackel steht nicht im Weg
+        w.setBlock(4, gy, 0, CHEST);
+        CHECK(!w.drillTarget(glm::ivec3(3, gy, 0), 0, t));                              // Truhen werden nicht gebohrt
+        w.setBlock(4, gy, 0, PIPE);
+        CHECK(!w.drillTarget(glm::ivec3(3, gy, 0), 0, t));                              // Maschinenteile auch nicht
+        w.setBlock(4, gy, 0, AIR);
+        w.setBlock(5, gy, 0, AIR);
+        w.setBlock(3 + DRILL_RANGE, gy, 0, STONE);
+        CHECK(w.drillTarget(glm::ivec3(3, gy, 0), 0, t) && t == glm::ivec3(3 + DRILL_RANGE, gy, 0));
+        w.setBlock(3 + DRILL_RANGE, gy, 0, AIR);
+        w.setBlock(4 + DRILL_RANGE, gy, 0, STONE);
+        CHECK(!w.drillTarget(glm::ivec3(3, gy, 0), 0, t));                              // ausser Reichweite
+        w.setBlock(4 + DRILL_RANGE, gy, 0, AIR);
+        // alle sechs Richtungen
+        w.setBlock(3, gy + 4, 0, STONE);
+        w.setBlock(3, gy - 1, 0, STONE);
+        w.setBlock(3, gy, 5, STONE);
+        w.setBlock(0, gy, 0, BOILER);
+        CHECK(w.drillTarget(glm::ivec3(3, gy, 0), 4, t) && t == glm::ivec3(3, gy + 4, 0));
+        CHECK(w.drillTarget(glm::ivec3(3, gy, 0), 5, t) && t == glm::ivec3(3, gy - 1, 0));
+        CHECK(w.drillTarget(glm::ivec3(3, gy, 0), 2, t) && t == glm::ivec3(3, gy, 5));
+        CHECK(!w.drillTarget(glm::ivec3(3, gy, 0), 3, t) && !w.drillTarget(glm::ivec3(3, gy, 0), 1, t));  // -Z: nichts da, -X: der Motor (Maschinenteil) haelt an
+        CHECK(!w.drillTarget(glm::ivec3(3, gy, 0), 6, t) && !w.drillTarget(glm::ivec3(3, gy, 0), -1, t));
+        w.setBlock(3, gy + 4, 0, AIR);
+        w.setBlock(3, gy - 1, 0, AIR);
+        w.setBlock(3, gy, 5, AIR);
+    }
+    // Truhe neben dem Bohrer nimmt die Beute auf
+    {
+        w.setBlock(3, gy + 1, 0, CHEST);
+        w.setBlock(4, gy, 0, STONE);
+        w.setBlock(5, gy, 0, STONE);
+        w.takeMachineDrops();
+        run(6.0f);
+        const Chest* c = w.findChest(3, gy + 1, 0);
+        int inChest = 0;
+        if (c)
+            for (const ItemStack& s : c->slots) inChest += s.id == COBBLE ? s.count : 0;
+        CHECK(inChest >= 2 && w.takeMachineDrops().empty());
+    }
+
+    // Destille und Kessel: Kohle -> Teer -> Heizoel, Wassereimer -> destilliertes Wasser und Salz
+    clearMachines();
+    flat();
+    {
+        w.setBlock(0, gy, 0, BOILER);
+        w.setBlock(1, gy, 0, PIPE);
+        w.setBlock(2, gy, 0, STILL);
+        Machine& b = *w.findMachine(0, gy, 0);
+        Machine& still = *w.findMachine(2, gy, 0);
+        b.slots[0] = {ITEM_COAL, 3, 0};
+        b.water = 1500.0f;
+        still.slots[0] = {ITEM_COAL, 2, 0};
+        run(0.5f);
+        CHECK(b.burning() && still.working);
+        run(13.0f);
+        CHECK(still.slots[1].id == ITEM_TAR && still.slots[1].count == 2 && still.slots[0].empty() && still.progress < 0.2f);
+        CHECK(!still.working);  // nichts mehr zu tun: kein Dampfbedarf
+        still.slots[0] = {ITEM_TAR, 1, 0};
+        still.slots[1].clear();
+        run(10.0f);
+        CHECK(still.slots[1].id == ITEM_FUEL_OIL && still.slots[1].count == 1 && still.slots[0].empty());
+        // Holz
+        still.slots[0] = {BIRCH_LOG, 1, 0};
+        still.slots[1].clear();
+        run(8.0f);
+        CHECK(still.slots[1].id == ITEM_TAR && still.slots[1].count == 1);
+        // Wassereimer: zwei Ausgaben
+        still.slots[0] = {ITEM_BUCKET_WATER, 1, 0};
+        still.slots[1].clear();
+        still.slots[2].clear();
+        run(12.0f);
+        CHECK(still.slots[1].id == ITEM_BUCKET_DISTILLED && still.slots[1].count == 1 && still.slots[2].id == ITEM_SALT && still.slots[2].count == 1 && still.slots[0].empty());
+        // Ausgabe voll: die Destille steht
+        still.slots[0] = {ITEM_COAL, 1, 0};
+        still.slots[1] = {ITEM_TAR, 64, 0};
+        const float before = still.progress;
+        run(3.0f);
+        CHECK(still.slots[0].count == 1 && still.slots[1].count == 64 && still.progress == before && !still.working);
+        // unbekannter Stoff wird nicht verarbeitet
+        still.slots[0] = {STONE, 1, 0};
+        still.slots[1].clear();
+        run(2.0f);
+        CHECK(still.slots[0].count == 1 && still.slots[1].empty());
+        CHECK(stillRecipe(ITEM_COAL) && stillRecipe(LOG) && stillRecipe(SPRUCE_LOG) && !stillRecipe(STONE) && !stillRecipe(ITEM_NONE));
+    }
+    // Wassereimer im Kessel: wird in den Tank geleert, destilliertes Wasser erhoeht die Reinheit
+    clearMachines();
+    flat();
+    {
+        w.setBlock(0, gy, 0, BOILER);
+        Machine& b = *w.findMachine(0, gy, 0);
+        b.slots[1] = {ITEM_BUCKET_DISTILLED, 1, 0};
+        run(0.5f);
+        CHECK(b.water == 1000.0f && b.purity == 1.0f && b.slots[1].id == ITEM_BUCKET && b.slots[1].count == 1);
+        b.slots[1] = {ITEM_BUCKET_WATER, 1, 0};
+        run(0.5f);
+        CHECK(b.water == 2000.0f && std::fabs(b.purity - 0.5f) < 1e-4f && b.slots[1].id == ITEM_BUCKET);
+        b.slots[1] = {ITEM_BUCKET_WATER, 1, 0};
+        run(0.5f);
+        CHECK(b.water == 2000.0f && b.slots[1].id == ITEM_BUCKET_WATER);  // Tank voll: der Eimer bleibt voll
+        CHECK(boilerFuelSeconds(ITEM_COAL) > 100.0f && boilerFuelSeconds(ITEM_FUEL_OIL) > boilerFuelSeconds(ITEM_COAL) && boilerFuelSeconds(ITEM_TAR) > 0 &&
+              boilerFuelSeconds(PLANKS) > 0 && boilerFuelSeconds(STONE) == 0.0f);
+    }
+    // Reines Wasser haelt laenger: gleiche Fuellung, gleiche Last, weniger Verbrauch
+    {
+        auto consumption = [&](float purity) {
+            clearMachines();
+            flat();
+            w.setBlock(0, gy, 0, BOILER);
+            w.setBlock(1, gy, 0, PIPE);
+            w.setBlock(2, gy, 0, MOTOR);
+            w.setBlock(3, gy, 0, makeDrill(0));
+            for (int x = 4; x <= 14; ++x) w.setBlock(x, gy, 0, STONE);
+            Machine& b = *w.findMachine(0, gy, 0);
+            b.slots[0] = {ITEM_COAL, 1, 0};
+            b.water = 1000.0f;
+            b.purity = purity;
+            run(10.0f);
+            return 1000.0f - b.water;
+        };
+        const float normal = consumption(0.0f), pure = consumption(1.0f);
+        CHECK(normal > 5.0f && pure > 1.0f && pure < normal * 0.7f);
+    }
+    // Speichern: Maschinen mit Inhalt kommen unveraendert zurueck
+    clearMachines();
+    flat();
+    {
+        w.setBlock(0, gy, 0, BOILER);
+        w.setBlock(2, gy, 0, STILL);
+        w.setBlock(4, gy, 0, makeDrill(2));
+        Machine& b = *w.findMachine(0, gy, 0);
+        b.slots[0] = {ITEM_FUEL_OIL, 7, 0};
+        b.slots[1] = {ITEM_BUCKET_DISTILLED, 1, 0};
+        b.water = 1234.5f;
+        b.purity = 0.25f;
+        b.burnTime = 40.0f;
+        b.burnTotal = 360.0f;
+        Machine& st = *w.findMachine(2, gy, 0);
+        st.slots[0] = {ITEM_TAR, 5, 0};
+        st.slots[2] = {ITEM_SALT, 3, 0};
+        st.progress = 0.4f;
+        std::vector<MachineSave> out;
+        w.exportMachines(out);
+        CHECK(out.size() == 3);
+        std::filesystem::create_directories("olicraft_test_machines");
+        SaveFile sf;
+        sf.seed = 9;
+        sf.machines = out;
+        std::string err;
+        CHECK(writeSaveFile("olicraft_test_machines/m.dat", sf, &err));
+        SaveFile back;
+        CHECK(readSaveFile("olicraft_test_machines/m.dat", back, &err));
+        CHECK(back.machines.size() == 3);
+        World w2(9);
+        w2.setMeshingEnabled(false);
+        w2.loadAround(glm::vec3(0.0f), 3);
+        w2.importMachines(back.machines);
+        const Machine* rb = w2.findMachine(0, gy, 0);
+        const Machine* rs = w2.findMachine(2, gy, 0);
+        CHECK(rb && rb->kind == MachineKind::Boiler && rb->slots[0] == ItemStack({ITEM_FUEL_OIL, 7}) && rb->slots[1].id == ITEM_BUCKET_DISTILLED);
+        CHECK(rb && std::fabs(rb->water - 1234.5f) < 1e-3f && std::fabs(rb->purity - 0.25f) < 1e-4f && rb->burnTime == 40.0f && rb->burnTotal == 360.0f);
+        CHECK(rs && rs->kind == MachineKind::Still && rs->slots[0] == ItemStack({ITEM_TAR, 5}) && rs->slots[2] == ItemStack({ITEM_SALT, 3}) && std::fabs(rs->progress - 0.4f) < 1e-4f);
+        const Machine* rd = w2.findMachine(4, gy, 0);
+        CHECK(rd && rd->kind == MachineKind::Drill && w2.machineCount() == 3);
+        std::filesystem::remove_all("olicraft_test_machines");
+    }
+    // Maschinen in nicht geladenen Chunks ruhen und gehen nicht verloren
+    clearMachines();
+    {
+        std::vector<MachineSave> far;
+        MachineSave ms;
+        ms.x = 4000;
+        ms.y = gy;
+        ms.z = 4000;
+        ms.m.kind = MachineKind::Boiler;
+        ms.m.water = 10.0f;
+        far.push_back(ms);
+        w.importMachines(far);
+        run(1.0f);
+        CHECK(w.findMachine(4000, gy, 4000) && w.findMachine(4000, gy, 4000)->water == 10.0f);
+        w.removeMachine(4000, gy, 4000, nullptr);
+    }
+    CHECK(w.machineCount() == 0);
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -4327,6 +4641,7 @@ int main() {
     testBuckets();
     testSigns();
     testSteamBlocks();
+    testSteamSimulation();
     testChurch();
     testItemIcons();
     testStairCorners();
