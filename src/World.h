@@ -113,7 +113,8 @@ public:
     void exportChests(std::vector<ChestSave>& out) const;
     void importChests(const std::vector<ChestSave>& in);
 
-    RayHit raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist) const;
+    // liquids = true: auch Wasser und Lava werden getroffen (fuer Eimer)
+    RayHit raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist, bool liquids = false) const;
 
     const std::unordered_map<ChunkKey, std::unique_ptr<Chunk>, ChunkKeyHash>& chunks() const { return chunks_; }
     const Chunk* findChunk(int cx, int cz) const { return find(cx, cz); }

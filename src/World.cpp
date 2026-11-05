@@ -701,7 +701,7 @@ glm::vec3 World::findSpawn() {
     return glm::vec3(0.5f, static_cast<float>(SEA_LEVEL + 10), 0.5f);
 }
 
-RayHit World::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist) const {
+RayHit World::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDist, bool liquids) const {
     RayHit result;
     glm::vec3 d = glm::normalize(dir);
     glm::ivec3 cell(static_cast<int>(std::floor(origin.x)), static_cast<int>(std::floor(origin.y)),
@@ -722,7 +722,7 @@ RayHit World::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDi
     float t = 0.0f, entry = 0.0f;
     for (int i = 0; i < 256; ++i) {
         BlockId b = getBlock(cell.x, cell.y, cell.z);
-        if (b != AIR && !blockInfo(b).liquid) {
+        if (b != AIR && (liquids || !blockInfo(b).liquid)) {
             if (blockInfo(b).shape == SH_FULL) {
                 result.hit = true;
                 result.block = cell;

@@ -142,6 +142,7 @@ private:
     void updateSurvival(float dt);
     void breakBlock(const glm::ivec3& p);
     void placeBlockOrUse();
+    void useBucket();
     void damagePlayer(int amount, const glm::vec3& knockback);
     void die();
     void respawn();

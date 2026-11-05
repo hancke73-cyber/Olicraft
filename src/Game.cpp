@@ -205,6 +205,7 @@ bool Game::init() {
     if (glfwRawMouseMotionSupported()) glfwSetInputMode(window_, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
     if (opt_.demo == "inv") {
         if (const char* tab = std::getenv("OLICRAFT_TAB")) setCreativeTab(std::atoi(tab));  // Test: Reiter des Kreativ-Inventars
+        if (const char* sc = std::getenv("OLICRAFT_SCROLL")) scrollPalette(std::atoi(sc));  // Test: Seite des Auswahlfelds
         openInventory();
     }
     if (opt_.demo == "armor" || opt_.demo == "armorinv") {
@@ -1771,6 +1772,10 @@ void Game::placeBlockOrUse() {
         }
     }
     if (sel.empty()) return;
+    if (sel.id == ITEM_BUCKET || sel.id == ITEM_BUCKET_WATER || sel.id == ITEM_BUCKET_LAVA) {
+        useBucket();
+        return;
+    }
 
     // Ruestung anlegen
     if (isArmorItem(sel.id)) {
@@ -1956,6 +1961,45 @@ void Game::placeBlockOrUse() {
         placeTimer_ = 0.2f;
         playSound(blockSound(blockMaterial(id)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f), 0.8f, 0.85f);
         if (!creative_) inventory_.take(slot_, 1);
+    }
+}
+
+// Eimer: leer nimmt eine Wasser- oder Lavaquelle auf, gefuellt setzt eine Quelle an die angeklickte Stelle
+void Game::useBucket() {
+    ItemStack& sel = inventory_.slots[slot_];
+    const RayHit h = world_->raycast(player_.eyePos(), player_.front(), REACH, true);
+    if (!h.hit) return;
+    ItemId result = ITEM_NONE;
+    glm::vec3 fx(0.0f);
+    if (sel.id == ITEM_BUCKET) {
+        const BlockId b = world_->getBlock(h.block.x, h.block.y, h.block.z);
+        if (b != WATER && b != LAVA) return;  // nur Quellen, fliessendes Wasser bleibt
+        world_->setBlock(h.block.x, h.block.y, h.block.z, AIR);
+        result = b == WATER ? ITEM_BUCKET_WATER : ITEM_BUCKET_LAVA;
+        fx = glm::vec3(h.block) + glm::vec3(0.5f);
+        playSound(b == WATER ? SoundId::WaterSplash : SoundId::LavaPop, fx, 0.7f, 1.2f);
+    } else {
+        // Zelle: der getroffene Block selbst, wenn man ihn ersetzen darf (Fluessigkeit, Pflanze), sonst davor
+        const BlockId hb = world_->getBlock(h.block.x, h.block.y, h.block.z);
+        glm::ivec3 p = h.block;
+        if (!(isLiquid(hb) || isPlant(hb))) p = h.block + h.normal;
+        const BlockId cur = world_->getBlock(p.x, p.y, p.z);
+        if (p.y < 1 || p.y >= CHUNK_H || !(cur == AIR || isLiquid(cur) || isPlant(cur))) return;
+        const BlockId put = sel.id == ITEM_BUCKET_WATER ? WATER : LAVA;
+        if (cur == put) return;  // dort ist schon eine Quelle
+        world_->setBlock(p.x, p.y, p.z, put);
+        result = ITEM_BUCKET;
+        fx = glm::vec3(p) + glm::vec3(0.5f);
+        playSound(put == WATER ? SoundId::WaterSplash : SoundId::LavaPop, fx, 0.8f, 0.9f);
+        if (settings_.particles && put == WATER) particles_.emitSplash(fx, 10, 2.0f);
+    }
+    placeTimer_ = 0.3f;
+    if (sel.count <= 1) {
+        sel = {result, 1, 0};
+    } else {
+        sel.count -= 1;
+        const int left = inventory_.add(result, 1);
+        if (left > 0) entities_.spawnItem({result, left}, player_.eyePos() + player_.front() * 0.5f, player_.front() * 2.0f, 0.3f);
     }
 }
 
@@ -3715,6 +3759,99 @@ int Game::selfTest() {
         closeInventory();
         for (ItemStack& a : inventory_.armor) a.clear();
         creative_ = false;
+    }
+
+    // 27. Eimer: Wasser und Lava aufnehmen und setzen
+    {
+        setPaused(false);
+        creative_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        entities_.clear();
+        for (int x = 18; x <= 24; ++x)
+            for (int z = -6; z <= 4; ++z) {
+                for (int y = gy; y <= gy + 5; ++y) world_->setBlock(x, y, z, AIR);
+                world_->setBlock(x, gy - 1, z, STONE);
+            }
+        world_->setBlock(20, gy, 0, WATER);
+        world_->setBlock(22, gy, 0, LAVA);
+        player_.pos = glm::vec3(20.5f, static_cast<float>(gy), -2.5f);
+        player_.vel = glm::vec3(0.0f);
+        player_.yaw = 90.0f;  // nach +z
+        auto lookAt = [&](float tx, float ty, float tz) {
+            const glm::vec3 d = glm::normalize(glm::vec3(tx, ty, tz) - player_.eyePos());
+            player_.yaw = glm::degrees(std::atan2(d.z, d.x));
+            player_.pitch = glm::degrees(std::asin(d.y));
+        };
+        inventory_.slots[0] = {ITEM_BUCKET, 3};
+        slot_ = 0;
+        // leerer Eimer auf Boden oder Luft tut nichts
+        lookAt(20.5f, gy + 0.0f, -0.5f);
+        placeBlockOrUse();
+        SCHECK(inventory_.slots[0] == ItemStack({ITEM_BUCKET, 3}));
+        // Wasserquelle aufnehmen: ein Eimer wird zum Wassereimer, die anderen bleiben
+        lookAt(20.5f, gy + 0.5f, 0.5f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(20, gy, 0) == AIR);
+        SCHECK(inventory_.slots[0] == ItemStack({ITEM_BUCKET, 2}) && inventory_.count(ITEM_BUCKET_WATER) == 1);
+        // Lava aufnehmen
+        lookAt(22.5f, gy + 0.5f, 0.5f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(22, gy, 0) == AIR && inventory_.count(ITEM_BUCKET_LAVA) == 1 && inventory_.count(ITEM_BUCKET) == 1);
+        // Wasser setzen: auf den Boden vor dem Spieler; der Eimer ist danach leer
+        int wslot = -1, lslot = -1;
+        for (int i = 0; i < Inventory::SIZE; ++i) {
+            if (inventory_.slots[i].id == ITEM_BUCKET_WATER) wslot = i;
+            if (inventory_.slots[i].id == ITEM_BUCKET_LAVA) lslot = i;
+        }
+        SCHECK(wslot >= 0 && lslot >= 0);
+        slot_ = std::min(wslot, Inventory::HOTBAR - 1);
+        if (wslot >= Inventory::HOTBAR) std::swap(inventory_.slots[Inventory::HOTBAR - 1], inventory_.slots[wslot]);
+        slot_ = wslot >= Inventory::HOTBAR ? Inventory::HOTBAR - 1 : wslot;
+        lookAt(19.5f, gy - 1.0f + 1.0f, -1.5f);  // Boden bei (19, gy-1, -2)
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(19, gy, -2) == WATER || world_->getBlock(19, gy, -1) == WATER || world_->getBlock(19, gy, -3) == WATER);
+        SCHECK(inventory_.count(ITEM_BUCKET_WATER) == 0 && inventory_.count(ITEM_BUCKET) == 2);
+        // das gesetzte Wasser fliesst
+        for (int i = 0; i < 40; ++i) world_->tick(0.25f);
+        int waterCells = 0;
+        for (int x = 17; x <= 21; ++x)
+            for (int z = -4; z <= 0; ++z) waterCells += isWater(world_->getBlock(x, gy, z)) ? 1 : 0;
+        SCHECK(waterCells >= 3);
+        // Lava setzen: Quelle entsteht, Eimer leer
+        for (int i = 0; i < Inventory::SIZE; ++i)
+            if (inventory_.slots[i].id == ITEM_BUCKET_LAVA) {
+                std::swap(inventory_.slots[0], inventory_.slots[i]);
+                break;
+            }
+        slot_ = 0;
+        SCHECK(inventory_.slots[0].id == ITEM_BUCKET_LAVA);
+        player_.pos = glm::vec3(23.5f, static_cast<float>(gy), -5.5f);  // an trockener Stelle, abseits vom gesetzten Wasser
+        player_.vel = glm::vec3(0.0f);
+        lookAt(23.5f, static_cast<float>(gy), -3.5f);
+        placeBlockOrUse();
+        int lavaCells = 0;
+        for (int x = 22; x <= 24; ++x)
+            for (int z = -5; z <= -2; ++z) lavaCells += isLava(world_->getBlock(x, gy, z)) ? 1 : 0;
+        SCHECK(lavaCells >= 1 && inventory_.count(ITEM_BUCKET_LAVA) == 0 && inventory_.count(ITEM_BUCKET) == 3);
+        // Fliessendes Wasser nimmt der Eimer nicht auf
+        const glm::ivec3 flow = [&]() {
+            for (int x = 17; x <= 21; ++x)
+                for (int z = -6; z <= 0; ++z)
+                    if (world_->getBlock(x, gy, z) >= WATER_1 && world_->getBlock(x, gy, z) <= WATER_7) return glm::ivec3(x, gy, z);
+            return glm::ivec3(0, -1, 0);
+        }();
+        if (flow.y >= 0) {
+            slot_ = 0;
+            inventory_.slots[0] = {ITEM_BUCKET, 3};
+            player_.pos = glm::vec3(flow.x + 0.5f, static_cast<float>(gy), flow.z - 2.5f);
+            player_.vel = glm::vec3(0.0f);
+            lookAt(flow.x + 0.5f, gy + 0.3f, flow.z + 0.5f);
+            const BlockId before = world_->getBlock(flow.x, flow.y, flow.z);
+            placeBlockOrUse();
+            SCHECK(world_->getBlock(flow.x, flow.y, flow.z) == before && inventory_.slots[0] == ItemStack({ITEM_BUCKET, 3}));
+        }
+        inventory_.clear();
     }
 
 #undef SCHECK

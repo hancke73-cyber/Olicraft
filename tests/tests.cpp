@@ -3780,6 +3780,50 @@ static void testWedges() {
     CHECK(inTab == 5);
 }
 
+static void testBuckets() {
+    CHECK(ITEM_BUCKET == ITEM_BASE + 65 && ITEM_LAST == ITEM_BUCKET_LAVA && ITEM_BUCKET_WATER == ITEM_BUCKET + 1);
+    for (ItemId id : {ITEM_BUCKET, ITEM_BUCKET_WATER, ITEM_BUCKET_LAVA}) {
+        CHECK(itemValid(id) && !itemInfo(id).isBlock && std::string(itemInfo(id).name).size() > 3);
+    }
+    CHECK(std::string(itemInfo(ITEM_BUCKET).name) == "Eimer" && std::string(itemInfo(ITEM_BUCKET_WATER).name) == "Wassereimer" && std::string(itemInfo(ITEM_BUCKET_LAVA).name) == "Lavaeimer");
+    CHECK(itemInfo(ITEM_BUCKET).maxStack == 16 && itemInfo(ITEM_BUCKET_WATER).maxStack == 1 && itemInfo(ITEM_BUCKET_LAVA).maxStack == 1);
+    CHECK(itemInfo(ITEM_BUCKET).iconSide == TILE_BUCKET && itemInfo(ITEM_BUCKET_WATER).iconSide == TILE_BUCKET_WATER && itemInfo(ITEM_BUCKET_LAVA).iconSide == TILE_BUCKET_LAVA);
+    CHECK(!isArmorItem(ITEM_BUCKET) && itemInfo(ITEM_BUCKET).armorSlot == -1 && itemInfo(makeArmorItem(3, 3)).armorSlot == 3);  // Rüstung vor den Eimern bleibt unveraendert
+    std::set<ItemId> inTabs;
+    for (int t = 0; t < CREATIVE_TAB_COUNT; ++t)
+        for (ItemId id : creativeTabItems(t)) inTabs.insert(id);
+    CHECK(inTabs.count(ITEM_BUCKET) && inTabs.count(ITEM_BUCKET_WATER) && inTabs.count(ITEM_BUCKET_LAVA));
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (auto& c : cells) g[c.first] = {c.second, 1};
+        return g;
+    };
+    CHECK(matchRecipe(grid(3, {{0, ITEM_IRON_INGOT}, {2, ITEM_IRON_INGOT}, {4, ITEM_IRON_INGOT}}).data(), 3) == ItemStack({ITEM_BUCKET, 1}));
+    CHECK(matchRecipe(grid(3, {{3, ITEM_IRON_INGOT}, {5, ITEM_IRON_INGOT}, {7, ITEM_IRON_INGOT}}).data(), 3) == ItemStack({ITEM_BUCKET, 1}));  // anderer Platz im Raster
+    CHECK(matchRecipe(grid(3, {{0, ITEM_IRON_INGOT}, {2, ITEM_IRON_INGOT}, {3, ITEM_IRON_INGOT}}).data(), 3).empty());
+    // Strahl: Wasser wird nur mit liquids = true getroffen
+    World w(6);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    const int gy = 100;
+    for (int x = -3; x <= 3; ++x)
+        for (int z = -3; z <= 3; ++z) {
+            for (int y = gy; y < gy + 5; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    w.setBlock(1, gy, 1, WATER);
+    w.setBlock(2, gy, 2, LAVA);
+    const glm::vec3 from(1.5f, gy + 3.0f, 1.5f);
+    const RayHit plain = w.raycast(from, glm::vec3(0, -1, 0), 6.0f);
+    const RayHit liq = w.raycast(from, glm::vec3(0, -1, 0), 6.0f, true);
+    CHECK(plain.hit && plain.block == glm::ivec3(1, gy - 1, 1) && plain.normal == glm::ivec3(0, 1, 0));
+    CHECK(liq.hit && liq.block == glm::ivec3(1, gy, 1) && w.getBlock(liq.block.x, liq.block.y, liq.block.z) == WATER);
+    const RayHit lava = w.raycast(glm::vec3(2.5f, gy + 3.0f, 2.5f), glm::vec3(0, -1, 0), 6.0f, true);
+    CHECK(lava.hit && lava.block == glm::ivec3(2, gy, 2));
+    const RayHit none = w.raycast(glm::vec3(-2.5f, gy + 3.0f, -2.5f), glm::vec3(0, 1, 0), 6.0f, true);
+    CHECK(!none.hit);
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -4018,6 +4062,7 @@ int main() {
     testParticlesAndGraphics();
     testWorlds();
     testWedges();
+    testBuckets();
     testChurch();
     testItemIcons();
     testStairCorners();

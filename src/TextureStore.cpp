@@ -162,6 +162,10 @@ const TileName TILE_NAMES[TILE_COUNT] = {
     {"armor_diamond_chest", "Diamantbrustpanzer"},
     {"armor_diamond_legs", "Diamanthose"},
     {"armor_diamond_boots", "Diamantstiefel"},
+    {"bucket", "Eimer"},
+    {"bucket_water", "Wassereimer"},
+    {"bucket_lava", "Lavaeimer"},
+    {"sign", "Schild"},
 };
 static_assert(sizeof(TILE_NAMES) / sizeof(TILE_NAMES[0]) == TILE_COUNT, "Kachelnamen passen nicht zur Kachelliste");
 

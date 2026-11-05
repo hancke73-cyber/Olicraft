@@ -1114,6 +1114,46 @@ void drawLadder(TileCanvas& c) {
         }
 }
 
+// Eimer aus Eisen; fill: 0 leer, 1 Wasser, 2 Lava
+void drawBucket(TileCanvas& c, int tile, int fill) {
+    clearTile(c);
+    for (int y = 5; y <= 14; ++y) {
+        const int x0 = 3 + (y - 5) / 5, x1 = 12 - (y - 5) / 5;
+        for (int x = x0; x <= x1; ++x) {
+            const int d = static_cast<int>((rnd(x, y, tile) - 0.5f) * 14);
+            const bool edge = x == x0 || x == x1 || y == 14;
+            put(c, x, 15 - y, shade(edge ? Rgba{120, 122, 130, 255} : Rgba{176, 178, 188, 255}, d + (x < 7 ? 10 : -6)));
+        }
+    }
+    // Henkel: Buegel ueber dem Rand
+    const Rgba hc{168, 170, 180, 255};
+    for (int x = 5; x <= 10; ++x) put(c, x, 13, hc);
+    for (int x : {4, 11}) {
+        put(c, x, 12, hc);
+        put(c, x, 11, hc);
+    }
+    if (fill != 0) {
+        const Rgba col = fill == 1 ? Rgba{44, 104, 214, 255} : Rgba{244, 120, 20, 255};
+        for (int y = 5; y <= 6; ++y)
+            for (int x = 4; x <= 11; ++x) {
+                const int d = static_cast<int>((rnd(x, y, tile + 7) - 0.5f) * 26);
+                put(c, x, 15 - y, shade(col, d));
+            }
+    }
+}
+
+// Schild: Brett aus Planken mit dunklem Rand und Textzeilen
+void drawSignTile(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int d = static_cast<int>((rnd(x, y, TILE_SIGN) - 0.5f) * 12);
+            Rgba col = shade({184, 148, 92, 255}, d);
+            if (x == 0 || x == 15 || y == 0 || y == 15) col = shade({120, 88, 48, 255}, d);
+            else if ((y == 4 || y == 7 || y == 10) && x >= 3 && x <= 12) col = shade({70, 50, 28, 255}, d / 2);
+            c.set(x, y, col);
+        }
+}
+
 void drawBedTop(TileCanvas& c, int tile, bool head) {
     for (int y = 0; y < TILE_PX; ++y)
         for (int x = 0; x < TILE_PX; ++x) {
@@ -1314,6 +1354,13 @@ std::vector<uint8_t> generateAtlasPixels() {
     }
     make(TILE_FARMLAND, drawFarmland);
     make(TILE_LADDER, drawLadder);
+    make(TILE_SIGN, drawSignTile);
+    {
+        TileCanvas b0(px, TILE_BUCKET), b1(px, TILE_BUCKET_WATER), b2(px, TILE_BUCKET_LAVA);
+        drawBucket(b0, TILE_BUCKET, 0);
+        drawBucket(b1, TILE_BUCKET_WATER, 1);
+        drawBucket(b2, TILE_BUCKET_LAVA, 2);
+    }
     make(TILE_LEATHER, drawLeatherItem);
     {
         const Rgba armorCols[4] = {{160, 104, 62, 255}, {208, 208, 214, 255}, {248, 212, 60, 255}, {84, 224, 230, 255}};

@@ -106,6 +106,7 @@ std::vector<Recipe> buildRecipes() {
         }
     }
     v.push_back(make({"S S", "SSS", "S S"}, {{'S', ITEM_STICK}}, {LADDER_BASE, 3}));
+    v.push_back(make({"I I", " I "}, {{'I', ITEM_IRON_INGOT}}, {ITEM_BUCKET, 1}));
     // Landwirtschaft
     v.push_back(make({"WWW"}, {{'W', ITEM_WHEAT}}, {ITEM_BREAD, 1}));
     v.push_back(make({"W"}, {{'W', ITEM_WHEAT}}, {ITEM_SEEDS, 1}));

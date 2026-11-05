@@ -64,7 +64,11 @@ constexpr ItemId ITEM_DOOR_IRON = ITEM_BASE + 47;
 constexpr ItemId ITEM_LEATHER = ITEM_BASE + 48;
 // Ruestungen: ITEM_ARMOR_BASE + material*4 + Teil; Material 0 Leder, 1 Eisen, 2 Gold, 3 Diamant; Teil 0 Helm, 1 Brustpanzer, 2 Hose, 3 Stiefel
 constexpr ItemId ITEM_ARMOR_BASE = ITEM_BASE + 49;
-constexpr ItemId ITEM_LAST = ITEM_BASE + 64;
+// Eimer: leer (bis 16), mit Wasser oder Lava (einzeln)
+constexpr ItemId ITEM_BUCKET = ITEM_BASE + 65;
+constexpr ItemId ITEM_BUCKET_WATER = ITEM_BASE + 66;
+constexpr ItemId ITEM_BUCKET_LAVA = ITEM_BASE + 67;
+constexpr ItemId ITEM_LAST = ITEM_BASE + 67;
 inline bool isArmorItem(ItemId id) { return id >= ITEM_ARMOR_BASE && id < ITEM_ARMOR_BASE + 16; }
 inline int armorSlotOf(ItemId id) { return (id - ITEM_ARMOR_BASE) % 4; }
 inline int armorMaterialOf(ItemId id) { return (id - ITEM_ARMOR_BASE) / 4; }
