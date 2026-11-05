@@ -528,11 +528,10 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
                 b.text(tx + pt * 0.5f, L.furnaceSlotPos(1).y + pt * 0.5f - 3.5f * s, s, "Brennstoff", dim);
             } else {
                 b.text(tx, L.furnaceSlotPos(0).y + pt * 0.5f - 3.5f * s, s, "Eingabe", dim);
-                b.text(L.craftTop.x + 4.2f * pt, L.furnaceSlotPos(1).y + pt * 0.5f - 3.5f * s, s, "Nebenprodukt", dim);
-                b.text(L.craftTop.x + 4.2f * pt, L.resultPos.y + pt * 0.5f - 3.5f * s, s, "Ergebnis", dim);
+                b.text(tx, L.furnaceSlotPos(1).y + pt * 0.5f - 3.5f * s, s, "Nebenprodukt", dim);
             }
             // Anzeigen: Tank (blau, bei reinem Wasser heller), Dampf (grau)
-            const float gx = L.craftTop.x + (boiler ? 3.3f : 3.3f) * pt, gy0 = L.craftTop.y, gw = 0.5f * pt, gh = (boiler ? 3.0f : 3.0f) * pt;
+            const float gx = boiler ? L.craftTop.x + 5.3f * pt : L.resultPos.x + 1.5f * pt, gy0 = L.craftTop.y, gw = 0.5f * pt, gh = 2.8f * pt;
             auto bar = [&](float x, float fill, glm::vec4 col, const char* label) {
                 b.rect(x - s, gy0 - s, x + gw + s, gy0 + gh + s, glm::vec4(0.02f, 0.02f, 0.03f, 1.0f));
                 b.rect(x, gy0, x + gw, gy0 + gh, glm::vec4(0.12f, 0.12f, 0.15f, 1.0f));
@@ -543,9 +542,9 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
             if (boiler) {
                 const glm::vec4 water = glm::mix(glm::vec4(0.15f, 0.38f, 0.85f, 1.0f), glm::vec4(0.55f, 0.92f, 0.95f, 1.0f), st.machinePurity);
                 bar(gx, st.machineWater, water, "Tank");
-                bar(gx + 1.1f * pt, st.machineLoad, glm::vec4(0.88f, 0.88f, 0.92f, 1.0f), "Last");
+                bar(gx + 1.3f * pt, st.machineLoad, glm::vec4(0.88f, 0.88f, 0.92f, 1.0f), "Last");
             } else {
-                bar(gx - 0.2f * pt, st.machineSteam, glm::vec4(0.82f, 0.84f, 0.9f, 1.0f), "Dampf");
+                bar(gx, st.machineSteam, glm::vec4(0.82f, 0.84f, 0.9f, 1.0f), "Dampf");
             }
         }
         // Flamme zwischen Eingabe und Brennstoff

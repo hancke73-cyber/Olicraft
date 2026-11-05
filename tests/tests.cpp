@@ -4086,6 +4086,80 @@ static void testSteamBlocks() {
     CHECK(std::string(tileName(TILE_BOILER).name) == "Dampfkessel" && std::string(tileName(TILE_TAR).name) == "Teer");
 }
 
+static void testMechFlow() {
+    World w(9);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 3);
+    const int gy = 100;
+    for (int x = -3; x <= 12; ++x)
+        for (int z = -3; z <= 6; ++z) {
+            for (int y = gy; y < gy + 12; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    std::vector<MachineSave> none;
+    w.importMachines(none);
+    // Kessel, Rohr, Motor, daran Foerderband (+x) und Lift (z-Richtung)
+    w.setBlock(0, gy, 0, BOILER);
+    w.setBlock(1, gy, 0, PIPE);
+    w.setBlock(2, gy, 0, MOTOR);
+    w.setBlock(3, gy, 0, makeConveyor(0));
+    w.setBlock(4, gy, 0, makeConveyor(0));
+    w.setBlock(2, gy, 1, LIFT);
+    for (int y = gy + 1; y <= gy + 5; ++y) w.setBlock(2, y, 1, LIFT);
+    // ohne Feuer: kein Strom, nichts bewegt sich
+    World::MechFlow f0 = w.mechFlow(glm::vec3(3.5f, gy + 0.25f, 0.5f));
+    CHECK(f0.belt == glm::vec3(0.0f) && f0.lift == 0.0f);
+    CHECK(w.mechFlow(glm::vec3(2.5f, gy + 0.2f, 1.5f)).inLift);
+    Machine& b = *w.findMachine(0, gy, 0);
+    b.slots[0] = {ITEM_COAL, 3, 0};
+    b.water = 800.0f;
+    for (int i = 0; i < 20; ++i) w.tick(0.25f);
+    const World::MechFlow f1 = w.mechFlow(glm::vec3(3.5f, gy + 0.25f, 0.5f));
+    CHECK(f1.belt.x > 0.5f && f1.belt.z == 0.0f && f1.lift == 0.0f);
+    CHECK(w.mechFlow(glm::vec3(5.5f, gy + 0.25f, 0.5f)).belt == glm::vec3(0.0f));  // neben dem Band
+    CHECK(w.mechFlow(glm::vec3(3.5f, gy + 1.5f, 0.5f)).belt == glm::vec3(0.0f));   // hoch ueber dem Band
+    const World::MechFlow f2 = w.mechFlow(glm::vec3(2.5f, gy + 0.2f, 1.5f));
+    CHECK(f2.inLift && f2.lift > 1.0f);
+    CHECK(w.mechFlow(glm::vec3(2.5f, gy + 7.0f, 1.5f)).lift == 0.0f);  // ueber dem Schacht
+
+    // Spieler: das Band traegt ihn, der Lift hebt ihn
+    Player pl;
+    pl.pos = glm::vec3(3.5f, gy + 0.3f, 0.5f);
+    pl.vel = glm::vec3(0.0f);
+    MoveInput none2;
+    for (int i = 0; i < 30; ++i) {
+        w.tick(0.05f);
+        pl.update(0.05f, none2, w);
+    }
+    CHECK(pl.pos.x > 4.2f);
+    pl.pos = glm::vec3(2.5f, gy + 0.05f, 1.5f);
+    pl.vel = glm::vec3(0.0f);
+    for (int i = 0; i < 20; ++i) {
+        w.tick(0.05f);
+        pl.update(0.05f, none2, w);
+    }
+    CHECK(pl.pos.y > gy + 1.5f);
+    MoveInput sneak;
+    sneak.sneak = true;
+    const float before = pl.pos.y;
+    for (int i = 0; i < 10; ++i) {
+        w.tick(0.05f);
+        pl.update(0.05f, sneak, w);
+    }
+    CHECK(pl.pos.y < before);
+    // Gegenstaende auf dem Band wandern mit
+    EntityManager em;
+    em.spawnItem({STONE, 1}, glm::vec3(3.5f, gy + 0.5f, 0.5f), glm::vec3(0.0f), 99.0f);
+    Inventory inv;
+    EntityEnv env;
+    env.allowSpawns = false;
+    for (int i = 0; i < 40; ++i) {
+        w.tick(0.05f);
+        em.update(0.05f, w, pl, inv, env);
+    }
+    CHECK(!em.items().empty() && em.items()[0].pos.x > 4.0f);
+}
+
 static void testSteamSimulation() {
     World w(9);
     w.setMeshingEnabled(false);
@@ -4642,6 +4716,7 @@ int main() {
     testSigns();
     testSteamBlocks();
     testSteamSimulation();
+    testMechFlow();
     testChurch();
     testItemIcons();
     testStairCorners();

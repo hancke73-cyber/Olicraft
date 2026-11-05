@@ -123,6 +123,13 @@ public:
     // Mechanische Versorgung 0..1 am Block (Welle, Motor, Bohrer, Foerderband, Lift); 0 ohne laufenden Motor
     float powerAt(int x, int y, int z) const;
     // Naechster abbaubarer Block vor einem Bohrer an pos in Richtung facing (0 +X, 1 -X, 2 +Z, 3 -Z, 4 oben, 5 unten), sonst false
+    // Foerderband unter den Fuessen und Dampflift am Koerper: Bandgeschwindigkeit (x, z) und Liftgeschwindigkeit (y, 0 = kein Lift)
+    struct MechFlow {
+        glm::vec3 belt{0.0f};
+        float lift = 0.0f;
+        bool inLift = false;  // im Liftschacht (auch ohne Strom)
+    };
+    MechFlow mechFlow(const glm::vec3& feet) const;
     bool drillTarget(const glm::ivec3& pos, int facing, glm::ivec3& out) const;
     std::vector<MachineDrop> takeMachineDrops() {
         std::vector<MachineDrop> out;

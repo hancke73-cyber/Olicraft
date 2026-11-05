@@ -94,7 +94,14 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
         };
         onLadder = !flying && (ladderAt(pos.y + 0.1f) || ladderAt(pos.y + 0.9f) || ladderAt(pos.y + 1.5f));
     }
-    if (onLadder) {
+    const World::MechFlow flow = flying ? World::MechFlow{} : world.mechFlow(pos);
+    const bool inLift = flow.inLift && flow.lift > 0.0f;
+    if (inLift) {
+        // Dampflift: traegt nach oben, Schleichen faehrt nach unten, Vorwaerts oder Sprung steigt aus
+        vel.y = in.sneak ? -2.5f : flow.lift;
+        vel.x = std::max(-1.6f, std::min(1.6f, vel.x));
+        vel.z = std::max(-1.6f, std::min(1.6f, vel.z));
+    } else if (onLadder) {
         vel.x = std::max(-1.6f, std::min(1.6f, vel.x));
         vel.z = std::max(-1.6f, std::min(1.6f, vel.z));
         vel.y = (in.jump || in.forward > 0.1f) ? 3.2f : (in.sneak ? 0.0f : -2.4f);
@@ -131,12 +138,12 @@ void Player::update(float dt, const MoveInput& in, const World& world) {
     const float startY = pos.y;
     onGround = false;
     headInWater = world.inWaterAt(eyePos());  // Lava ertraenkt nicht, sie verbrennt
-    moveAxis(0, vel.x * dt, world);
-    moveAxis(2, vel.z * dt, world);
+    moveAxis(0, (vel.x + flow.belt.x) * dt, world);
+    moveAxis(2, (vel.z + flow.belt.z) * dt, world);
     moveAxis(1, vel.y * dt, world);
 
     if (flying && onGround) flying = false;  // Landen beendet den Flug
-    if (onLadder) peakY_ = pos.y;             // an der Leiter gibt es keinen Fallschaden
+    if (onLadder || inLift) peakY_ = pos.y;             // an der Leiter gibt es keinen Fallschaden
 
     // Fallhoehe fuer Fallschaden
     if (onGround) {

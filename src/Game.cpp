@@ -346,7 +346,8 @@ void Game::updateParticles(float dt) {
                 const int lx = i % CHUNK_W, lz = (i / CHUNK_W) % CHUNK_W, y = i / (CHUNK_W * CHUNK_W);
                 const glm::ivec3 p(cc.first * CHUNK_W + lx, y, cc.second * CHUNK_W + lz);
                 if (isTorch(b)) list.push_back({p, 0});
-                else if (b == FURNACE_LIT) list.push_back({p, 2});
+                else if (b == FURNACE_LIT || b == BOILER_LIT) list.push_back({p, 2});
+                else if (b == MOTOR || b == STILL) list.push_back({p, 3});
                 else if (b == LAVA && y + 1 < CHUNK_H && ch->blocks[static_cast<size_t>(i + CHUNK_W * CHUNK_W)] == AIR && (hash3(p.x, p.y, p.z, 7u) & 3u) == 0u) list.push_back({p, 1});
             }
             emitters_[(static_cast<int64_t>(cc.first) << 32) ^ static_cast<uint32_t>(cc.second)] = std::move(list);
@@ -371,6 +372,9 @@ void Game::updateParticles(float dt) {
                 if (r > 1.0f - dt * 1.2f) particles_.emitSmoke(top + glm::vec3(0.0f, 0.05f, 0.0f));
             } else if (e.kind == 2) {
                 if (r < dt * 2.5f) particles_.emitSmoke(glm::vec3(e.pos.x + 0.5f, e.pos.y + 1.05f, e.pos.z + 0.5f));
+            } else if (e.kind == 3) {
+                const Machine* m = world_->findMachine(e.pos.x, e.pos.y, e.pos.z);
+                if (m && m->working && r < dt * 4.0f) particles_.emitPuff(glm::vec3(e.pos.x + 0.5f, e.pos.y + 1.05f, e.pos.z + 0.5f), 1);
             } else if (e.kind == 1) {
                 if (r < dt * 0.6f) particles_.emitEmber(glm::vec3(e.pos.x + 0.5f, e.pos.y + 0.9f, e.pos.z + 0.5f));
             }
@@ -2583,6 +2587,18 @@ void Game::applyDemo() {
                 player_.yaw = yaw;
                 player_.pitch = pitch;
             }
+        }
+        if (const char* mach = std::getenv("OLICRAFT_MACHINE")) {  // Test: Maschinenfenster (b Kessel, d Destille)
+            const bool still = mach[0] == 'd';
+            const glm::ivec3 mp = still ? glm::ivec3(ox + 52, gy + 1, oz) : glm::ivec3(ox + 51, gy + 1, oz);
+            if (Machine* m = world_->findMachine(mp.x, mp.y, mp.z)) {
+                m->water = 1300.0f;
+                m->slots[0] = {ITEM_COAL, 5, 0};
+                m->slots[1] = {still ? ITEM_TAR : ITEM_BUCKET_WATER, still ? 3 : 1, 0};
+                m->steam = 0.6f;
+                m->load = 0.4f;
+            }
+            openMachine(mp);
         }
         if (std::getenv("OLICRAFT_SIGN")) openSign(glm::ivec3(ox + 40, gy + 1, oz));  // Test: Schildfenster
     } else if (opt_.demo == "water") {

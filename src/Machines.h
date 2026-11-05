@@ -41,6 +41,8 @@ constexpr float DRILL_POWER = 2.0f;
 constexpr float CONVEYOR_POWER = 0.2f;
 constexpr float LIFT_POWER = 0.3f;
 constexpr int DRILL_RANGE = 16;
+constexpr float BELT_SPEED = 1.6f;   // Bloecke je Sekunde bei voller Versorgung
+constexpr float LIFT_SPEED = 3.0f;   // Steiggeschwindigkeit im Dampflift
 
 MachineKind machineKindOf(BlockId id);  // nur fuer isMachineBlock(id)
 // Brenndauer im Kessel in Sekunden bei voller Last (0: kein Brennstoff)

@@ -328,10 +328,12 @@ void EntityManager::updateItem(ItemEntity& it, float dt, World& world) {
     } else {
         it.vel.y = std::max(-40.0f, it.vel.y - 24.0f * dt);
     }
+    const World::MechFlow flow = world.mechFlow(it.pos);
+    if (flow.lift > 0.0f) it.vel.y = flow.lift;  // Dampflift traegt Gegenstaende nach oben
     it.onGround = false;
     bool landed = false;
-    moveBodyAxis(world, it.pos, it.vel, 0, it.vel.x * dt, 0.25f, 0.25f, nullptr);
-    moveBodyAxis(world, it.pos, it.vel, 2, it.vel.z * dt, 0.25f, 0.25f, nullptr);
+    moveBodyAxis(world, it.pos, it.vel, 0, (it.vel.x + flow.belt.x) * dt, 0.25f, 0.25f, nullptr);
+    moveBodyAxis(world, it.pos, it.vel, 2, (it.vel.z + flow.belt.z) * dt, 0.25f, 0.25f, nullptr);
     moveBodyAxis(world, it.pos, it.vel, 1, it.vel.y * dt, 0.25f, 0.25f, &landed);
     it.onGround = landed;
     if (it.onGround) {
@@ -529,8 +531,10 @@ void EntityManager::updateMob(Mob& m, float dt, World& world, const Player& play
     m.onGround = false;
     bool landed = false;
     const glm::vec3 before = m.pos;
-    bool hitX = moveBodyAxis(world, m.pos, m.vel, 0, m.vel.x * dt, sp.width, sp.height, nullptr, 0.6f);
-    bool hitZ = moveBodyAxis(world, m.pos, m.vel, 2, m.vel.z * dt, sp.width, sp.height, nullptr, 0.6f);
+    const World::MechFlow flow = world.mechFlow(m.pos);
+    if (flow.lift > 0.0f && !m.dead()) m.vel.y = flow.lift;
+    bool hitX = moveBodyAxis(world, m.pos, m.vel, 0, (m.vel.x + flow.belt.x) * dt, sp.width, sp.height, nullptr, 0.6f);
+    bool hitZ = moveBodyAxis(world, m.pos, m.vel, 2, (m.vel.z + flow.belt.z) * dt, sp.width, sp.height, nullptr, 0.6f);
     moveBodyAxis(world, m.pos, m.vel, 1, m.vel.y * dt, sp.width, sp.height, &landed);
     m.onGround = landed;
 

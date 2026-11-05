@@ -81,6 +81,26 @@ float World::powerAt(int x, int y, int z) const {
     return it == power_.end() ? 0.0f : it->second;
 }
 
+World::MechFlow World::mechFlow(const glm::vec3& feet) const {
+    MechFlow f;
+    const int x = static_cast<int>(std::floor(feet.x)), z = static_cast<int>(std::floor(feet.z));
+    const int by = static_cast<int>(std::floor(feet.y - 0.1f));
+    const BlockId below = getBlock(x, by, z);
+    if (isConveyor(below) && feet.y - static_cast<float>(by) < 0.6f) {
+        static const float DX[4] = {1.0f, -1.0f, 0.0f, 0.0f}, DZ[4] = {0.0f, 0.0f, 1.0f, -1.0f};
+        const int fc = conveyorFacing(below);
+        const float p = powerAt(x, by, z);
+        f.belt = glm::vec3(DX[fc] * BELT_SPEED * p, 0.0f, DZ[fc] * BELT_SPEED * p);
+    }
+    for (const float dy : {0.1f, 0.9f}) {
+        const int y = static_cast<int>(std::floor(feet.y + dy));
+        if (getBlock(x, y, z) != LIFT) continue;
+        f.inLift = true;
+        f.lift = std::max(f.lift, LIFT_SPEED * std::min(1.0f, powerAt(x, y, z)));
+    }
+    return f;
+}
+
 void World::exportMachines(std::vector<MachineSave>& out) const {
     for (const auto& kv : machines_) {
         MachineSave ms;
