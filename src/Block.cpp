@@ -150,6 +150,9 @@ struct InfoTable {
                 for (int axis = 0; axis < 2; ++axis)
                     thin(makeGate(mat, open == 1, axis), mat == 0 ? "Holztor" : "Eisentor", mat == 0 ? TILE_GATE_WOOD : TILE_GATE_IRON,
                          mat == 0 ? 1.5f : 4.0f, makeGate(mat, false, 0), mat == 0 ? TOOL_AXE : TOOL_PICKAXE, mat == 0 ? 0 : 1, SH_GATE, open == 0);
+        // Schilder (nicht fest, aber anklickbar)
+        for (int w = 0; w < 2; ++w)
+            for (int f = 0; f < 4; ++f) thin(makeSign(w == 1, f), "Schild", TILE_SIGN, 0.5f, SIGN_BASE, TOOL_AXE, 0, SH_SIGN, false);
         // Leitern und Betten
         for (int f = 0; f < 4; ++f) {
             thin(makeLadder(f), "Leiter", TILE_LADDER, 0.4f, LADDER_BASE, TOOL_AXE, 0, SH_LADDER, false);

@@ -136,6 +136,9 @@ enum Block : BlockId {
     // Dachkeile: glatte Schraege ueber die ganze Zelle, 5 Materialien x 4 Richtungen (Richtung der hohen Seite: +X, -X, +Z, -Z)
     WEDGE_BASE,
     WEDGE_END = WEDGE_BASE + 19,
+    // Schilder: id = SIGN_BASE + (Wand ? 4 : 0) + Richtung, in die die Vorderseite zeigt (+X, -X, +Z, -Z); Stehschilder haben einen Pfosten
+    SIGN_BASE,
+    SIGN_END = SIGN_BASE + 7,
     BLOCK_COUNT
 };
 
@@ -292,7 +295,7 @@ enum Tile : int {
 enum ToolClass : uint8_t { TOOL_NONE = 0, TOOL_PICKAXE, TOOL_AXE, TOOL_SHOVEL, TOOL_SWORD, TOOL_HOE };
 
 // Form eines Blocks: Vollwuerfel oder Teilform (genaue Boxen siehe BlockShape.h)
-enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND, SH_LADDER, SH_BED, SH_WEDGE };
+enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND, SH_LADDER, SH_BED, SH_WEDGE, SH_SIGN };
 
 struct BlockInfo {
     const char* name;
@@ -345,6 +348,10 @@ inline int stairFacing(BlockId id) { return stairIndex(id) % 4; }  // Richtung d
 inline BlockId makeStairs(int material, int facing, bool top = false) {
     return static_cast<BlockId>((top ? STAIRS_TOP_BASE : STAIRS_BASE) + material * 4 + facing);
 }
+inline bool isSign(BlockId id) { return id >= SIGN_BASE && id <= SIGN_END; }
+inline bool signIsWall(BlockId id) { return (id - SIGN_BASE) >= 4; }
+inline int signFacing(BlockId id) { return (id - SIGN_BASE) % 4; }  // Richtung der Vorderseite
+inline BlockId makeSign(bool wall, int facing) { return static_cast<BlockId>(SIGN_BASE + (wall ? 4 : 0) + facing); }
 inline bool isWedge(BlockId id) { return id >= WEDGE_BASE && id <= WEDGE_END; }
 inline int wedgeMaterial(BlockId id) { return (id - WEDGE_BASE) / 4; }
 inline int wedgeFacing(BlockId id) { return (id - WEDGE_BASE) % 4; }  // Richtung der hohen Seite

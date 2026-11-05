@@ -372,7 +372,33 @@ static void drawSlotCount(HudBatch& b, const ItemStack& st, float x, float y, fl
     b.text(x + pitch - w - 1.5f * s, y + pitch - 8.0f * s - 0.5f * s, s, n);
 }
 
+// Schild bearbeiten: Brett mit vier Textzeilen, die aktuelle Zeile ist hervorgehoben und zeigt die Schreibmarke
+static void drawSignEditor(HudBatch& b, const HudState& st, int w, int h) {
+    const float ts = std::max(1.0f, std::floor(guiScale(h) * 1.5f));
+    b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.55f));
+    const float lineH = 11.0f * ts, padX = 10.0f * ts, padY = 8.0f * ts;
+    const float bw = 15.0f * 6.0f * ts + 2.0f * padX, bh = 4.0f * lineH + 2.0f * padY;
+    const float x0 = std::floor((w - bw) * 0.5f), y0 = std::floor((h - bh) * 0.5f);
+    b.rect(x0 - 2 * ts, y0 - 2 * ts, x0 + bw + 2 * ts, y0 + bh + 2 * ts, glm::vec4(0.16f, 0.11f, 0.05f, 1.0f));
+    b.rect(x0, y0, x0 + bw, y0 + bh, glm::vec4(0.72f, 0.58f, 0.36f, 1.0f));
+    const std::string title = "Schild bearbeiten";
+    b.text(std::floor((w - textWidthPx(title) * ts) * 0.5f), y0 - 14.0f * ts, ts, title, glm::vec4(1.0f));
+    for (int i = 0; i < 4; ++i) {
+        const float ly = y0 + padY + i * lineH;
+        if (i == st.signLine) b.rect(x0 + 3 * ts, ly - 1 * ts, x0 + bw - 3 * ts, ly + lineH - 1 * ts, glm::vec4(0.84f, 0.70f, 0.46f, 1.0f));
+        std::string line = st.signLines[static_cast<size_t>(i)];
+        if (i == st.signLine) line += "_";
+        b.text(std::floor(x0 + padX), std::floor(ly + 1.5f * ts), ts, line, glm::vec4(0.12f, 0.08f, 0.03f, 1.0f), false);
+    }
+    const std::string hint = "Enter: naechste Zeile   Esc: fertig";
+    b.text(std::floor((w - textWidthPx(hint) * ts * 0.6f) * 0.5f), y0 + bh + 8.0f * ts, ts * 0.6f, hint, glm::vec4(0.85f, 0.88f, 0.95f, 1.0f));
+}
+
 static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
+    if (st.signOpen) {
+        drawSignEditor(b, st, w, h);
+        return;
+    }
     const InvLayout L = InvLayout::make(w, h, st.paletteOpen, st.craftSize, st.furnaceOpen, st.chestOpen, st.tradeOpen ? static_cast<int>(st.trades.size()) : 0);
     const float s = L.s, pt = L.pitch();
     b.rect(0, 0, static_cast<float>(w), static_cast<float>(h), glm::vec4(0.0f, 0.0f, 0.0f, 0.55f));
@@ -856,6 +882,26 @@ void buildHud(HudBatch& b, const HudState& st, int w, int h) {
             b.rect(cx - bw * 0.5f - s, by - s, cx + bw * 0.5f + s, by + 2 * s + s, glm::vec4(0, 0, 0, 0.6f));
             b.rect(cx - bw * 0.5f, by, cx + bw * 0.5f * (2.0f * std::min(1.0f, st.breakProgress) - 1.0f), by + 2 * s,
                    glm::vec4(0.9f, 0.9f, 0.9f, 0.95f));
+        }
+    }
+
+    // Text des angesehenen Schilds
+    if (st.signShow && !st.inventoryOpen && !st.dead) {
+        const float ts = std::max(1.0f, s);
+        const float lineH = 10.0f * ts, padX = 6.0f * ts, padY = 4.0f * ts;
+        float tw = 0.0f;
+        int lines = 0;
+        for (int i = 0; i < 4; ++i) {
+            tw = std::max(tw, textWidthPx(st.signShowLines[static_cast<size_t>(i)]) * ts);
+            if (!st.signShowLines[static_cast<size_t>(i)].empty()) lines = i + 1;
+        }
+        const float bw = std::max(tw, 30.0f * ts) + 2.0f * padX, bh = lines * lineH + 2.0f * padY;
+        const float x0 = std::floor((W - bw) * 0.5f), y0 = std::floor(H * 0.62f);
+        b.rect(x0 - ts, y0 - ts, x0 + bw + ts, y0 + bh + ts, glm::vec4(0.16f, 0.11f, 0.05f, 0.95f));
+        b.rect(x0, y0, x0 + bw, y0 + bh, glm::vec4(0.72f, 0.58f, 0.36f, 0.95f));
+        for (int i = 0; i < lines; ++i) {
+            const std::string& line = st.signShowLines[static_cast<size_t>(i)];
+            b.text(std::floor((W - textWidthPx(line) * ts) * 0.5f), std::floor(y0 + padY + i * lineH + ts), ts, line, glm::vec4(0.12f, 0.08f, 0.03f, 1.0f), false);
         }
     }
 

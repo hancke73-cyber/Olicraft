@@ -19,7 +19,7 @@ static const std::vector<ItemId> TAB_ITEMS[CREATIVE_TAB_COUNT] = {
      FENCE, WALL_COBBLE, WALL_BRICKS, GATE_BASE, GATE_BASE + 4, ITEM_DOOR_WOOD, ITEM_DOOR_IRON},
     // Dekoration
     {WOOL_WHITE, WOOL_RED, WOOL_BLUE, WOOL_GREEN, WOOL_YELLOW, WOOL_BLACK, GLASS_PANE, IRON_BARS, LANTERN, TORCH, LAMP,
-     BOOKSHELF, LADDER_BASE, PUMPKIN},
+     BOOKSHELF, LADDER_BASE, PUMPKIN, SIGN_BASE},
     // Pflanzen
     {TALL_GRASS, FERN, FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE, MUSHROOM_RED, MUSHROOM_BROWN, DEAD_BUSH,
      SUGAR_CANE, BERRY_BUSH, CACTUS, ITEM_SEEDS},
@@ -61,6 +61,7 @@ bool itemValid(ItemId id) {
         const BlockId b = static_cast<BlockId>(id);
         if (isStairs(b)) return stairFacing(b) == 0 && !stairIsTop(b);
         if (isWedge(b)) return wedgeFacing(b) == 0;
+        if (isSign(b)) return b == SIGN_BASE;
         if (isSlab(b)) return !slabIsTop(b);
         if (isDoor(b) || b == LANTERN_HANG || isCrop(b) || isBedPart(b)) return false;
         if (isLadder(b)) return b == LADDER_BASE;
@@ -84,7 +85,7 @@ const ItemInfo& itemInfo(ItemId id) {
     if (!init) {
         for (int i = 1; i < BLOCK_COUNT; ++i) {
             const BlockInfo& bi = blockInfo(static_cast<BlockId>(i));
-            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i)) || isLadder(static_cast<BlockId>(i))};
+            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i)) || isLadder(static_cast<BlockId>(i)) || isSign(static_cast<BlockId>(i))};
         }
         init = true;
     }

@@ -75,6 +75,8 @@ void World::markDirty(int cx, int cz, bool urgent) {
     }
 }
 
+static uint64_t furnaceKey(int x, int y, int z);
+
 bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
     if (y < 0 || y >= CHUNK_H) return false;
     int cx = floorDiv(x, CHUNK_W), cz = floorDiv(z, CHUNK_W);
@@ -85,6 +87,7 @@ bool World::setBlockImpl(int x, int y, int z, BlockId b, bool urgent) {
     if (oldB == b) return false;
     c->set(lx, y, lz, b);
     c->modified = true;
+    if (isSign(oldB) && !isSign(b)) signs_.erase(furnaceKey(x, y, z));  // der Text verschwindet mit dem Schild
     if (isCrop(oldB) || isCrop(b)) {
         const int32_t idx = Chunk::index(lx, y, lz);
         if (isCrop(oldB) && !isCrop(b)) c->crops.erase(std::remove(c->crops.begin(), c->crops.end(), idx), c->crops.end());
@@ -274,6 +277,21 @@ void World::checkTorchSupports(int x, int y, int z) {
             const int f = ladderFacing(b);
             const BlockId sup = getBlock(nx + SUP[f][0], ny, nz + SUP[f][2]);
             if (!isFullSolidBlock(sup) && !blockInfo(sup).solid) {
+                setBlockImpl(nx, ny, nz, AIR, true);
+                plantDrops_.push_back({glm::ivec3(nx, ny, nz), b});
+            }
+        } else if (isSign(b)) {
+            static const int BACK[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};  // Wandschild: Traeger gegenueber der Vorderseite
+            bool ok;
+            if (signIsWall(b)) {
+                const int f = signFacing(b);
+                const BlockId sup = getBlock(nx + BACK[f][0], ny, nz + BACK[f][1]);
+                ok = blockInfo(sup).solid && !isSign(sup);
+            } else {
+                const BlockId sup = getBlock(nx, ny - 1, nz);
+                ok = blockInfo(sup).solid;
+            }
+            if (!ok) {
                 setBlockImpl(nx, ny, nz, AIR, true);
                 plantDrops_.push_back({glm::ivec3(nx, ny, nz), b});
             }
@@ -888,6 +906,36 @@ void World::exportFurnaces(std::vector<FurnaceSave>& out) const {
         fs.furnace = e.f;
         out.push_back(fs);
     }
+}
+
+const SignText* World::findSign(int x, int y, int z) const {
+    auto it = signs_.find(furnaceKey(x, y, z));
+    return it == signs_.end() ? nullptr : &it->second.text;
+}
+
+void World::setSign(int x, int y, int z, const SignText& t) {
+    if (t.empty()) {
+        signs_.erase(furnaceKey(x, y, z));
+        return;
+    }
+    if (!isSign(getBlock(x, y, z))) return;
+    signs_[furnaceKey(x, y, z)] = SignEntry{glm::ivec3(x, y, z), t};
+}
+
+void World::exportSigns(std::vector<SignSave>& out) const {
+    for (const auto& kv : signs_) {
+        SignSave s;
+        s.x = kv.second.pos.x;
+        s.y = kv.second.pos.y;
+        s.z = kv.second.pos.z;
+        s.text = kv.second.text;
+        out.push_back(s);
+    }
+}
+
+void World::importSigns(const std::vector<SignSave>& in) {
+    for (const SignSave& s : in)
+        if (!s.text.empty()) signs_[furnaceKey(s.x, s.y, s.z)] = SignEntry{glm::ivec3(s.x, s.y, s.z), s.text};
 }
 
 Chest& World::chestAt(int x, int y, int z) {

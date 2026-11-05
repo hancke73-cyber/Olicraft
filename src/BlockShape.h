@@ -216,6 +216,24 @@ int blockBoxes(BlockId b, int x, int y, int z, const G& get, bool visual, Box* o
         case SH_BED:
             add(0, 0, 0, 1, 9 * S, 1);
             return n;
+        case SH_SIGN: {
+            if (!visual) return 0;  // Schilder haben keine Kollision, sind aber anwaehlbar
+            const int f = signFacing(b);
+            const bool alongX = f <= 1;  // Brett liegt quer zur Richtung der Vorderseite
+            const float t0 = 7 * S, t1 = 9 * S;
+            auto board = [&](float c0, float c1, float y0, float y1) {
+                if (alongX) add(c0, y0, 1 * S, c1, y1, 15 * S);
+                else add(1 * S, y0, c0, 15 * S, y1, c1);
+            };
+            if (!signIsWall(b)) {  // Pfosten und Brett darueber
+                add(7 * S, 0, 7 * S, 9 * S, 8 * S, 9 * S);
+                board(t0, t1, 8 * S, 16 * S);
+            } else {  // Brett an der Wand: der Traeger liegt auf der Seite gegenueber der Vorderseite
+                const float c0 = (f == 0 || f == 2) ? 0.0f : 14 * S, c1 = c0 + 2 * S;
+                board(c0, c1, 4 * S, 12 * S);
+            }
+            return n;
+        }
         case SH_LANTERN:
             if (!visual) return 0;
             if (b == LANTERN) {

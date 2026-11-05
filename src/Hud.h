@@ -163,6 +163,11 @@ struct HudState {
     ItemStack craftCells[9];
     ItemStack craftResult;
     std::string windowTitle;       // leer = Standard
+    bool signOpen = false;                 // Schild wird bearbeitet
+    std::array<std::string, 4> signLines;  // Text im Bearbeitungsfenster
+    int signLine = 0;                      // Zeile mit der Schreibmarke
+    bool signShow = false;                 // Text des angesehenen Schilds einblenden
+    std::array<std::string, 4> signShowLines;
     ItemStack cursor;
     glm::vec2 mouse{0.0f};
     float breakProgress = 0.0f;

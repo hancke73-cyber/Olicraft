@@ -3824,6 +3824,163 @@ static void testBuckets() {
     CHECK(!none.hit);
 }
 
+static void testSigns() {
+    // IDs und Form
+    std::set<int> ids;
+    for (int w = 0; w < 2; ++w)
+        for (int f = 0; f < 4; ++f) {
+            const BlockId b = makeSign(w == 1, f);
+            CHECK(isSign(b) && signIsWall(b) == (w == 1) && signFacing(b) == f && !isWedge(b) && !isStairs(b));
+            CHECK(blockInfo(b).shape == SH_SIGN && !blockInfo(b).solid && !blockInfo(b).opaque && blockInfo(b).drop == SIGN_BASE);
+            CHECK(ids.insert(b).second);
+            CHECK(itemValid(b) == (b == SIGN_BASE));
+            CHECK(blockDropItem(b) == SIGN_BASE);
+        }
+    CHECK(ids.size() == 8 && !isSign(WEDGE_END) && !isSign(AIR) && BLOCK_COUNT <= 256);
+    CHECK(std::string(blockInfo(SIGN_BASE).name) == "Schild");
+    auto none = [](int, int, int) { return static_cast<BlockId>(AIR); };
+    Box bx[MAX_BOXES];
+    for (int f = 0; f < 4; ++f) {
+        CHECK(blockBoxes(makeSign(false, f), 0, 0, 0, none, false, bx) == 0);  // keine Kollision
+        CHECK(blockBoxes(makeSign(true, f), 0, 0, 0, none, false, bx) == 0);
+        CHECK(blockBoxes(makeSign(false, f), 0, 0, 0, none, true, bx) == 2);  // Pfosten und Brett
+        const Box board = bx[1];
+        const bool thinX = f <= 1;
+        CHECK(thinX ? (board.x1 - board.x0 < 0.13f && board.z1 - board.z0 > 0.85f) : (board.z1 - board.z0 < 0.13f && board.x1 - board.x0 > 0.85f));
+        CHECK(board.y0 == 0.5f && board.y1 == 1.0f);
+        CHECK(blockBoxes(makeSign(true, f), 0, 0, 0, none, true, bx) == 1);
+        const Box wb = bx[0];
+        // Wandschild liegt an der Seite gegenueber der Vorderseite
+        if (f == 0) CHECK(wb.x0 == 0.0f && wb.x1 < 0.13f);
+        if (f == 1) CHECK(wb.x1 == 1.0f && wb.x0 > 0.87f);
+        if (f == 2) CHECK(wb.z0 == 0.0f && wb.z1 < 0.13f);
+        if (f == 3) CHECK(wb.z1 == 1.0f && wb.z0 > 0.87f);
+        CHECK(wb.y0 > 0.2f && wb.y1 < 0.8f);
+    }
+    // Text und Zeichen
+    SignText t;
+    CHECK(t.empty());
+    t.lines[2] = "x";
+    CHECK(!t.empty() && !(t == SignText()));
+    CHECK(signCharText('a') == "a" && signCharText(' ') == " " && signCharText(0x7F).empty() && signCharText(10).empty());
+    CHECK(signCharText(0xE4) == "ae" && signCharText(0xD6) == "oe" && signCharText(0xFC) == "ue" && signCharText(0xDF) == "ss" && signCharText(0x4E2D).empty());
+
+    // Welt: Text, Entfernen, Halt
+    World w(8);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 2);
+    const int gy = 100;
+    for (int x = -5; x <= 5; ++x)
+        for (int z = -5; z <= 5; ++z) {
+            for (int y = gy; y < gy + 6; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    SignText hello;
+    hello.lines[0] = "Hallo";
+    hello.lines[1] = "Welt";
+    w.setSign(0, gy, 0, hello);
+    CHECK(w.findSign(0, gy, 0) == nullptr);  // kein Schild dort: nichts wird gespeichert
+    w.setBlock(0, gy, 0, makeSign(false, 2));
+    w.setSign(0, gy, 0, hello);
+    CHECK(w.findSign(0, gy, 0) && w.findSign(0, gy, 0)->lines[0] == "Hallo" && w.findSign(0, gy, 0)->lines[1] == "Welt");
+    w.setSign(0, gy, 0, SignText());  // leer loescht
+    CHECK(w.findSign(0, gy, 0) == nullptr);
+    w.setSign(0, gy, 0, hello);
+    w.setBlock(0, gy, 0, AIR);  // Schild weg: Text weg
+    CHECK(w.findSign(0, gy, 0) == nullptr);
+    w.setBlock(0, gy, 0, makeSign(false, 0));
+    CHECK(w.findSign(0, gy, 0) == nullptr);  // ein neues Schild beginnt leer
+    // Stehschild faellt ohne Boden
+    w.setBlock(2, gy, 2, STONE);
+    w.setBlock(2, gy + 1, 2, makeSign(false, 1));
+    w.setSign(2, gy + 1, 2, hello);
+    w.setBlock(2, gy, 2, AIR);
+    CHECK(w.getBlock(2, gy + 1, 2) == AIR && w.findSign(2, gy + 1, 2) == nullptr);
+    bool dropped = false;
+    for (const World::PlantDrop& d : w.takePlantDrops()) dropped = dropped || (d.pos == glm::ivec3(2, gy + 1, 2) && isSign(d.block));
+    CHECK(dropped);
+    // Wandschild an der +x-Seite eines Blocks (Vorderseite +x, Traeger bei -x)
+    w.setBlock(-2, gy, 0, STONE);
+    w.setBlock(-1, gy, 0, makeSign(true, 0));
+    CHECK(w.getBlock(-1, gy, 0) == makeSign(true, 0));
+    w.setBlock(-2, gy, 0, AIR);
+    CHECK(w.getBlock(-1, gy, 0) == AIR);
+    // Wandschild haelt nur an festem Traeger, nicht an einem anderen Schild
+    w.setBlock(-2, gy, 3, makeSign(false, 0));
+    w.setBlock(-1, gy, 3, makeSign(true, 0));
+    CHECK(w.getBlock(-1, gy, 3) == makeSign(true, 0));
+    // Strahl trifft das Schild obwohl es keine Kollision hat, der Spieler laeuft hindurch
+    w.setBlock(3, gy, 0, makeSign(false, 0));
+    const RayHit hit = w.raycast(glm::vec3(3.5f, gy + 3.0f, 0.5f), glm::vec3(0, -1, 0), 6.0f);
+    CHECK(hit.hit && hit.block == glm::ivec3(3, gy, 0));
+    Player p;
+    p.pos = glm::vec3(1.5f, static_cast<float>(gy), 0.5f);
+    p.yaw = 0.0f;
+    MoveInput in;
+    in.forward = 1.0f;
+    for (int i = 0; i < 40; ++i) p.update(0.05f, in, w);
+    CHECK(p.pos.x > 4.0f);
+    // Speichern: Texte bleiben, Sonderzeichen und Ueberlaenge werden bereinigt
+    std::filesystem::create_directories("olicraft_test_signs");
+    SaveFile sf;
+    sf.seed = 5;
+    SignSave a;
+    a.x = 1; a.y = gy; a.z = -4;
+    a.text.lines = {"Haus von Ali", "", "Gaeste willkommen", "3. Tuer links"};  // Zeile 3 ist laenger als 15 Zeichen
+    sf.signs.push_back(a);
+    SignSave empty;
+    empty.x = 9;
+    sf.signs.push_back(empty);  // leere Eintraege werden nicht gelesen
+    std::string err;
+    CHECK(writeSaveFile("olicraft_test_signs/s.dat", sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile("olicraft_test_signs/s.dat", back, &err));
+    CHECK(back.signs.size() == 1 && back.signs[0].x == 1 && back.signs[0].y == gy && back.signs[0].z == -4);
+    CHECK(back.signs[0].text.lines[0] == "Haus von Ali" && back.signs[0].text.lines[1].empty());
+    CHECK(back.signs[0].text.lines[2].size() == SignText::MAX_CHARS && back.signs[0].text.lines[2] == "Gaeste willkomm");
+    CHECK(back.signs[0].text.lines[3] == "3. Tuer links");
+    World w2(8);
+    w2.setMeshingEnabled(false);
+    w2.loadAround(glm::vec3(0.0f), 2);
+    w2.setBlock(1, gy, -4, makeSign(false, 3));
+    w2.importSigns(back.signs);
+    CHECK(w2.findSign(1, gy, -4) && w2.findSign(1, gy, -4)->lines[0] == "Haus von Ali");
+    std::vector<SignSave> exported;
+    w2.exportSigns(exported);
+    CHECK(exported.size() == 1 && exported[0].text.lines[3] == "3. Tuer links");
+    std::filesystem::remove_all("olicraft_test_signs");
+    // Rezept, Auswahl, Symbol, Anzeige
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (auto& c : cells) g[c.first] = {c.second, 1};
+        return g;
+    };
+    CHECK(matchRecipe(grid(3, {{0, PLANKS}, {1, PLANKS}, {2, PLANKS}, {3, PLANKS}, {4, PLANKS}, {5, PLANKS}, {7, ITEM_STICK}}).data(), 3) == ItemStack({SIGN_BASE, 3}));
+    bool inTab = false;
+    for (ItemId id : creativeTabItems(2)) inTab = inTab || id == SIGN_BASE;
+    CHECK(inTab);
+    HudBatch ib;
+    ib.itemIcon(SIGN_BASE, 100.0f, 100.0f, 10.0f);
+    CHECK(ib.verts.size() == 6);  // flaches Symbol
+    HudBatch hb;
+    HudState st;
+    Inventory inv;
+    st.inventory = &inv;
+    st.signShow = true;
+    st.signShowLines = {"Haus", "von", "Ali", ""};
+    buildHud(hb, st, 1280, 720);
+    const size_t withText = hb.verts.size();
+    st.signShow = false;
+    buildHud(hb, st, 1280, 720);
+    CHECK(withText > hb.verts.size());
+    st.inventoryOpen = true;
+    st.signOpen = true;
+    st.signLines = {"a", "b", "", ""};
+    st.signLine = 1;
+    buildHud(hb, st, 1280, 720);
+    CHECK(!hb.verts.empty() && hb.verts.size() % 6 == 0);
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -4063,6 +4220,7 @@ int main() {
     testWorlds();
     testWedges();
     testBuckets();
+    testSigns();
     testChurch();
     testItemIcons();
     testStairCorners();

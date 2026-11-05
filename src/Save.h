@@ -9,6 +9,7 @@
 #include "Chest.h"
 #include "Furnace.h"
 #include "Inventory.h"
+#include "Sign.h"
 
 namespace oc {
 
@@ -42,12 +43,18 @@ struct ChestSave {
     Chest chest;
 };
 
+struct SignSave {
+    int32_t x = 0, y = 0, z = 0;
+    SignText text;
+};
+
 struct SaveFile {
     int32_t seed = 0;
     PlayerState player;
     std::vector<SavedChunk> chunks;
     std::vector<FurnaceSave> furnaces;
     std::vector<ChestSave> chests;
+    std::vector<SignSave> signs;
 };
 
 std::vector<uint8_t> rleEncode(const std::vector<BlockId>& blocks);

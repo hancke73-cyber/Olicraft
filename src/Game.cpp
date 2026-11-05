@@ -433,6 +433,7 @@ void Game::applySave(const SaveFile& sf) {
     world_->importChunks(sf.chunks);
     world_->importFurnaces(sf.furnaces);
     world_->importChests(sf.chests);
+    world_->importSigns(sf.signs);
     player_.pos = sf.player.pos;
     player_.yaw = sf.player.yaw;
     player_.pitch = sf.player.pitch;
@@ -763,6 +764,17 @@ void Game::openInventory(bool table) {
     glfwSetCursorPos(window_, curX_, curY_);
 }
 
+void Game::openSign(const glm::ivec3& pos) {
+    openInventory(true);
+    craftSize_ = 0;
+    paletteWindow_ = furnaceWindow_ = chestWindow_ = tradeWindow_ = false;
+    signWindow_ = true;
+    signPos_ = pos;
+    signLine_ = 0;
+    signText_ = SignText();
+    if (const SignText* t = world_->findSign(pos.x, pos.y, pos.z)) signText_ = *t;
+}
+
 void Game::openFurnace(const glm::ivec3& pos) {
     openInventory(true);
     furnaceWindow_ = true;
@@ -848,6 +860,10 @@ void Game::useBed(const glm::ivec3& pos) {
 
 void Game::closeInventory() {
     if (!inventoryOpen_) return;
+    if (signWindow_) {  // Text uebernehmen (leerer Text loescht den Eintrag)
+        world_->setSign(signPos_.x, signPos_.y, signPos_.z, signText_);
+        signWindow_ = false;
+    }
     // Gehaltener Stapel und Handwerksraster gehen zurueck in den Rucksack, was nicht passt, wird geworfen
     if (!cursor_.empty()) {
         int left = creative_ ? 0 : inventory_.add(cursor_.id, cursor_.count, cursor_.damage);
@@ -989,6 +1005,7 @@ void Game::autofillRecipe(const Recipe& r) {
 }
 
 void Game::inventoryClick(int button, int mods) {
+    if (signWindow_) return;
     const bool right = button == GLFW_MOUSE_BUTTON_RIGHT;
     const InvLayout layout = invLayout();
     const glm::vec2 m = mousePx();
@@ -1245,6 +1262,13 @@ void Game::handleKey(int key, int action, int mods) {
         if (key == GLFW_KEY_SPACE) respawn();
         return;
     }
+    if (inventoryOpen_ && signWindow_) {  // Tasten gehoeren dem Schildtext (Zeichen kommen ueber handleChar)
+        std::string& line = signText_.lines[static_cast<size_t>(signLine_)];
+        if (key == GLFW_KEY_BACKSPACE && !line.empty()) line.pop_back();
+        else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER || key == GLFW_KEY_DOWN) signLine_ = (signLine_ + 1) % SignText::LINES;
+        else if (key == GLFW_KEY_UP) signLine_ = (signLine_ + SignText::LINES - 1) % SignText::LINES;
+        return;
+    }
     if (inventoryOpen_ && paletteWindow_ && creativeTab_ == CREATIVE_SEARCH_TAB) {  // Tasten gehoeren dem Suchfeld
         if (key == GLFW_KEY_BACKSPACE && !creativeQuery_.empty()) {
             creativeQuery_.pop_back();
@@ -1282,6 +1306,12 @@ void Game::handleKey(int key, int action, int mods) {
 }
 
 void Game::handleChar(unsigned int cp) {
+    if (!paused_ && inventoryOpen_ && signWindow_) {  // Schildtext
+        std::string& line = signText_.lines[static_cast<size_t>(signLine_)];
+        const std::string add = signCharText(cp);
+        if (!add.empty() && line.size() + add.size() <= SignText::MAX_CHARS) line += add;
+        return;
+    }
     if (!paused_ && inventoryOpen_ && paletteWindow_ && creativeTab_ == CREATIVE_SEARCH_TAB) {  // Suchfeld
         std::string add;
         if (cp >= 32 && cp < 127) add = std::string(1, static_cast<char>(cp));
@@ -1763,6 +1793,10 @@ void Game::placeBlockOrUse() {
             useBed(target_.block);
             return;
         }
+        if (isSign(tb)) {
+            openSign(target_.block);
+            return;
+        }
         if (isDoor(tb) || isGate(tb)) {
             if (world_->toggleOpenGroup(target_.block.x, target_.block.y, target_.block.z) > 0) {
                 placeTimer_ = 0.25f;
@@ -1885,6 +1919,11 @@ void Game::placeBlockOrUse() {
             else if (target_.normal.y < 0) top = true;
             else top = hitPoint.y - static_cast<float>(p.y) > 0.5f;
             id = makeStairs(stairMaterial(id), lookDir, top);
+        } else if (isSign(id)) {
+            // Von oben auf einen Block: Stehschild, dessen Vorderseite zum Spieler zeigt; an eine Seitenflaeche: Wandschild
+            if (target_.normal.y > 0) id = makeSign(false, lookDir ^ 1);
+            else if (target_.normal.y == 0) id = makeSign(true, target_.normal.x > 0 ? 0 : (target_.normal.x < 0 ? 1 : (target_.normal.z > 0 ? 2 : 3)));
+            else return;
         } else if (isWedge(id)) {
             id = makeWedge(wedgeMaterial(id), lookDir);  // hohe Seite in Blickrichtung
         } else if (isSlab(id)) {
@@ -1961,6 +2000,7 @@ void Game::placeBlockOrUse() {
         placeTimer_ = 0.2f;
         playSound(blockSound(blockMaterial(id)), glm::vec3(p.x + 0.5f, p.y + 0.5f, p.z + 0.5f), 0.8f, 0.85f);
         if (!creative_) inventory_.take(slot_, 1);
+        if (isSign(id)) openSign(p);  // gleich beschriften
     }
 }
 
@@ -2382,6 +2422,19 @@ void Game::applyDemo() {
             put(x, 0, 1, makeWedge(3, 2));
         }
         for (int k = 0; k < 3; ++k) put(30 + k, 0, 4, makeWedge(1, 0));
+        // Schilder: Stehschild mit Text und ein Wandschild
+        put(40, 0, 0, makeSign(false, 3));
+        put(43, 0, 0, STONE);
+        put(43, 1, 0, STONE);
+        put(42, 1, 0, makeSign(true, 1));
+        {
+            SignText t;
+            t.lines = {"Willkommen", "im Dorf", "Haus 3 links", ""};
+            world_->setSign(ox + 40, gy + 1, oz + 0, t);
+            SignText t2;
+            t2.lines = {"Schmiede", "", "", ""};
+            world_->setSign(ox + 42, gy + 2, oz + 0, t2);
+        }
         // Bogen mit umgedrehten Treppen unter der Decke
         for (int z = 0; z <= 2; ++z) {
             for (int y = 0; y <= 2; ++y) {
@@ -2405,6 +2458,7 @@ void Game::applyDemo() {
                 player_.pitch = pitch;
             }
         }
+        if (std::getenv("OLICRAFT_SIGN")) openSign(glm::ivec3(ox + 40, gy + 1, oz));  // Test: Schildfenster
     } else if (opt_.demo == "water") {
         // Quelle auf einer Anhoehe, das Wasser laeuft ueber das Gelaende
         glm::vec3 p = player_.pos + f * 6.0f;
@@ -3854,6 +3908,90 @@ int Game::selfTest() {
         inventory_.clear();
     }
 
+    // 28. Schilder: setzen, beschriften, wieder oeffnen, entfernen
+    {
+        setPaused(false);
+        creative_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        entities_.clear();
+        for (int x = 28; x <= 34; ++x)
+            for (int z = -6; z <= 4; ++z) {
+                for (int y = gy; y <= gy + 5; ++y) world_->setBlock(x, y, z, AIR);
+                world_->setBlock(x, gy - 1, z, STONE);
+            }
+        for (int y = gy; y <= gy + 2; ++y) world_->setBlock(33, y, 0, STONE);  // Wand fuer das Wandschild
+        player_.pos = glm::vec3(30.5f, static_cast<float>(gy), -4.5f);
+        player_.vel = glm::vec3(0.0f);
+        auto lookAt = [&](float tx, float ty, float tz) {
+            const glm::vec3 d = glm::normalize(glm::vec3(tx, ty, tz) - player_.eyePos());
+            player_.yaw = glm::degrees(std::atan2(d.z, d.x));
+            player_.pitch = glm::degrees(std::asin(d.y));
+        };
+        auto type = [&](const std::string& s) {
+            for (char c : s) {
+                handleKey(std::toupper(static_cast<unsigned char>(c)), GLFW_PRESS, 0);  // Tasten wie E tun hier nichts ausser Tippen
+                handleChar(static_cast<unsigned char>(c));
+            }
+        };
+        inventory_.slots[0] = {SIGN_BASE, 4};
+        slot_ = 0;
+        // Stehschild auf den Boden, Blick nach +z: die Vorderseite zeigt zum Spieler (-z)
+        lookAt(30.5f, static_cast<float>(gy), -2.5f);
+        target_ = world_->raycast(player_.eyePos(), player_.front(), 6.0f);
+        placeBlockOrUse();
+        glm::ivec3 sp = target_.block + target_.normal;
+        SCHECK(isSign(world_->getBlock(sp.x, sp.y, sp.z)) && !signIsWall(world_->getBlock(sp.x, sp.y, sp.z)));
+        SCHECK(signFacing(world_->getBlock(sp.x, sp.y, sp.z)) == 3 && inventory_.slots[0].count == 3);
+        SCHECK(inventoryOpen_ && signWindow_ && signPos_ == sp);
+        // Beschriften: E und Zahlen sind Buchstaben, Enter springt in die naechste Zeile, Umlaut wird ae
+        type("Hallo E 5");
+        handleKey(GLFW_KEY_ENTER, GLFW_PRESS, 0);
+        type("Welt");
+        handleChar(0xE4);
+        handleKey(GLFW_KEY_ENTER, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_UP, GLFW_PRESS, 0);
+        handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);  // loescht das e von "Weltae"
+        SCHECK(inventoryOpen_ && signWindow_ && slot_ == 0 && signText_.lines[1] == "Welta");
+        for (int i = 0; i < 20; ++i) handleChar('x');  // Zeile ist begrenzt
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(!inventoryOpen_ && !signWindow_);
+        const SignText* st = world_->findSign(sp.x, sp.y, sp.z);
+        SCHECK(st && st->lines[0] == "Hallo E 5" && st->lines[1].size() == SignText::MAX_CHARS && st->lines[1].rfind("Welta", 0) == 0 && st->lines[1][5] == 'x' && st->lines[2].empty());
+        // Rechtsklick auf das Schild oeffnet es mit dem Text
+        lookAt(sp.x + 0.5f, sp.y + 0.8f, sp.z + 0.5f);
+        target_ = world_->raycast(player_.eyePos(), player_.front(), 6.0f);
+        SCHECK(target_.hit && target_.block == sp);
+        placeBlockOrUse();
+        SCHECK(inventoryOpen_ && signWindow_ && signText_.lines[0] == "Hallo E 5");
+        for (int i = 0; i < 12; ++i) handleKey(GLFW_KEY_BACKSPACE, GLFW_PRESS, 0);  // erste Zeile leeren
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(world_->findSign(sp.x, sp.y, sp.z) && world_->findSign(sp.x, sp.y, sp.z)->lines[0].empty());
+        // Wandschild an die -x-Seite der Wand bei x = 33 (Vorderseite -x)
+        player_.pos = glm::vec3(31.5f, static_cast<float>(gy), 0.5f);
+        lookAt(33.0f, gy + 1.5f, 0.5f);
+        target_ = world_->raycast(player_.eyePos(), player_.front(), 6.0f);
+        SCHECK(target_.hit && target_.normal == glm::ivec3(-1, 0, 0));
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(32, target_.block.y, 0) == makeSign(true, 1));
+        SCHECK(inventoryOpen_ && signWindow_);
+        type("Tor");
+        handleKey(GLFW_KEY_ESCAPE, GLFW_PRESS, 0);
+        SCHECK(world_->findSign(32, target_.block.y, 0) && world_->findSign(32, target_.block.y, 0)->lines[0] == "Tor");
+        // Abbauen: Schild weg, Text weg, Gegenstand faellt
+        world_->setBlock(32, target_.block.y, 0, AIR);
+        SCHECK(world_->findSign(32, target_.block.y, 0) == nullptr);
+        // Von unten gegen eine Decke geht nicht
+        world_->setBlock(30, gy + 3, 1, STONE);
+        player_.pos = glm::vec3(30.5f, static_cast<float>(gy), 1.5f);
+        lookAt(30.5f, gy + 3.0f, 1.5f);
+        target_ = world_->raycast(player_.eyePos(), player_.front(), 6.0f);
+        const int before = inventory_.count(SIGN_BASE);
+        placeBlockOrUse();
+        SCHECK(!inventoryOpen_ && inventory_.count(SIGN_BASE) == before);
+        inventory_.clear();
+    }
+
 #undef SCHECK
     std::printf("Selbsttest: %d Pruefungen, %d fehlgeschlagen\n", checks, failed);
     return failed;
@@ -3928,6 +4066,16 @@ void Game::render() {
     h.inventoryOpen = inventoryOpen_;
     h.armorPoints = inventory_.armorPoints();
     h.armorSlots = inventory_.armor;
+    if (inventoryOpen_ && signWindow_) {
+        h.signOpen = true;
+        for (size_t i = 0; i < 4; ++i) h.signLines[i] = signText_.lines[i];
+        h.signLine = signLine_;
+    } else if (target_.hit && !inventoryOpen_ && !dead_ && isSign(world_->getBlock(target_.block.x, target_.block.y, target_.block.z))) {
+        if (const SignText* t = world_->findSign(target_.block.x, target_.block.y, target_.block.z)) {
+            h.signShow = true;
+            for (size_t i = 0; i < 4; ++i) h.signShowLines[i] = t->lines[i];
+        }
+    }
     if (inventoryOpen_ && InvLayout::make(fbW_, fbH_, paletteWindow_, craftSize_, furnaceWindow_, chestWindow_, 0).figure.z > 0.0f) {
         if (!skinPreviewEd_) {
             skinPreviewEd_ = std::make_unique<TextureEditor>(textures_);
@@ -4043,6 +4191,7 @@ bool Game::saveWorld() {
     world_->exportModified(sf.chunks);
     world_->exportFurnaces(sf.furnaces);
     world_->exportChests(sf.chests);
+    world_->exportSigns(sf.signs);
     sf.player.hasSpawn = true;
     sf.player.spawn = spawnPoint_;
     std::string err;

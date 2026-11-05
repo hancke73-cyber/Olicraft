@@ -13,6 +13,7 @@
 #include "EditorUi.h"
 #include "TextureEditor.h"
 #include "Entities.h"
+#include "Sign.h"
 #include "Inventory.h"
 #include "Menu.h"
 #include "Particles.h"
@@ -143,6 +144,7 @@ private:
     void breakBlock(const glm::ivec3& p);
     void placeBlockOrUse();
     void useBucket();
+    void openSign(const glm::ivec3& pos);
     void damagePlayer(int amount, const glm::vec3& knockback);
     void die();
     void respawn();
@@ -189,6 +191,10 @@ private:
     glm::ivec3 furnacePos_{0};
     bool chestWindow_ = false;    // Truhenfenster
     bool tradeWindow_ = false;    // Handelsfenster
+    bool signWindow_ = false;     // Schild bearbeiten (nutzt das Inventarfenster-Gerüst: Maus frei, Eingabe gesperrt)
+    glm::ivec3 signPos_{0};
+    SignText signText_;
+    int signLine_ = 0;
     int tradeProfession_ = 0;
     glm::ivec3 chestPos_{0};
     int bookScroll_ = 0;          // erste sichtbare Zeile des Rezeptbuchs

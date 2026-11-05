@@ -110,6 +110,11 @@ public:
     Chest* findChest(int x, int y, int z);
     bool removeChest(int x, int y, int z, Chest* out);
     size_t chestCount() const { return chests_.size(); }
+    // Schilder: Text je Schild (leerer Text entfernt den Eintrag, der Eintrag verschwindet auch mit dem Block)
+    const SignText* findSign(int x, int y, int z) const;
+    void setSign(int x, int y, int z, const SignText& t);
+    void exportSigns(std::vector<SignSave>& out) const;
+    void importSigns(const std::vector<SignSave>& in);
     void exportChests(std::vector<ChestSave>& out) const;
     void importChests(const std::vector<ChestSave>& in);
 
@@ -179,6 +184,11 @@ private:
         Chest c;
     };
     std::unordered_map<uint64_t, ChestEntry> chests_;
+    struct SignEntry {
+        glm::ivec3 pos;
+        SignText text;
+    };
+    std::unordered_map<uint64_t, SignEntry> signs_;
 };
 
 }  // namespace oc

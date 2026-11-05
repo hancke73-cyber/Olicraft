@@ -174,6 +174,18 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
                 w.u8(static_cast<uint8_t>(st.empty() ? 0 : st.count));
                 w.u16(static_cast<uint16_t>(st.empty() ? 0 : std::min(st.damage, 65535)));
             }
+            // Version 7: Schilder
+            w.u32(static_cast<uint32_t>(save.signs.size()));
+            for (const SignSave& ss : save.signs) {
+                w.i32(ss.x);
+                w.i32(ss.y);
+                w.i32(ss.z);
+                for (const std::string& line : ss.text.lines) {
+                    const size_t len = std::min(line.size(), SignText::MAX_CHARS);
+                    w.u8(static_cast<uint8_t>(len));
+                    w.bytes(reinterpret_cast<const uint8_t*>(line.data()), len);
+                }
+            }
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
                 w.i32(c.cx);
@@ -343,6 +355,31 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
         if (!r.ok()) {
             if (error) *error = "Beschaedigte Speicherdatei";
             return false;
+        }
+    }
+    if (version >= 7) {
+        const uint32_t scount = r.u32();
+        if (!r.ok() || scount > 1000000u) {
+            if (error) *error = "Beschaedigte Speicherdatei";
+            return false;
+        }
+        for (uint32_t i = 0; i < scount; ++i) {
+            SignSave ss;
+            ss.x = r.i32();
+            ss.y = r.i32();
+            ss.z = r.i32();
+            for (std::string& line : ss.text.lines) {
+                const int len = r.u8();
+                for (int k = 0; k < len; ++k) {
+                    const char ch = static_cast<char>(r.u8());
+                    if (ch >= 32 && ch < 127 && line.size() < SignText::MAX_CHARS) line += ch;
+                }
+            }
+            if (!r.ok()) {
+                if (error) *error = "Beschaedigte Speicherdatei";
+                return false;
+            }
+            if (!ss.text.empty()) save.signs.push_back(ss);
         }
     }
     uint32_t n = r.u32();
