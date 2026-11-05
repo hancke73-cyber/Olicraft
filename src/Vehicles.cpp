@@ -3,20 +3,13 @@
 #include <algorithm>
 #include <cmath>
 
-#include "EntityBox.h"
+#include "VehicleModels.h"
 #include "Physics.h"
 #include "World.h"
 
 namespace oc {
 
 namespace {
-
-constexpr float BALLOON_LENGTH[3] = {7.0f, 10.0f, 14.0f};
-constexpr float BALLOON_DIAMETER[3] = {3.0f, 4.2f, 5.4f};
-constexpr float MODULE_LENGTH = 2.4f;
-constexpr float ROPE_GAP = 0.8f;  // Abstand zwischen Gondeldach und Ballon
-
-float balloonCenterY(int size) { return 0.6f + ROPE_GAP + BALLOON_DIAMETER[size] * 0.5f; }
 
 // Oberflaeche des Wassers unter (x, z) in der Naehe von y: y der Wasseroberkante, sonst false
 bool waterSurface(const World& w, float x, float z, float y, float& surface) {
@@ -28,13 +21,6 @@ bool waterSurface(const World& w, float x, float z, float y, float& surface) {
         }
     }
     return false;
-}
-
-float groundBelow(const World& w, const glm::vec3& p) {
-    const int bx = static_cast<int>(std::floor(p.x)), bz = static_cast<int>(std::floor(p.z));
-    for (int y = static_cast<int>(std::floor(p.y)); y > 0; --y)
-        if (w.isSolidAt(bx, y, bz) || isWater(w.getBlock(bx, y, bz))) return static_cast<float>(y) + 1.0f;
-    return 0.0f;
 }
 
 }  // namespace
@@ -51,9 +37,9 @@ void vehicleHull(const Vehicle& v, glm::vec3& lo, glm::vec3& hi) {
     const float gl = MODULE_LENGTH * static_cast<float>(v.modules) * 0.5f + 1.5f;  // Gondeln und Propeller
     float half = gl, top = 0.8f, wide = 0.9f;
     if (v.balloon >= 0) {
-        half = std::max(half, BALLOON_LENGTH[v.balloon] * 0.5f);
-        top = balloonCenterY(v.balloon) + BALLOON_DIAMETER[v.balloon] * 0.5f;
-        wide = std::max(wide, BALLOON_DIAMETER[v.balloon] * 0.5f);
+        half = std::max(half, balloonLength(v.balloon) * 0.5f);
+        top = balloonCenterY(v.balloon) + balloonDiameter(v.balloon) * 0.5f;
+        wide = std::max(wide, balloonDiameter(v.balloon) * 0.5f);
     }
     lo = glm::vec3(-half, -0.7f, -wide);
     hi = glm::vec3(half, top, wide);
@@ -246,79 +232,11 @@ Vehicle* VehicleManager::raycast(const glm::vec3& origin, const glm::vec3& dir, 
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Darstellung: Quader aus dem Blockatlas
+// Darstellung
 // ---------------------------------------------------------------------------------------------------------------
 
 void VehicleManager::buildMesh(const World& world, const glm::vec3& camPos, float time, EntityBatches& out) const {
-    for (const Vehicle& v : list_) {
-        const int bx = static_cast<int>(std::floor(v.pos.x)), bz = static_cast<int>(std::floor(v.pos.z));
-        if (!world.isChunkLoaded(floorDiv(bx, CHUNK_W), floorDiv(bz, CHUNK_W))) continue;
-        const float sky = 1.0f;
-        const float light = std::max(static_cast<float>(world.lightAt(bx, static_cast<int>(std::floor(v.pos.y + 0.5f)), bz)) / MAX_LIGHT, 0.0f);
-        const float c = std::cos(v.yaw), s = std::sin(v.yaw);
-        const glm::vec3 o = v.pos - camPos;
-        const float wobble = v.type == VehicleType::Boat ? 0.03f * std::sin(time * 2.0f + static_cast<float>(v.id)) : 0.0f;
-        auto xf = [&](glm::vec3 l) { return glm::vec3(o.x + l.x * c - l.z * s, o.y + l.y + wobble, o.z + l.x * s + l.z * c); };
-        auto box = [&](glm::vec3 center, glm::vec3 size, Tile tile) { addBox(out.items, center, size, tile, sky, light, xf); };
-        // Fluegel eines Propellers um die x-Achse bei (px, py): Winkel a
-        auto blades = [&](float px, float py, float radius, float width, float a) {
-            for (int k = 0; k < 2; ++k) {
-                const float ang = a + static_cast<float>(k) * 1.5707963f;
-                const float ca = std::cos(ang), sa = std::sin(ang);
-                auto bxf = [&](glm::vec3 l) {
-                    const glm::vec3 r(l.x, l.y * ca - l.z * sa, l.y * sa + l.z * ca);  // Drehung um x
-                    return xf(r + glm::vec3(px, py, 0.0f));
-                };
-                addBox(out.items, glm::vec3(0.0f), glm::vec3(0.05f, radius * 2.0f, width), static_cast<Tile>(TILE_SHAFT), sky, light, bxf);
-            }
-            box(glm::vec3(px, py, 0.0f), glm::vec3(0.16f, 0.16f, 0.16f), TILE_BRASS);
-        };
-        const Tile boiler = v.engine.burning() ? TILE_BOILER_LIT : TILE_BOILER;
-
-        if (v.type == VehicleType::Boat) {
-            box({0.0f, 0.1f, 0.0f}, {2.8f, 0.2f, 1.3f}, static_cast<Tile>(blockInfo(PLANKS).top));
-            box({0.0f, 0.5f, 0.62f}, {2.8f, 0.6f, 0.1f}, static_cast<Tile>(blockInfo(PLANKS).top));
-            box({0.0f, 0.5f, -0.62f}, {2.8f, 0.6f, 0.1f}, static_cast<Tile>(blockInfo(PLANKS).top));
-            box({1.55f, 0.4f, 0.0f}, {0.5f, 0.4f, 0.8f}, static_cast<Tile>(blockInfo(PLANKS).top));
-            box({-1.35f, 0.5f, 0.0f}, {0.1f, 0.6f, 1.2f}, static_cast<Tile>(blockInfo(PLANKS).top));
-            box({-0.6f, 0.4f, 0.0f}, {0.5f, 0.1f, 0.9f}, static_cast<Tile>(blockInfo(PLANKS).top));  // Sitzbank
-            box({0.5f, 0.7f, 0.0f}, {0.8f, 0.8f, 0.8f}, boiler);
-            box({0.5f, 1.35f, 0.0f}, {0.22f, 0.5f, 0.22f}, TILE_PIPE);
-            blades(-1.5f, 0.35f, 0.4f, 0.12f, v.propAngle);
-        } else {
-            const float n = static_cast<float>(v.modules);
-            for (int k = 0; k < v.modules; ++k) {
-                const float ox = (static_cast<float>(k) - (n - 1.0f) * 0.5f) * MODULE_LENGTH;
-                box({ox, 0.0f, 0.0f}, {MODULE_LENGTH - 0.1f, 1.2f, 1.4f}, static_cast<Tile>(blockInfo(PLANKS).top));
-                box({ox, 0.15f, 0.72f}, {1.6f, 0.5f, 0.04f}, static_cast<Tile>(blockInfo(GLASS).top));
-                box({ox, 0.15f, -0.72f}, {1.6f, 0.5f, 0.04f}, static_cast<Tile>(blockInfo(GLASS).top));
-                box({ox, 0.65f, 0.0f}, {MODULE_LENGTH - 0.1f, 0.1f, 1.5f}, TILE_BRASS);
-            }
-            const float rear = -n * MODULE_LENGTH * 0.5f;
-            box({rear - 0.45f, 0.0f, 0.0f}, {0.8f, 0.9f, 0.9f}, boiler);
-            box({rear - 0.45f, 0.75f, 0.0f}, {0.2f, 0.6f, 0.2f}, TILE_PIPE);
-            if (v.propeller) blades(rear - 1.0f, 0.0f, 0.9f, 0.2f, v.propAngle);
-            if (v.balloon >= 0) {
-                const float len = BALLOON_LENGTH[v.balloon], dia = BALLOON_DIAMETER[v.balloon], cy = balloonCenterY(v.balloon);
-                const Tile white = static_cast<Tile>(blockInfo(WOOL_WHITE).top);
-                const Tile stripe = static_cast<Tile>(blockInfo(v.balloon == 0 ? WOOL_RED : (v.balloon == 1 ? WOOL_BLUE : WOOL_GREEN)).top);
-                const int seg = static_cast<int>(len);
-                for (int k = 0; k < seg; ++k) {
-                    const float t = (static_cast<float>(k) + 0.5f) / static_cast<float>(seg);
-                    const float prof = std::sqrt(std::max(0.0f, 1.0f - (2.0f * t - 1.0f) * (2.0f * t - 1.0f)));
-                    const float r = dia * (0.35f + 0.65f * prof);  // Querschnitt (Kante)
-                    box({(t - 0.5f) * len, cy, 0.0f}, {len / static_cast<float>(seg) + 0.01f, r, r}, k % 2 == 0 ? white : stripe);
-                }
-                for (int sx : {-1, 1})  // Seile von der Gondel zum Ballon
-                    for (int sz : {-1, 1}) box({static_cast<float>(sx) * (len * 0.25f), 0.65f + ROPE_GAP * 0.5f + 0.05f, static_cast<float>(sz) * 0.6f}, {0.06f, ROPE_GAP, 0.06f}, static_cast<Tile>(blockInfo(PLANKS).top));
-            }
-            if (v.anchored) {  // Seil mit Anker bis zum Boden
-                const float len = std::min(40.0f, std::max(0.0f, v.pos.y - groundBelow(world, v.pos) + 0.0f));
-                box({0.8f, -len * 0.5f - 0.6f, 0.0f}, {0.06f, len, 0.06f}, static_cast<Tile>(blockInfo(PLANKS).top));
-                box({0.8f, -len - 0.5f, 0.0f}, {0.4f, 0.2f, 0.4f}, TILE_BRASS);
-            }
-        }
-    }
+    for (const Vehicle& v : list_) appendVehicleMesh(v, world, camPos, time, out);
 }
 
 }  // namespace oc

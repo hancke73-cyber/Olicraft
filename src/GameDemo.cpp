@@ -197,11 +197,16 @@ void Game::applyDemo() {
         {
             Vehicle& boat = vehicles_.spawn(VehicleType::Boat, glm::vec3(ox + 68.5f, gy + 0.43f, oz + 4.5f), 0.4f);
             boat.engine.slots[0] = {ITEM_COAL, 5, 0};
-            Vehicle& ship = vehicles_.spawn(VehicleType::Airship, glm::vec3(ox + 78.5f, gy + 3.2f, oz + 3.5f), 0.0f);
-            ship.balloon = 1;
-            ship.propeller = true;
-            ship.modules = 2;
-            ship.anchored = true;
+            auto ship = [&](float x, float z, int balloon, int modules) {
+                Vehicle& v = vehicles_.spawn(VehicleType::Airship, glm::vec3(ox + x, gy + 3.2f, oz + z), 0.0f);
+                v.balloon = balloon;
+                v.propeller = true;
+                v.modules = modules;
+                v.anchored = true;
+            };
+            ship(72.5f, 12.5f, 0, 1);    // Heissluftballon
+            ship(84.5f, 3.5f, 1, 2);     // Zeppelin mittel
+            ship(60.5f, -12.5f, 2, 3);   // Zeppelin gross
         }
         {  // Dampfgolem neben einem Zombie
             Mob& g = entities_.spawnMob(MobType::Golem, glm::vec3(ox + 46.5f, static_cast<float>(gy + 1), oz + 6.5f));
