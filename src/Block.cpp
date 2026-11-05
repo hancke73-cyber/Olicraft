@@ -175,6 +175,7 @@ struct InfoTable {
             cube(WATER_PIPE, "Wasserrohr", TILE_WATER_PIPE, TILE_WATER_PIPE, 1.5f, SH_PIPE, false);
             cube(PUMP, "Dampfpumpe", TILE_BRASS, TILE_PUMP, 3.0f);
             cube(OUTLET, "Wasserauslass", TILE_OUTLET, TILE_OUTLET, 3.0f);
+            cube(FACTORY, "Fabrik", TILE_BRASS, TILE_FACTORY, 3.0f);
         }
         // Schilder (nicht fest, aber anklickbar)
         for (int w = 0; w < 2; ++w)

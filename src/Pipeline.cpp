@@ -71,7 +71,7 @@ void World::planPipelines(const std::vector<MachineEntry*>& list) {
             if (getBlock(o.x, o.y - 1, o.z) == AIR) need = true;
         for (MachineEntry* p : net.pumps) {
             glm::ivec3 src;
-            p->m.wantsFlow = need && pumpIntake(p->pos, src);
+            p->m.wantsPower = need && pumpIntake(p->pos, src);
         }
         waterNets_.push_back(std::move(net));
     }
@@ -82,7 +82,7 @@ void World::runPipelines(float dt) {
         float flow = 0.0f;
         for (MachineEntry* p : net.pumps) {
             glm::ivec3 src;
-            const bool ok = p->m.wantsFlow && pumpIntake(p->pos, src);
+            const bool ok = p->m.wantsPower && pumpIntake(p->pos, src);
             const float f = ok ? PUMP_FLOW * dt * powerAt(p->pos.x, p->pos.y, p->pos.z) : 0.0f;
             p->m.working = f > 0.0f;
             p->m.load = ok ? powerAt(p->pos.x, p->pos.y, p->pos.z) : 0.0f;

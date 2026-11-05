@@ -157,6 +157,7 @@ enum Block : BlockId {
     WATER_PIPE,
     PUMP,
     OUTLET,
+    FACTORY,  // Fabrik: baut Fahrzeugteile aus Komponenten (Inhalt wie eine Truhe)
     BLOCK_COUNT
 };
 
@@ -330,6 +331,13 @@ enum Tile : int {
     TILE_BALLOON_M,
     TILE_BALLOON_L,
     TILE_PROPELLER,
+    TILE_GEAR,
+    TILE_BRASS_PLATE,
+    TILE_PISTON,
+    TILE_CLOTH,
+    TILE_ROPE,
+    TILE_RIB,
+    TILE_FACTORY,
     TILE_COUNT
 };
 
@@ -405,11 +413,11 @@ inline BlockId makeConveyor(int facing) { return static_cast<BlockId>(CONVEYOR_B
 // Dampfanschluss: hier fliesst Dampf durch bzw. wird er erzeugt oder verbraucht
 inline bool isSteamPart(BlockId id) { return id == PIPE || isBoiler(id) || id == MOTOR || id == STILL; }
 // Mechanische Verbindung: Welle, Motor und alles, was Antrieb bekommt
-inline bool isMechPart(BlockId id) { return id == SHAFT || id == MOTOR || isDrill(id) || isConveyor(id) || id == LIFT || id == PUMP; }
+inline bool isMechPart(BlockId id) { return id == SHAFT || id == MOTOR || isDrill(id) || isConveyor(id) || id == LIFT || id == PUMP || id == FACTORY; }
 // Wasserverbindung: Rohre, Pumpe, Auslass und Kessel (Kessel nehmen Wasser aus der Leitung)
 inline bool isWaterPart(BlockId id) { return id == WATER_PIPE || id == PUMP || id == OUTLET || isBoiler(id); }
 // Maschinen mit eigenem Zustand (Inhalt, Fortschritt)
-inline bool isMachineBlock(BlockId id) { return isBoiler(id) || id == STILL || isDrill(id) || id == MOTOR || id == PUMP; }
+inline bool isMachineBlock(BlockId id) { return isBoiler(id) || id == STILL || isDrill(id) || id == MOTOR || id == PUMP || id == FACTORY; }
 inline bool isWedge(BlockId id) { return id >= WEDGE_BASE && id <= WEDGE_END; }
 inline int wedgeMaterial(BlockId id) { return (id - WEDGE_BASE) / 4; }
 inline int wedgeFacing(BlockId id) { return (id - WEDGE_BASE) % 4; }  // Richtung der hohen Seite

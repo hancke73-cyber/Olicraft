@@ -1815,7 +1815,7 @@ void Game::breakBlock(const glm::ivec3& pIn) {
                 if (!st.empty())
                     entities_.spawnItem(st, glm::vec3(p.x + 0.5f, p.y + 0.4f, p.z + 0.5f), glm::vec3(0.0f, 2.5f, 0.0f), 0.4f);
     }
-    if (b == CHEST) {  // Inhalt faellt heraus
+    if (b == CHEST || b == FACTORY) {  // Inhalt faellt heraus
         Chest content;
         if (world_->removeChest(p.x, p.y, p.z, &content))
             for (const ItemStack& st : content.slots)
@@ -1863,7 +1863,7 @@ void Game::placeBlockOrUse() {
             openFurnace(target_.block);
             return;
         }
-        if (tb == CHEST) {
+        if (tb == CHEST || (tb == FACTORY && steampunkEnabled())) {
             openChest(target_.block);
             return;
         }
@@ -2508,6 +2508,10 @@ void Game::render() {
     h.paletteItems = &paletteItems();
     h.furnaceOpen = furnaceWindow_;
     h.chestOpen = chestWindow_;
+    if (chestWindow_ && world_->getBlock(chestPos_.x, chestPos_.y, chestPos_.z) == FACTORY) {
+        const std::array<std::string, 3> fi = machineInfo(*world_, chestPos_);
+        h.windowTitle = "Fabrik: " + fi[1] + (fi[2].empty() ? "" : "  " + fi[2]) + "  (unten: Ergebnis)";
+    }
     h.tradeOpen = tradeWindow_;
     if (tradeWindow_) {
         h.windowTitle = std::string("Dorfbewohner: ") + professionName(tradeProfession_);

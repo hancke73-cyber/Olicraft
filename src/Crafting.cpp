@@ -119,13 +119,14 @@ std::vector<Recipe> buildRecipes() {
     v.push_back(make({"I I", "I I", "I I"}, {{'I', ITEM_IRON_INGOT}}, {WATER_PIPE, 6}));
     v.push_back(make({"IWI", "IBI", "III"}, {{'I', ITEM_IRON_INGOT}, {'W', WATER_PIPE}, {'B', ITEM_BUCKET}}, {PUMP, 1}));
     v.push_back(make({"III", " W "}, {{'I', ITEM_IRON_INGOT}, {'W', WATER_PIPE}}, {OUTLET, 1}));
-    // Fahrzeuge
-    v.push_back(make({"P P", "IBI", "PPP"}, {{'P', PLANKS}, {'I', ITEM_IRON_INGOT}, {'B', BOILER}}, {ITEM_STEAMBOAT, 1}));
-    v.push_back(make({"PGP", "P P", "III"}, {{'P', PLANKS}, {'G', GLASS}, {'I', ITEM_IRON_INGOT}}, {ITEM_GONDOLA, 1}));
-    v.push_back(make({" I ", "IBI", "IMI"}, {{'I', ITEM_IRON_INGOT}, {'B', BOILER}, {'M', MOTOR}}, {ITEM_PROPELLER, 1}));
-    v.push_back(make({"WWW", "WWW", "S S"}, {{'W', WOOL_WHITE}, {'S', ITEM_STICK}}, {ITEM_BALLOON_S, 1}));
-    v.push_back(makeList({ITEM_BALLOON_S, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE}, {ITEM_BALLOON_M, 1}));
-    v.push_back(makeList({ITEM_BALLOON_M, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE, WOOL_WHITE}, {ITEM_BALLOON_L, 1}));
+    // Komponenten fuer die Fabrik (Fahrzeugteile entstehen dort, siehe Factory.cpp)
+    v.push_back(make({" I ", "I I", " I "}, {{'I', ITEM_IRON_INGOT}}, {ITEM_GEAR, 2}));
+    v.push_back(make({"IG", "GI"}, {{'I', ITEM_IRON_INGOT}, {'G', ITEM_GOLD_INGOT}}, {ITEM_BRASS_PLATE, 2}));
+    v.push_back(make({"I", "P", "I"}, {{'I', ITEM_IRON_INGOT}, {'P', ITEM_BRASS_PLATE}}, {ITEM_PISTON, 1}));
+    v.push_back(make({"WW", "WW"}, {{'W', WOOL_WHITE}}, {ITEM_CLOTH, 2}));
+    v.push_back(make({"S", "S", "S"}, {{'S', ITEM_STICK}}, {ITEM_ROPE, 2}));
+    v.push_back(make({"PPP", "P P"}, {{'P', PLANKS}}, {ITEM_RIB, 2}));
+    v.push_back(make({"III", "GMG", "III"}, {{'I', ITEM_IRON_INGOT}, {'G', ITEM_GEAR}, {'M', MOTOR}}, {FACTORY, 1}));
     v.push_back(make({"PPP", "PPP", " S "}, {{'P', PLANKS}, {'S', ITEM_STICK}}, {SIGN_BASE, 3}));
     // Landwirtschaft
     v.push_back(make({"WWW"}, {{'W', ITEM_WHEAT}}, {ITEM_BREAD, 1}));

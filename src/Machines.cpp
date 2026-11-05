@@ -15,6 +15,7 @@ MachineKind machineKindOf(BlockId id) {
     if (id == STILL) return MachineKind::Still;
     if (isDrill(id)) return MachineKind::Drill;
     if (id == PUMP) return MachineKind::Pump;
+    if (id == FACTORY) return MachineKind::Factory;
     return MachineKind::Motor;
 }
 
@@ -233,6 +234,8 @@ void World::stepMachines(float dt) {
     }
 
     planPipelines(list);
+    for (MachineEntry* e : list)
+        if (e->m.kind == MachineKind::Factory) e->m.wantsPower = factoryJob(e->pos) >= 0;
 
     // Antriebsnetze aufbauen (von Motoren und Bohrern aus)
     for (MachineEntry* e : list) {
@@ -256,7 +259,8 @@ void World::stepMachines(float dt) {
         if (it == mechOf.end()) continue;
         Comp& c = mech[static_cast<size_t>(it->second)];
         if (e->m.kind == MachineKind::Drill && drillHasTarget[i]) c.demand += DRILL_POWER;
-        if (e->m.kind == MachineKind::Pump && e->m.wantsFlow) c.demand += PUMP_POWER;
+        if (e->m.kind == MachineKind::Pump && e->m.wantsPower) c.demand += PUMP_POWER;
+        if (e->m.kind == MachineKind::Factory && e->m.wantsPower) c.demand += FACTORY_POWER;
         if (e->m.kind == MachineKind::Motor) ++c.producers;
     }
     for (Comp& c : mech) {
@@ -268,7 +272,7 @@ void World::stepMachines(float dt) {
     std::vector<int> steamIdOf(list.size(), -1);
     for (size_t i = 0; i < list.size(); ++i) {
         MachineEntry* e = list[i];
-        if (e->m.kind == MachineKind::Drill || e->m.kind == MachineKind::Pump) continue;
+        if (e->m.kind == MachineKind::Drill || e->m.kind == MachineKind::Pump || e->m.kind == MachineKind::Factory) continue;
         const uint64_t k = machineKey(e->pos.x, e->pos.y, e->pos.z);
         auto it = steamOf.find(k);
         if (it == steamOf.end()) {
@@ -347,7 +351,9 @@ void World::stepMachines(float dt) {
     for (size_t i = 0; i < list.size(); ++i) {
         MachineEntry* e = list[i];
         Machine& m = e->m;
-        if (m.kind == MachineKind::Motor) {
+        if (m.kind == MachineKind::Factory) {
+            stepFactory(*e, dt);
+        } else if (m.kind == MachineKind::Motor) {
             const auto mi = mechOf.find(machineKey(e->pos.x, e->pos.y, e->pos.z));
             const float u = mi == mechOf.end() ? 0.0f : mech[static_cast<size_t>(mi->second)].util;
             m.steam = steamIdOf[i] >= 0 ? steam[static_cast<size_t>(steamIdOf[i])].sat : 0.0f;
@@ -434,7 +440,15 @@ std::array<std::string, 3> machineInfo(World& w, const glm::ivec3& p) {
         glm::ivec3 src;
         out[1] = "Antrieb " + pct(w.powerAt(p.x, p.y, p.z));
         if (!w.pumpIntake(p, src)) out[2] = "Kein Wasser in Reichweite";
-        else out[2] = m->working ? "Pumpt" : (m->wantsFlow ? "Antrieb fehlt" : "Kein Bedarf");
+        else out[2] = m->working ? "Pumpt" : (m->wantsPower ? "Antrieb fehlt" : "Kein Bedarf");
+    } else if (b == FACTORY && m) {
+        const int job = w.factoryJob(p);
+        if (job < 0) {
+            out[1] = "Wartet auf Komponenten";
+        } else {
+            out[1] = m->working ? "Arbeitet " + pct(m->progress) : "Antrieb fehlt";
+            out[2] = std::string("Baut: ") + itemInfo(factoryRecipes()[static_cast<size_t>(job)].result.id).name;
+        }
     } else if (b == PIPE) {
         out[1] = "Leitet Dampf";
     } else if (b == WATER_PIPE) {

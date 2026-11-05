@@ -443,7 +443,7 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
             ms.y = r.i32();
             ms.z = r.i32();
             const int kind = r.u8();
-            ms.m.kind = static_cast<MachineKind>(kind <= 4 ? kind : 0);
+            ms.m.kind = static_cast<MachineKind>(kind <= 5 ? kind : 0);
             for (ItemStack& st : ms.m.slots) {
                 ItemId id = r.u16();
                 int cnt = r.u8();

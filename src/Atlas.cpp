@@ -1404,6 +1404,88 @@ void drawPropellerItem(TileCanvas& c) {
     put(c, 7, 7, {80, 80, 88, 255});
 }
 
+// Komponenten der Fabrik
+void drawGearItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float dx = x - 7.5f, dy = y - 7.5f, d = std::sqrt(dx * dx + dy * dy);
+            const float ang = std::atan2(dy, dx);
+            const bool tooth = std::fmod(std::floor((ang + 3.14159f) / 0.5236f), 2.0f) < 1.0f;  // 12 Zaehne
+            const float outer = tooth ? 7.2f : 5.6f;
+            if (d > outer || d < 1.8f) continue;
+            put(c, x, y, shade({176, 180, 190, 255}, static_cast<int>((rnd(x, y, TILE_GEAR) - 0.5f) * 14) + (y > 8 ? -18 : 0)));
+        }
+}
+
+void drawBrassPlateItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 3; y <= 12; ++y)
+        for (int x = 1; x <= 14; ++x) {
+            Rgba col = shade({196, 150, 70, 255}, static_cast<int>((rnd(x, y, TILE_BRASS_PLATE) - 0.5f) * 14) + (y > 8 ? 12 : -14));
+            if (x == 1 || x == 14 || y == 3 || y == 12) col = shade(col, -34);
+            put(c, x, y, col);
+        }
+    for (int x : {3, 12})
+        for (int y : {5, 10}) put(c, x, y, {236, 200, 120, 255});
+}
+
+void drawPistonItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 1; y <= 8; ++y)  // Zylinder
+        for (int x = 4; x <= 11; ++x) put(c, x, y, shade({188, 144, 62, 255}, (x - 4) * 6 - 18));
+    for (int y = 9; y <= 14; ++y)  // Kolbenstange
+        for (int x = 7; x <= 8; ++x) put(c, x, y, {196, 200, 208, 255});
+    for (int x = 5; x <= 10; ++x) put(c, x, 15, {120, 124, 134, 255});
+    for (int x = 3; x <= 12; ++x) put(c, x, 0, {90, 90, 100, 255});
+}
+
+void drawClothItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 2; y <= 13; ++y)
+        for (int x = 2; x <= 13; ++x) {
+            const bool weave = (x + y) % 2 == 0;
+            put(c, x, y, shade({232, 228, 214, 255}, (weave ? 6 : -10) + static_cast<int>((rnd(x, y, TILE_CLOTH) - 0.5f) * 8)));
+        }
+    for (int y = 2; y <= 13; ++y) {
+        put(c, 5, y, {200, 70, 60, 255});
+        put(c, 10, y, {200, 70, 60, 255});
+    }
+}
+
+void drawRopeItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y) {
+        const int x = 7 + static_cast<int>(std::lround(2.0f * std::sin(y * 0.7f)));
+        put(c, x, y, shade({176, 138, 84, 255}, (y % 3 == 0 ? -22 : 8)));
+        put(c, x + 1, y, shade({150, 112, 64, 255}, (y % 3 == 0 ? -22 : 0)));
+    }
+}
+
+void drawRibItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 1; y <= 14; ++y)  // gebogene Rippe
+        for (int w = 0; w < 2; ++w) {
+            const int x = 3 + static_cast<int>(std::lround(9.0f * std::sin(y / 14.0f * 3.14159f * 0.5f))) + w;
+            put(c, x, y, shade({160, 118, 66, 255}, (w ? -20 : 6) + static_cast<int>((rnd(x, y, TILE_RIB) - 0.5f) * 10)));
+        }
+}
+
+void drawFactoryTile(TileCanvas& c) {
+    fillNoise(c, TILE_FACTORY, {88, 94, 104, 255}, 14);
+    for (int y = 2; y <= 13; ++y)  // Zahnradfenster, Rauchfang und Warnstreifen
+        for (int x = 2; x <= 9; ++x) put(c, x, y, shade({46, 48, 54, 255}, (y > 9 ? 6 : 0)));
+    disc(c, 5.5f, 7.5f, 3.2f, {196, 150, 70, 255}, TILE_FACTORY);
+    disc(c, 5.5f, 7.5f, 1.2f, {60, 60, 66, 255}, TILE_FACTORY);
+    for (int y = 2; y <= 13; ++y) {
+        put(c, 12, y, {188, 142, 62, 255});
+        put(c, 13, y, {120, 88, 36, 255});
+    }
+    for (int x = 0; x < 16; ++x)
+        if ((x / 3) % 2 == 0) put(c, x, 0, {222, 176, 40, 255});
+    rivets(c, {170, 174, 184, 255}, 1);
+}
+
 // Schild: Brett aus Planken mit dunklem Rand und Textzeilen
 void drawSignTile(TileCanvas& c) {
     for (int y = 0; y < TILE_PX; ++y)
@@ -1645,6 +1727,13 @@ std::vector<uint8_t> generateAtlasPixels() {
         drawBalloonItem(bl, TILE_BALLOON_L, {70, 150, 80, 255}, 8);
     }
     make(TILE_PROPELLER, drawPropellerItem);
+    make(TILE_GEAR, drawGearItem);
+    make(TILE_BRASS_PLATE, drawBrassPlateItem);
+    make(TILE_PISTON, drawPistonItem);
+    make(TILE_CLOTH, drawClothItem);
+    make(TILE_ROPE, drawRopeItem);
+    make(TILE_RIB, drawRibItem);
+    make(TILE_FACTORY, drawFactoryTile);
     make(TILE_TAR, drawTarItem);
     make(TILE_FUEL_OIL, drawFuelOilItem);
     make(TILE_SALT, drawSaltItem);

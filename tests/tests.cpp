@@ -4051,7 +4051,7 @@ static void testSteamBlocks() {
     for (BlockId b : {BOILER, PIPE, SHAFT, MOTOR, STILL, DRILL_BASE, CONVEYOR_BASE, LIFT}) CHECK(itemValid(b));
     CHECK(!itemValid(BOILER_LIT) && !itemValid(makeDrill(1)) && !itemValid(makeConveyor(2)));
     for (ItemId id : {ITEM_TAR, ITEM_FUEL_OIL, ITEM_SALT, ITEM_BUCKET_DISTILLED}) CHECK(itemValid(id) && !itemInfo(id).isBlock);
-    CHECK(ITEM_LAST == ITEM_PROPELLER && ITEM_BUCKET_DISTILLED == ITEM_BASE + 71 && ITEM_STEAMBOAT == ITEM_BASE + 72);
+    CHECK(ITEM_LAST == ITEM_RIB && ITEM_BUCKET_DISTILLED == ITEM_BASE + 71 && ITEM_STEAMBOAT == ITEM_BASE + 72);
     CHECK(std::string(itemInfo(ITEM_TAR).name) == "Teer" && std::string(itemInfo(ITEM_FUEL_OIL).name) == "Heizoel" && std::string(itemInfo(ITEM_SALT).name) == "Salz");
     CHECK(itemInfo(ITEM_BUCKET_DISTILLED).maxStack == 1 && itemInfo(ITEM_TAR).maxStack == 64 && itemInfo(ITEM_FUEL_OIL).iconSide == TILE_FUEL_OIL);
     // Verbindungen: Rohr nur zu Dampfteilen, Welle nur zu mechanischen Teilen
@@ -4327,7 +4327,7 @@ static void testPumps() {
     // Ohne Bedarf ruht die Pumpe, auch ihr Antrieb
     run(60.0f);
     CHECK(w.getBlock(4, gy - 1, 0) == WATER);                   // Auslass setzt Quelle darunter, sobald die Kessel voll sind
-    CHECK(tank.water >= BOILER_WATER_MAX - 1.0f && !w.findMachine(0, gy, 0)->wantsFlow);
+    CHECK(tank.water >= BOILER_WATER_MAX - 1.0f && !w.findMachine(0, gy, 0)->wantsPower);
     // Endliche Quelle: einzelner Block versiegt
     w.setBlock(-1, gy, 1, AIR);
     w.setBlock(-1, gy, -1, AIR);
@@ -4518,6 +4518,74 @@ static void testGolems() {
     SaveFile back;
     CHECK(readSaveFile("olicraft_test_savegolem/g.dat", back, &err) && back.golems.size() == 2 && back.golems[1] == sf.golems[1]);
     std::filesystem::remove_all("olicraft_test_savegolem");
+}
+
+static void testFactory() {
+    // Fahrzeugteile gibt es nicht mehr an der Werkbank, die Komponenten schon
+    bool workbenchVehicle = false;
+    std::set<ItemId> made;
+    for (const Recipe& r : recipes()) {
+        made.insert(r.result.id);
+        workbenchVehicle = workbenchVehicle || r.result.id == ITEM_STEAMBOAT || r.result.id == ITEM_GONDOLA || r.result.id == ITEM_PROPELLER || balloonSizeOf(r.result.id) >= 0;
+    }
+    CHECK(!workbenchVehicle);
+    for (ItemId id : {ITEM_GEAR, ITEM_BRASS_PLATE, ITEM_PISTON, ITEM_CLOTH, ITEM_ROPE, ITEM_RIB, static_cast<ItemId>(FACTORY)}) CHECK(made.count(id) == 1);
+    // jedes Fabrikergebnis ist ein Fahrzeugteil, alle Zutaten sind herstellbar oder Grundstoffe
+    for (const FactoryRecipe& fr : factoryRecipes()) {
+        CHECK(isSteampunkItem(fr.result.id) && fr.partCount >= 3 && fr.seconds > 0.0f);
+        for (int k = 0; k < fr.partCount; ++k) CHECK(fr.parts[k].count >= 1 && fr.parts[k].count <= itemInfo(fr.parts[k].item).maxStack);
+    }
+
+    World w(9);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 3);
+    const int gy = 100;
+    for (int x = -2; x <= 8; ++x)
+        for (int z = -2; z <= 3; ++z) {
+            for (int y = gy; y < gy + 4; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 1, z, STONE);
+        }
+    std::vector<MachineSave> none;
+    w.importMachines(none);
+    auto run = [&](float seconds) {
+        for (float t = 0.0f; t < seconds; t += 0.25f) w.tick(0.25f);
+    };
+    w.setBlock(0, gy, 0, BOILER);
+    w.setBlock(1, gy, 0, PIPE);
+    w.setBlock(2, gy, 0, MOTOR);
+    w.setBlock(3, gy, 0, SHAFT);
+    w.setBlock(4, gy, 0, FACTORY);
+    CHECK(w.findMachine(4, gy, 0) && w.findMachine(4, gy, 0)->kind == MachineKind::Factory && isMechPart(FACTORY));
+    Machine& boiler = *w.findMachine(0, gy, 0);
+    boiler.slots[0] = {ITEM_COAL, 6, 0};
+    boiler.water = 1500.0f;
+    Chest& c = w.chestAt(4, gy, 0);
+    CHECK(w.factoryJob(glm::ivec3(4, gy, 0)) == -1);
+    c.slots[0] = {ITEM_CLOTH, 8, 0};
+    c.slots[1] = {ITEM_ROPE, 3, 0};  // zu wenig Seil
+    c.slots[2] = {ITEM_RIB, 4, 0};
+    run(10.0f);
+    CHECK(w.factoryJob(glm::ivec3(4, gy, 0)) == -1 && c.slots[18].empty());
+    c.slots[1] = {ITEM_ROPE, 2, 0};
+    c.slots[3] = {ITEM_ROPE, 2, 0};  // Zutaten duerfen auf mehrere Plaetze verteilt sein
+    CHECK(w.factoryJob(glm::ivec3(4, gy, 0)) == 0);
+    run(8.0f);
+    CHECK(w.findMachine(4, gy, 0)->working && w.findMachine(4, gy, 0)->progress > 0.1f && c.slots[18].empty());
+    run(30.0f);
+    CHECK(c.slots[18] == ItemStack({ITEM_BALLOON_S, 1}));
+    CHECK(c.slots[0].empty() && c.slots[1].empty() && c.slots[2].empty() && c.slots[3].empty());  // Seil von zwei Plaetzen verbraucht
+    CHECK(w.factoryJob(glm::ivec3(4, gy, 0)) == -1 && !w.findMachine(4, gy, 0)->working);
+    // Ohne Antrieb passiert nichts
+    w.setBlock(3, gy, 0, AIR);
+    c.slots[0] = {ITEM_CLOTH, 8, 0};
+    c.slots[1] = {ITEM_ROPE, 3, 0};
+    c.slots[2] = {ITEM_RIB, 4, 0};
+    run(60.0f);
+    CHECK(c.slots[19].empty() && c.slots[18].count == 1 && c.slots[0].count == 8);
+    // Voller Ausgang haelt die Fabrik an
+    w.setBlock(3, gy, 0, SHAFT);
+    for (int i = 18; i < Chest::SIZE; ++i) c.slots[static_cast<size_t>(i)] = {ITEM_BALLOON_S, 1, 0};  // Ballons stapeln nicht (1)
+    CHECK(w.factoryJob(glm::ivec3(4, gy, 0)) == -1);
 }
 
 static void testSteamSimulation() {
@@ -5078,6 +5146,7 @@ int main() {
     testSteamSimulation();
     testVehicles();
     testGolems();
+    testFactory();
     testPumps();
     testSteampunkToggle();
     testSugarCaneTile();

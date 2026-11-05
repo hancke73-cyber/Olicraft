@@ -122,6 +122,7 @@ public:
     size_t machineCount() const { return machines_.size(); }
     // Mechanische Versorgung 0..1 am Block (Welle, Motor, Bohrer, Foerderband, Lift); 0 ohne laufenden Motor
     float powerAt(int x, int y, int z) const;
+    int factoryJob(const glm::ivec3& pos);  // Fabrik: Nummer des baubaren Rezepts, -1 wenn keins (Factory.cpp)
     // Pumpe: Quellblock (Wasser) in der Naehe, aus dem sie saugt (Pipeline.cpp)
     bool pumpIntake(const glm::ivec3& pump, glm::ivec3& out) const;
     // Naechster abbaubarer Block vor einem Bohrer an pos in Richtung facing (0 +X, 1 -X, 2 +Z, 3 -Z, 4 oben, 5 unten), sonst false
@@ -233,6 +234,8 @@ private:
     bool isInfiniteSource(const glm::ivec3& p) const;
     void planPipelines(const std::vector<MachineEntry*>& list);
     void runPipelines(float dt);
+    // Fabrik (Factory.cpp)
+    void stepFactory(MachineEntry& e, float dt);
 };
 
 }  // namespace oc

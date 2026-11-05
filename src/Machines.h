@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -19,7 +20,7 @@ inline uint64_t machineKey(int x, int y, int z) {
 inline constexpr int DIR6[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}, {0, 1, 0}, {0, -1, 0}};
 
 // Zustand einer Dampfmaschine (Kessel, Destille, Bohrer, Motor), wird mit dem Spielstand gespeichert.
-enum class MachineKind : uint8_t { Boiler = 0, Still = 1, Drill = 2, Motor = 3, Pump = 4 };
+enum class MachineKind : uint8_t { Boiler = 0, Still = 1, Drill = 2, Motor = 3, Pump = 4, Factory = 5 };
 
 struct Machine {
     MachineKind kind = MachineKind::Boiler;
@@ -37,7 +38,8 @@ struct Machine {
     float pumped = 0.0f;     // Pumpe: Vorrat der Leitung in ml (laeuft zwischen den Schritten mit)
     float drained = 0.0f;    // Pumpe: ml seit der letzten Entnahme einer endlichen Quelle
     bool working = false;
-    bool wantsFlow = false;  // Pumpe: hat Wasser in Reichweite und jemand braucht es (bestimmt den Bedarf an Antrieb)
+    bool wantsPower = false;  // Pumpe: hat Wasser in Reichweite und jemand braucht es; Fabrik: hat ein baubares Rezept (bestimmt den Bedarf an Antrieb)
+    int job = -1;             // Fabrik: Nummer des laufenden Rezepts
 
     bool burning() const { return burnTime > 0.0f; }
 };
@@ -54,6 +56,7 @@ constexpr float DRILL_POWER = 2.0f;
 constexpr float CONVEYOR_POWER = 0.2f;
 constexpr float LIFT_POWER = 0.3f;
 constexpr int DRILL_RANGE = 16;
+constexpr float FACTORY_POWER = 1.5f;    // Antriebsbedarf einer arbeitenden Fabrik
 constexpr float PUMP_POWER = 1.0f;       // Antriebsbedarf einer arbeitenden Pumpe
 constexpr float PUMP_FLOW = 60.0f;       // ml Wasser je Sekunde bei voller Versorgung
 constexpr float OUTLET_COST = 250.0f;    // ml je Quellblock am Wasserauslass
@@ -87,6 +90,19 @@ struct MachineDrop {
 class World;
 // Name und zwei Zustandszeilen fuer Fadenkreuz-Anzeige und Fenster
 std::array<std::string, 3> machineInfo(World& w, const glm::ivec3& p);
+
+// Fabrik: Komponenten in den Plaetzen 0..17 der Fabrik-Truhe, Ergebnis in 18..26
+constexpr int FACTORY_INPUT_SLOTS = 18;
+struct FactoryRecipe {
+    ItemStack result;
+    struct Part {
+        ItemId item;
+        int count;
+    } parts[6];
+    int partCount;
+    float seconds;
+};
+const std::vector<FactoryRecipe>& factoryRecipes();
 
 struct MachineSave {
     int32_t x = 0, y = 0, z = 0;

@@ -80,7 +80,14 @@ constexpr ItemId ITEM_BALLOON_S = ITEM_BASE + 74;
 constexpr ItemId ITEM_BALLOON_M = ITEM_BASE + 75;
 constexpr ItemId ITEM_BALLOON_L = ITEM_BASE + 76;
 constexpr ItemId ITEM_PROPELLER = ITEM_BASE + 77;
-constexpr ItemId ITEM_LAST = ITEM_BASE + 77;
+// Komponenten fuer die Fabrik
+constexpr ItemId ITEM_GEAR = ITEM_BASE + 78;
+constexpr ItemId ITEM_BRASS_PLATE = ITEM_BASE + 79;
+constexpr ItemId ITEM_PISTON = ITEM_BASE + 80;
+constexpr ItemId ITEM_CLOTH = ITEM_BASE + 81;
+constexpr ItemId ITEM_ROPE = ITEM_BASE + 82;
+constexpr ItemId ITEM_RIB = ITEM_BASE + 83;
+constexpr ItemId ITEM_LAST = ITEM_BASE + 83;
 inline bool isArmorItem(ItemId id) { return id >= ITEM_ARMOR_BASE && id < ITEM_ARMOR_BASE + 16; }
 inline int armorSlotOf(ItemId id) { return (id - ITEM_ARMOR_BASE) % 4; }
 inline int armorMaterialOf(ItemId id) { return (id - ITEM_ARMOR_BASE) / 4; }
