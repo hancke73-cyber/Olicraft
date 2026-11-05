@@ -1,6 +1,7 @@
 #include "Save.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -11,7 +12,7 @@ namespace oc {
 namespace {
 
 constexpr uint32_t MAGIC = 0x52434C4Fu;  // "OLCR" (little endian)
-constexpr uint32_t VERSION = 7;  // 7: Gegenstands-IDs ab 256 (vorher ab 200)
+constexpr uint32_t VERSION = 8;  // 7: Gegenstands-IDs ab 256 (vorher ab 200), 8: Fahrzeuge
 
 class Writer {
 public:
@@ -203,6 +204,29 @@ bool writeSaveFile(const std::string& path, const SaveFile& save, std::string* e
                 w.f32(ms.m.burnTime);
                 w.f32(ms.m.burnTotal);
                 w.f32(ms.m.progress);
+            }
+            // Version 8: Fahrzeuge
+            w.u32(static_cast<uint32_t>(save.vehicles.size()));
+            for (const Vehicle& v : save.vehicles) {
+                w.u8(static_cast<uint8_t>(v.type));
+                w.f32(v.pos.x);
+                w.f32(v.pos.y);
+                w.f32(v.pos.z);
+                w.f32(v.yaw);
+                w.u8(static_cast<uint8_t>(v.balloon + 1));
+                w.u8(v.propeller ? 1 : 0);
+                w.u8(static_cast<uint8_t>(v.modules));
+                w.u8(static_cast<uint8_t>(std::max(0, std::min(255, v.health))));
+                w.u8(v.anchored ? 1 : 0);
+                for (int k = 0; k < 2; ++k) {
+                    const ItemStack& st = v.engine.slots[k];
+                    w.u16(st.empty() ? 0 : st.id);
+                    w.u8(static_cast<uint8_t>(st.empty() ? 0 : st.count));
+                }
+                w.f32(v.engine.water);
+                w.f32(v.engine.purity);
+                w.f32(v.engine.burnTime);
+                w.f32(v.engine.burnTotal);
             }
             w.u32(static_cast<uint32_t>(save.chunks.size()));
             for (const SavedChunk& c : save.chunks) {
@@ -434,6 +458,42 @@ bool readSaveFile(const std::string& path, SaveFile& save, std::string* error) {
                 return false;
             }
             save.machines.push_back(ms);
+        }
+    }
+    if (version >= 8) {
+        const uint32_t vcount = r.u32();
+        if (!r.ok() || vcount > 100000u) {
+            if (error) *error = "Beschaedigte Speicherdatei";
+            return false;
+        }
+        for (uint32_t i = 0; i < vcount; ++i) {
+            Vehicle v;
+            const int type = r.u8();
+            v.type = type == 1 ? VehicleType::Airship : VehicleType::Boat;
+            v.pos.x = r.f32();
+            v.pos.y = r.f32();
+            v.pos.z = r.f32();
+            v.yaw = r.f32();
+            v.balloon = std::max(-1, std::min(2, static_cast<int>(r.u8()) - 1));
+            v.propeller = r.u8() != 0;
+            v.modules = std::max(1, std::min(AIRSHIP_MAX_MODULES, static_cast<int>(r.u8())));
+            v.health = std::min(VEHICLE_HEALTH, static_cast<int>(r.u8()));
+            v.anchored = r.u8() != 0;
+            for (int k = 0; k < 2; ++k) {
+                const ItemId id = r.u16();
+                const int cnt = r.u8();
+                if (itemValid(id) && cnt > 0) v.engine.slots[k] = {id, std::min(cnt, itemInfo(id).maxStack), 0};
+            }
+            auto fl = [&](float lo, float hi) { return std::max(lo, std::min(hi, r.f32())); };
+            v.engine.water = fl(0.0f, BOILER_WATER_MAX);
+            v.engine.purity = fl(0.0f, 1.0f);
+            v.engine.burnTime = fl(0.0f, 100000.0f);
+            v.engine.burnTotal = fl(0.0f, 100000.0f);
+            if (!r.ok() || !std::isfinite(v.pos.x + v.pos.y + v.pos.z + v.yaw)) {
+                if (error) *error = "Beschaedigte Speicherdatei";
+                return false;
+            }
+            save.vehicles.push_back(v);
         }
     }
     uint32_t n = r.u32();

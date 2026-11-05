@@ -64,6 +64,11 @@ constexpr float LIFT_SPEED = 3.0f;   // Steiggeschwindigkeit im Dampflift
 MachineKind machineKindOf(BlockId id);  // nur fuer isMachineBlock(id)
 // Brenndauer im Kessel in Sekunden bei voller Last (0: kein Brennstoff)
 float boilerFuelSeconds(ItemId item);
+// Kessel-Schritte, gemeinsam fuer Kessel-Bloecke und Fahrzeuge (Bordkessel)
+void boilerLoadBucket(Machine& m);              // Wassereimer im Platz 1 in den Tank leeren, wenn Platz ist
+void boilerIgnite(Machine& m);                  // einen Brennstoff anzuenden, wenn Wasser da ist und nichts brennt
+bool boilerProducing(const Machine& m);         // brennt und hat Wasser: liefert BOILER_STEAM Dampf je Sekunde
+void boilerBurn(Machine& m, float load, float dt);  // Brennstoff und Wasser je nach Last (0..1) verbrauchen
 
 // Destille: Eingabe -> bis zu zwei Ausgaben
 struct StillRecipe {

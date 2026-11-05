@@ -324,6 +324,12 @@ enum Tile : int {
     TILE_WATER_PIPE,
     TILE_PUMP,
     TILE_OUTLET,
+    TILE_BOAT,
+    TILE_GONDOLA,
+    TILE_BALLOON_S,
+    TILE_BALLOON_M,
+    TILE_BALLOON_L,
+    TILE_PROPELLER,
     TILE_COUNT
 };
 

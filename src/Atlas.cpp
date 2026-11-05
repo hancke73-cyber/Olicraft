@@ -1342,6 +1342,68 @@ void drawSaltItem(TileCanvas& c) {
     }
 }
 
+// Dampfboot: Rumpf von der Seite, Kessel mit Schornstein
+void drawBoatItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 3; y <= 6; ++y)
+        for (int x = 1 + (6 - y) / 2; x <= 14 - (6 - y) / 2; ++x) put(c, x, y, shade({150, 108, 58, 255}, (y - 3) * 8 - 14 + static_cast<int>((rnd(x, y, TILE_BOAT) - 0.5f) * 10)));
+    for (int x = 4; x <= 7; ++x)
+        for (int y = 7; y <= 9; ++y) put(c, x, y, shade({190, 146, 64, 255}, (y - 7) * 10 - 10));  // Kessel
+    for (int y = 10; y <= 13; ++y) put(c, 5, y, {70, 70, 78, 255});                                // Schornstein
+    put(c, 4, 14, {190, 190, 196, 255});
+    put(c, 11, 7, {170, 130, 56, 255});
+    put(c, 11, 8, {170, 130, 56, 255});
+}
+
+// Gondel: Holzkabine mit Fenstern
+void drawGondolaItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 3; y <= 11; ++y)
+        for (int x = 1; x <= 14; ++x) {
+            Rgba col = shade({170, 128, 72, 255}, static_cast<int>((rnd(x, y, TILE_GONDOLA) - 0.5f) * 12) + (y < 5 ? -18 : 0));
+            if (y == 11 || x == 1 || x == 14 || y == 3) col = shade(col, -30);
+            put(c, x, y, col);
+        }
+    for (int x : {4, 8, 11})
+        for (int y = 6; y <= 9; ++y) put(c, x, y, {150, 210, 230, 255});
+    for (int x = 2; x <= 13; ++x) put(c, x, 2, {120, 84, 34, 255});
+}
+
+// Ballon: Huelle mit Streifen und Seilen zur Gondel (Farbe je Groesse)
+void drawBalloonItem(TileCanvas& c, int tile, Rgba stripe, int radiusX) {
+    clearTile(c);
+    for (int y = 5; y <= 15; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float dx = (x - 7.5f) / static_cast<float>(radiusX), dy = (y - 10.0f) / 5.4f;
+            if (dx * dx + dy * dy > 1.0f) continue;
+            Rgba col = (x / 3) % 2 == 0 ? Rgba{236, 232, 220, 255} : stripe;
+            put(c, x, y, shade(col, static_cast<int>((rnd(x, y, tile) - 0.5f) * 8) + (y < 8 ? -22 : (y > 12 ? 10 : 0))));
+        }
+    for (int y = 1; y <= 4; ++y) {
+        put(c, 5, y, {120, 88, 48, 255});
+        put(c, 10, y, {120, 88, 48, 255});
+    }
+    for (int x = 5; x <= 10; ++x) put(c, x, 0, {150, 108, 58, 255});
+}
+
+// Dampfpropeller: zwei Fluegel um eine Messingnabe
+void drawPropellerItem(TileCanvas& c) {
+    clearTile(c);
+    for (int i = 1; i <= 6; ++i) {
+        const int w = i < 5 ? 1 : 2;
+        for (int k = 0; k < w; ++k) {
+            put(c, 8 + i, 8 + i + k - (w - 1), shade({180, 184, 194, 255}, -i * 3));
+            put(c, 7 - i, 7 - i - k + (w - 1), shade({180, 184, 194, 255}, -i * 3));
+        }
+    }
+    for (int i = 1; i <= 6; ++i) {
+        put(c, 8 + i, 7 - i + (i > 4 ? 1 : 0), shade({150, 154, 166, 255}, -i * 2));
+        put(c, 7 - i, 8 + i - (i > 4 ? 1 : 0), shade({150, 154, 166, 255}, -i * 2));
+    }
+    disc(c, 7.5f, 7.5f, 2.2f, {196, 150, 64, 255}, TILE_PROPELLER);
+    put(c, 7, 7, {80, 80, 88, 255});
+}
+
 // Schild: Brett aus Planken mit dunklem Rand und Textzeilen
 void drawSignTile(TileCanvas& c) {
     for (int y = 0; y < TILE_PX; ++y)
@@ -1574,6 +1636,15 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_WATER_PIPE, drawWaterPipeTile);
     make(TILE_PUMP, drawPumpTile);
     make(TILE_OUTLET, drawOutletTile);
+    make(TILE_BOAT, drawBoatItem);
+    make(TILE_GONDOLA, drawGondolaItem);
+    {
+        TileCanvas bs(px, TILE_BALLOON_S), bm(px, TILE_BALLOON_M), bl(px, TILE_BALLOON_L);
+        drawBalloonItem(bs, TILE_BALLOON_S, {200, 70, 60, 255}, 4);
+        drawBalloonItem(bm, TILE_BALLOON_M, {60, 100, 190, 255}, 6);
+        drawBalloonItem(bl, TILE_BALLOON_L, {70, 150, 80, 255}, 8);
+    }
+    make(TILE_PROPELLER, drawPropellerItem);
     make(TILE_TAR, drawTarItem);
     make(TILE_FUEL_OIL, drawFuelOilItem);
     make(TILE_SALT, drawSaltItem);

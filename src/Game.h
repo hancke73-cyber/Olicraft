@@ -14,6 +14,7 @@
 #include "TextureEditor.h"
 #include "Entities.h"
 #include "Sign.h"
+#include "Vehicles.h"
 #include "Inventory.h"
 #include "Menu.h"
 #include "Particles.h"
@@ -143,6 +144,17 @@ private:
     void updateSurvival(float dt);
     void breakBlock(const glm::ivec3& p);
     void placeBlockOrUse();
+    // Fahrzeuge (GameVehicles.cpp)
+    static constexpr float REACH_VEHICLE = 6.0f;
+    bool updateVehicles(float dt, const MoveInput& in);
+    bool useVehicleItem(ItemStack& sel);
+    void interactVehicle(Vehicle& v);
+    void hitVehicle(Vehicle& v);
+    void mountVehicle(Vehicle& v);
+    void dismountVehicle();
+    void openVehicleEngine(int id);
+    Machine* activeMachine();  // Maschine im Kesselfenster: Kessel, Destille oder Bordkessel
+    std::array<std::string, 3> vehicleInfo(const Vehicle& v) const;
     void useBucket();
     void openSign(const glm::ivec3& pos);
     void openMachine(const glm::ivec3& pos);
@@ -194,6 +206,10 @@ private:
     bool furnaceWindow_ = false;  // Ofenfenster (craftSize_ == 3 belegt den Platz)
     bool machineWindow_ = false;  // Kessel oder Destille (nutzt das Ofenfenster)
     glm::ivec3 machinePos_{0};
+    int engineVehicleId_ = 0;     // != 0: das Kesselfenster zeigt den Bordkessel dieses Fahrzeugs
+    VehicleManager vehicles_;
+    int ridingId_ = 0;            // Fahrzeug, in dem der Spieler sitzt
+    int targetVehicleId_ = 0;     // Fahrzeug unter dem Fadenkreuz
     glm::ivec3 furnacePos_{0};
     bool chestWindow_ = false;    // Truhenfenster
     bool tradeWindow_ = false;    // Handelsfenster

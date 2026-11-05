@@ -18,6 +18,29 @@ MachineKind machineKindOf(BlockId id) {
     return MachineKind::Motor;
 }
 
+void boilerLoadBucket(Machine& m) {
+    ItemStack& bucket = m.slots[1];
+    if ((bucket.id != ITEM_BUCKET_WATER && bucket.id != ITEM_BUCKET_DISTILLED) || bucket.empty() || m.water + BOILER_BUCKET_ML > BOILER_WATER_MAX + 0.001f) return;
+    const float add = bucket.id == ITEM_BUCKET_DISTILLED ? 1.0f : 0.0f;
+    m.purity = (m.purity * m.water + add * BOILER_BUCKET_ML) / (m.water + BOILER_BUCKET_ML);
+    m.water += BOILER_BUCKET_ML;
+    bucket = {ITEM_BUCKET, 1, 0};
+}
+
+void boilerIgnite(Machine& m) {
+    if (m.burning() || m.water <= 0.0f || m.slots[0].empty() || boilerFuelSeconds(m.slots[0].id) <= 0.0f) return;
+    m.burnTime = m.burnTotal = boilerFuelSeconds(m.slots[0].id);
+    if (--m.slots[0].count <= 0) m.slots[0].clear();
+}
+
+bool boilerProducing(const Machine& m) { return m.burning() && m.water > 0.0f; }
+
+void boilerBurn(Machine& m, float load, float dt) {
+    const bool producing = boilerProducing(m);
+    if (m.burning()) m.burnTime = std::max(0.0f, m.burnTime - dt * std::max(0.1f, load));
+    if (producing) m.water = std::max(0.0f, m.water - dt * BOILER_STEAM * load * BOILER_WATER_PER_STEAM / (1.0f + m.purity));
+}
+
 float boilerFuelSeconds(ItemId item) {
     if (item == ITEM_TAR) return 160.0f;
     if (item == ITEM_FUEL_OIL) return 360.0f;
@@ -283,19 +306,10 @@ void World::stepMachines(float dt) {
     for (size_t i = 0; i < list.size(); ++i) {
         Machine& m = list[i]->m;
         if (m.kind != MachineKind::Boiler) continue;
-        ItemStack& bucket = m.slots[1];
-        if ((bucket.id == ITEM_BUCKET_WATER || bucket.id == ITEM_BUCKET_DISTILLED) && !bucket.empty() && m.water + BOILER_BUCKET_ML <= BOILER_WATER_MAX + 0.001f) {
-            const float add = bucket.id == ITEM_BUCKET_DISTILLED ? 1.0f : 0.0f;
-            m.purity = (m.purity * m.water + add * BOILER_BUCKET_ML) / (m.water + BOILER_BUCKET_ML);
-            m.water += BOILER_BUCKET_ML;
-            bucket = {ITEM_BUCKET, 1, 0};
-        }
+        boilerLoadBucket(m);
         Comp& s = steam[static_cast<size_t>(steamIdOf[i])];
-        if (!m.burning() && s.demand > 0.0f && m.water > 0.0f && !m.slots[0].empty() && boilerFuelSeconds(m.slots[0].id) > 0.0f) {
-            m.burnTime = m.burnTotal = boilerFuelSeconds(m.slots[0].id);
-            if (--m.slots[0].count <= 0) m.slots[0].clear();
-        }
-        if (m.burning() && m.water > 0.0f) {
+        if (s.demand > 0.0f) boilerIgnite(m);
+        if (boilerProducing(m)) {
             s.supply += BOILER_STEAM;
             ++s.producers;
         }
@@ -310,10 +324,9 @@ void World::stepMachines(float dt) {
         const Comp& s = steam[static_cast<size_t>(steamIdOf[i])];
         m.steam = s.sat;
         if (m.kind == MachineKind::Boiler) {
-            const bool producing = m.burning() && m.water > 0.0f;
+            const bool producing = boilerProducing(m);
             m.load = producing && s.supply > 0.0f ? std::min(1.0f, s.demand / s.supply) : 0.0f;
-            if (m.burning()) m.burnTime = std::max(0.0f, m.burnTime - dt * std::max(0.1f, m.load));
-            if (producing) m.water = std::max(0.0f, m.water - dt * BOILER_STEAM * m.load * BOILER_WATER_PER_STEAM / (1.0f + m.purity));
+            boilerBurn(m, m.load, dt);
             m.working = producing && m.load > 0.0f;
             const BlockId want = m.burning() ? BOILER_LIT : BOILER;
             if (getBlock(e->pos.x, e->pos.y, e->pos.z) != want) setBlockImpl(e->pos.x, e->pos.y, e->pos.z, want, false);

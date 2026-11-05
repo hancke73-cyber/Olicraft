@@ -10,6 +10,7 @@
 #include "Furnace.h"
 #include "Inventory.h"
 #include "Machines.h"
+#include "Vehicles.h"
 #include "Sign.h"
 
 namespace oc {
@@ -57,6 +58,7 @@ struct SaveFile {
     std::vector<ChestSave> chests;
     std::vector<SignSave> signs;
     std::vector<MachineSave> machines;
+    std::vector<Vehicle> vehicles;
 };
 
 std::vector<uint8_t> rleEncode(const std::vector<BlockId>& blocks);

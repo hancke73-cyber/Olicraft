@@ -1681,6 +1681,116 @@ int Game::selfTest() {
         world_->tick(0.3f);
     }
 
+    // 30. Fahrzeuge im Spiel: Boot setzen, einsteigen, Bordkessel fuellen, fahren, aussteigen; Luftschiff ausbauen und zerlegen
+    {
+        setPaused(false);
+        creative_ = false;
+        cursor_.clear();
+        inventory_.clear();
+        entities_.clear();
+        vehicles_.clear();
+        ridingId_ = 0;
+        for (int x = 40; x <= 46; ++x)
+            for (int z = -6; z <= 8; ++z) {
+                for (int y = gy; y <= gy + 5; ++y) world_->setBlock(x, y, z, AIR);
+                world_->setBlock(x, gy - 2, z, STONE);
+                world_->setBlock(x, gy - 1, z, x >= 44 && z >= 0 && z <= 5 ? WATER : STONE);
+            }
+        auto lookAt = [&](float tx, float ty, float tz) {
+            const glm::vec3 d = glm::normalize(glm::vec3(tx, ty, tz) - player_.eyePos());
+            player_.yaw = glm::degrees(std::atan2(d.z, d.x));
+            player_.pitch = glm::degrees(std::asin(d.y));
+        };
+        auto clickAt = [&](glm::vec2 fbPos, int button, int mods) {
+            const double sx = static_cast<double>(winW_cur_) / fbW_, sy = static_cast<double>(winH_cur_) / fbH_;
+            curX_ = fbPos.x * sx;
+            curY_ = fbPos.y * sy;
+            inventoryClick(button, mods);
+        };
+        player_.pos = glm::vec3(45.5f, static_cast<float>(gy), -2.5f);
+        player_.vel = glm::vec3(0.0f);
+        inventory_.slots[0] = {ITEM_STEAMBOAT, 2};
+        slot_ = 0;
+        lookAt(45.5f, gy - 0.5f, 1.5f);
+        placeTimer_ = 0.0f;
+        placeBlockOrUse();
+        SCHECK(vehicles_.list().size() == 1 && vehicles_.list()[0].type == VehicleType::Boat && inventory_.slots[0].count == 1);
+        // Ein Boot gehoert aufs Wasser, nicht auf festen Boden
+        lookAt(41.5f, gy - 0.5f, -1.5f);
+        placeTimer_ = 0.0f;
+        placeBlockOrUse();
+        SCHECK(vehicles_.list().size() == 1 && inventory_.slots[0].count == 1);
+        Vehicle& boat = vehicles_.list()[0];
+        const int boatId = boat.id;
+        inventory_.slots[0].clear();
+        interactVehicle(boat);
+        SCHECK(ridingId_ == boatId);
+        // Bordkessel fuellen (Fenster wie beim Kessel)
+        openVehicleEngine(boatId);
+        SCHECK(machineWindow_ && engineVehicleId_ == boatId && activeMachine() == &boat.engine);
+        {
+            const glm::vec2 half = glm::vec2(invLayout().pitch() * 0.5f);
+            cursor_ = {ITEM_COAL, 3, 0};
+            clickAt(invLayout().furnaceSlotPos(1) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+            cursor_ = {ITEM_BUCKET_WATER, 1, 0};
+            clickAt(invLayout().furnaceSlotPos(0) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+            SCHECK(cursor_.empty() && boat.engine.slots[0] == ItemStack({ITEM_COAL, 3}) && boat.engine.slots[1].id == ITEM_BUCKET_WATER);
+        }
+        closeInventory();
+        SCHECK(engineVehicleId_ == 0 && !machineWindow_);
+        MoveInput drive;
+        drive.forward = 1.0f;
+        const glm::vec3 start = boat.pos;
+        for (int i = 0; i < 40; ++i) SCHECK(updateVehicles(0.05f, drive) || i < 0);
+        SCHECK(glm::length(boat.pos - start) > 0.8f && boat.engine.burning() && boat.engine.water > 0.0f);
+        SCHECK(glm::length(glm::vec2(player_.pos.x - vehicleSeat(boat).x, player_.pos.z - vehicleSeat(boat).z)) < 0.01f);
+        {
+            const std::array<std::string, 3> info = vehicleInfo(boat);
+            SCHECK(info[0] == "Dampfboot" && info[1].find("Wasser") == 0);
+        }
+        handleKey(GLFW_KEY_F, GLFW_PRESS, 0);
+        SCHECK(ridingId_ == 0 && glm::length(player_.pos - vehicleSeat(boat)) > 0.9f);
+
+        // Luftschiff: Gondel auf festen Boden, Ballon, Propeller, zu kleiner Ballon fuer zwei Gondeln
+        player_.pos = glm::vec3(41.5f, static_cast<float>(gy), -2.5f);
+        inventory_.slots[0] = {ITEM_GONDOLA, 3};
+        lookAt(41.5f, gy - 0.5f, 2.5f);
+        placeTimer_ = 0.0f;
+        placeBlockOrUse();
+        SCHECK(vehicles_.list().size() == 2);
+        Vehicle& ship = vehicles_.list()[1];
+        SCHECK(ship.type == VehicleType::Airship && ship.anchored && ship.modules == 1 && !ship.flyable());
+        inventory_.slots[0] = {ITEM_BALLOON_S, 1};
+        interactVehicle(ship);
+        SCHECK(ship.balloon == 0 && inventory_.slots[0].empty());
+        inventory_.slots[0] = {ITEM_PROPELLER, 2};
+        interactVehicle(ship);
+        SCHECK(ship.propeller && ship.flyable() && inventory_.slots[0].count == 1);
+        inventory_.slots[0] = {ITEM_GONDOLA, 2};
+        interactVehicle(ship);
+        SCHECK(ship.modules == 1 && inventory_.slots[0].count == 2);  // der kleine Ballon traegt keine zweite Gondel
+        inventory_.slots[0] = {ITEM_BALLOON_M, 1};
+        interactVehicle(ship);
+        SCHECK(ship.balloon == 0 && inventory_.slots[0].count == 1);  // ein Ballon ist schon da
+        // Einsteigen loest das Seil, Aussteigen macht fest
+        inventory_.slots[0].clear();
+        interactVehicle(ship);
+        SCHECK(ridingId_ == ship.id && !ship.anchored);
+        dismountVehicle();
+        SCHECK(ridingId_ == 0 && ship.anchored);
+        // Zerlegen: Bauteile fallen heraus
+        entities_.clear();
+        ship.engine.slots[0] = {ITEM_COAL, 2, 0};
+        creative_ = true;
+        attackTimer_ = 0.0f;
+        hitVehicle(ship);
+        creative_ = false;
+        SCHECK(vehicles_.list().size() == 1 && entities_.items().size() >= 4);  // Gondel, Ballon, Propeller, Kohle
+        inventory_.clear();
+        entities_.clear();
+        vehicles_.clear();
+    }
+
 #undef SCHECK
     std::printf("Selbsttest: %d Pruefungen, %d fehlgeschlagen\n", checks, failed);
     return failed;

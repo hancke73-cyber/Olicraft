@@ -185,6 +185,24 @@ void Game::applyDemo() {
         put(61, 1, 0, WATER_PIPE);
         put(61, 2, 0, OUTLET);
         put(62, 0, 0, BOILER);
+        // Fahrzeuge: Boot im Wasserbecken, Luftschiff mit mittlerem Ballon
+        for (int dx = 0; dx < 6; ++dx)
+            for (int dz = -4; dz <= 0; ++dz) {
+                put(66 + dx, 0, dz + 6, STONE);
+                put(66 + dx, 0, dz + 6, WATER);
+            }
+        for (int dx = -1; dx <= 6; ++dx)
+            for (int dz = -5; dz <= 1; ++dz)
+                if (dx == -1 || dx == 6 || dz == -5 || dz == 1) put(66 + dx, 0, dz + 6, STONE);
+        {
+            Vehicle& boat = vehicles_.spawn(VehicleType::Boat, glm::vec3(ox + 68.5f, gy + 0.43f, oz + 4.5f), 0.4f);
+            boat.engine.slots[0] = {ITEM_COAL, 5, 0};
+            Vehicle& ship = vehicles_.spawn(VehicleType::Airship, glm::vec3(ox + 78.5f, gy + 3.2f, oz + 3.5f), 0.0f);
+            ship.balloon = 1;
+            ship.propeller = true;
+            ship.modules = 2;
+            ship.anchored = true;
+        }
         // Bogen mit umgedrehten Treppen unter der Decke
         for (int z = 0; z <= 2; ++z) {
             for (int y = 0; y <= 2; ++y) {

@@ -50,6 +50,7 @@ add_executable(OliCraft
   src/Game.cpp
   src/GameDemo.cpp
   src/GameSelfTest.cpp
+  src/GameVehicles.cpp
   src/Block.cpp
   src/Noise.cpp
   src/Atlas.cpp
@@ -69,7 +70,7 @@ add_executable(OliCraft
   src/Sky.cpp
   src/Village.cpp
   src/Trades.cpp
-  src/Particles.cpp src/Worlds.cpp src/Machines.cpp src/Pipeline.cpp
+  src/Particles.cpp src/Worlds.cpp src/Machines.cpp src/Pipeline.cpp src/Vehicles.cpp
   src/TextureStore.cpp
   src/TextureEditor.cpp
   src/EditorUi.cpp
@@ -110,7 +111,7 @@ if(OLICRAFT_BUILD_TESTS)
   add_executable(olicraft_tests
     tests/tests.cpp
     src/Block.cpp src/Noise.cpp src/Chunk.cpp src/Mesher.cpp src/TerrainGen.cpp
-    src/World.cpp src/Player.cpp src/Physics.cpp src/Entities.cpp src/Models.cpp src/Camera.cpp src/Image.cpp src/Audio.cpp src/Sounds.cpp src/Sky.cpp src/Village.cpp src/Trades.cpp src/Particles.cpp src/Worlds.cpp src/Machines.cpp src/Pipeline.cpp src/TextureStore.cpp src/TextureEditor.cpp src/EditorUi.cpp src/Skins.cpp src/Items.cpp src/Crafting.cpp src/Inventory.cpp src/Save.cpp src/Atlas.cpp src/Hud.cpp src/GuiTexture.cpp src/Settings.cpp src/Menu.cpp)
+    src/World.cpp src/Player.cpp src/Physics.cpp src/Entities.cpp src/Models.cpp src/Camera.cpp src/Image.cpp src/Audio.cpp src/Sounds.cpp src/Sky.cpp src/Village.cpp src/Trades.cpp src/Particles.cpp src/Worlds.cpp src/Machines.cpp src/Pipeline.cpp src/Vehicles.cpp src/TextureStore.cpp src/TextureEditor.cpp src/EditorUi.cpp src/Skins.cpp src/Items.cpp src/Crafting.cpp src/Inventory.cpp src/Save.cpp src/Atlas.cpp src/Hud.cpp src/GuiTexture.cpp src/Settings.cpp src/Menu.cpp)
   target_include_directories(olicraft_tests PRIVATE src third_party/stb third_party/miniaudio)
   target_link_libraries(olicraft_tests PRIVATE glad glm::glm Threads::Threads ${CMAKE_DL_LIBS})
   add_test(NAME olicraft_tests COMMAND olicraft_tests)

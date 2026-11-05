@@ -30,6 +30,7 @@
 #include "Physics.h"
 #include "Trades.h"
 #include "Village.h"
+#include "Vehicles.h"
 #include "Crafting.h"
 #include "Entities.h"
 #include "Hud.h"
@@ -738,6 +739,48 @@ static void testSaveV2() {
     CHECK(readSaveFile("olicraft_test_save2/v1.dat", old, &err));
     CHECK(old.seed == 55 && !old.player.hasInventory && old.player.slot == 3 && old.player.flying);
     std::filesystem::remove_all("olicraft_test_save2");
+}
+
+static void testVehicleSave() {
+    std::filesystem::create_directories("olicraft_test_savev");
+    SaveFile sf;
+    sf.seed = 5;
+    sf.player.pos = glm::vec3(1.0f, 2.0f, 3.0f);
+    Vehicle a;
+    a.type = VehicleType::Airship;
+    a.pos = glm::vec3(10.5f, 80.25f, -3.5f);
+    a.yaw = 1.25f;
+    a.balloon = 2;
+    a.propeller = true;
+    a.modules = 3;
+    a.health = 12;
+    a.anchored = true;
+    a.engine.slots[0] = {ITEM_COAL, 7, 0};
+    a.engine.slots[1] = {ITEM_BUCKET_WATER, 1, 0};
+    a.engine.water = 750.0f;
+    a.engine.burnTime = 42.0f;
+    a.engine.burnTotal = 120.0f;
+    sf.vehicles.push_back(a);
+    Vehicle b;
+    b.type = VehicleType::Boat;
+    b.pos = glm::vec3(0.5f, 63.0f, 0.5f);
+    sf.vehicles.push_back(b);
+    std::string err;
+    CHECK(writeSaveFile("olicraft_test_savev/v.dat", sf, &err));
+    SaveFile back;
+    CHECK(readSaveFile("olicraft_test_savev/v.dat", back, &err) && back.vehicles.size() == 2);
+    if (back.vehicles.size() == 2) {
+        const Vehicle& r = back.vehicles[0];
+        CHECK(r.type == VehicleType::Airship && r.pos == a.pos && r.yaw == a.yaw && r.balloon == 2 && r.propeller && r.modules == 3);
+        CHECK(r.health == 12 && r.anchored && r.engine.slots[0] == ItemStack({ITEM_COAL, 7}) && r.engine.slots[1].id == ITEM_BUCKET_WATER);
+        CHECK(r.engine.water == 750.0f && r.engine.burnTime == 42.0f && r.engine.burnTotal == 120.0f);
+        CHECK(back.vehicles[1].type == VehicleType::Boat && back.vehicles[1].balloon == -1 && !back.vehicles[1].propeller);
+    }
+    // Neue Kennungen beim Einlesen, alte Spielstaende ohne Fahrzeuge bleiben lesbar
+    VehicleManager vm;
+    for (const Vehicle& v : back.vehicles) vm.add(v);
+    CHECK(vm.list().size() == 2 && vm.list()[0].id != vm.list()[1].id && vm.find(vm.list()[1].id) == &vm.list()[1]);
+    std::filesystem::remove_all("olicraft_test_savev");
 }
 
 static void testSaveV6Migration() {
@@ -4008,7 +4051,7 @@ static void testSteamBlocks() {
     for (BlockId b : {BOILER, PIPE, SHAFT, MOTOR, STILL, DRILL_BASE, CONVEYOR_BASE, LIFT}) CHECK(itemValid(b));
     CHECK(!itemValid(BOILER_LIT) && !itemValid(makeDrill(1)) && !itemValid(makeConveyor(2)));
     for (ItemId id : {ITEM_TAR, ITEM_FUEL_OIL, ITEM_SALT, ITEM_BUCKET_DISTILLED}) CHECK(itemValid(id) && !itemInfo(id).isBlock);
-    CHECK(ITEM_LAST == ITEM_BUCKET_DISTILLED && ITEM_BUCKET_DISTILLED == ITEM_BASE + 71);
+    CHECK(ITEM_LAST == ITEM_PROPELLER && ITEM_BUCKET_DISTILLED == ITEM_BASE + 71 && ITEM_STEAMBOAT == ITEM_BASE + 72);
     CHECK(std::string(itemInfo(ITEM_TAR).name) == "Teer" && std::string(itemInfo(ITEM_FUEL_OIL).name) == "Heizoel" && std::string(itemInfo(ITEM_SALT).name) == "Salz");
     CHECK(itemInfo(ITEM_BUCKET_DISTILLED).maxStack == 1 && itemInfo(ITEM_TAR).maxStack == 64 && itemInfo(ITEM_FUEL_OIL).iconSide == TILE_FUEL_OIL);
     // Verbindungen: Rohr nur zu Dampfteilen, Welle nur zu mechanischen Teilen
@@ -4284,6 +4327,94 @@ static void testPumps() {
     // Wasserrohre verbinden sich nicht mit Dampfrohren
     CHECK(!isWaterPart(PIPE) && !isSteamPart(WATER_PIPE) && isWaterPart(OUTLET) && isMechPart(PUMP) && isMachineBlock(PUMP));
     CHECK(shapeConnects(WATER_PIPE, PUMP) && !shapeConnects(WATER_PIPE, PIPE) && !shapeConnects(PIPE, WATER_PIPE));
+}
+
+static void testVehicles() {
+    World w(9);
+    w.setMeshingEnabled(false);
+    w.loadAround(glm::vec3(0.0f), 3);
+    const int gy = 100;
+    // Flaeche mit einem Wasserbecken x 0..11, z -3..3 (Wasser bis gy, Boden gy-2)
+    for (int x = -6; x <= 20; ++x)
+        for (int z = -8; z <= 8; ++z) {
+            for (int y = gy - 3; y < gy + 20; ++y) w.setBlock(x, y, z, AIR);
+            w.setBlock(x, gy - 2, z, STONE);
+            w.setBlock(x, gy - 3, z, STONE);
+            const bool pool = x >= 0 && x <= 11 && z >= -3 && z <= 3;
+            w.setBlock(x, gy - 1, z, pool ? WATER : STONE);
+            if (pool) w.setBlock(x, gy, z, AIR);
+        }
+    for (int x = -1; x <= 12; ++x)
+        for (int z = -4; z <= 4; ++z)
+            if (!(x >= 0 && x <= 11 && z >= -3 && z <= 3)) w.setBlock(x, gy, z, STONE);  // Ufer auf Wasserhoehe
+    VehicleManager vm;
+    // Boot: ohne Dampf bewegt es sich nicht, mit Dampf faehrt es und bleibt im Wasser
+    Vehicle& boat = vm.spawn(VehicleType::Boat, glm::vec3(1.5f, gy - 0.5f, 0.5f), 0.0f);
+    VehicleInput gas;
+    gas.forward = 1.0f;
+    for (int i = 0; i < 40; ++i) vm.update(0.05f, w, boat.id, gas);
+    CHECK(boat.pos.x < 1.7f && !boat.engine.burning());
+    boat.engine.slots[0] = {ITEM_COAL, 2, 0};
+    boat.engine.water = 800.0f;
+    for (int i = 0; i < 60; ++i) vm.update(0.05f, w, boat.id, gas);
+    CHECK(boat.engine.burning() && boat.pos.x > 4.0f && boat.engine.water < 800.0f);
+    CHECK(boat.pos.y > gy - 1.2f && boat.pos.y < gy);               // schwimmt an der Oberflaeche
+    for (int i = 0; i < 300; ++i) vm.update(0.05f, w, boat.id, gas);
+    CHECK(boat.pos.x < 12.0f && boat.pos.x > 9.0f);                 // stoppt am Ufer, verlaesst das Wasser nicht
+    VehicleInput turn;
+    turn.forward = 1.0f;
+    turn.turn = 1.0f;
+    const float yaw0 = boat.yaw;
+    for (int i = 0; i < 20; ++i) vm.update(0.05f, w, boat.id, turn);
+    CHECK(boat.yaw > yaw0 + 0.1f);
+    // Strahl trifft das Boot, verfehlt es daneben
+    float dist = 0.0f;
+    const glm::vec3 bp = boat.pos;
+    CHECK(vm.raycast(bp + glm::vec3(0.0f, 3.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f), 6.0f, dist) == &boat && dist > 1.0f && dist < 3.0f);
+    CHECK(vm.raycast(bp + glm::vec3(0.0f, 3.0f, 9.0f), glm::vec3(0.0f, -1.0f, 0.0f), 6.0f, dist) == nullptr);
+    // Abbauen gibt Boot und Kesselinhalt
+    int stacks = 0;
+    for (const ItemStack& s : vehicleDrops(boat)) stacks += s.id == ITEM_STEAMBOAT || s.id == ITEM_COAL ? 1 : 0;
+    CHECK(stacks == 2);
+    vm.remove(boat.id);
+    CHECK(vm.list().empty());
+
+    // Luftschiff: ohne Ballon und Propeller bleibt es am Boden
+    Vehicle& ship = vm.spawn(VehicleType::Airship, glm::vec3(14.5f, gy + 3.0f, 0.5f), 0.0f);
+    const int sid = ship.id;
+    CHECK(!ship.flyable());
+    VehicleInput up;
+    up.lift = 1.0f;
+    ship.engine.slots[0] = {ITEM_COAL, 3, 0};
+    ship.engine.water = 800.0f;
+    for (int i = 0; i < 80; ++i) vm.update(0.05f, w, sid, up);
+    CHECK(ship.pos.y < gy + 1.5f && ship.pos.y > gy - 1.0f);       // gefallen und liegt auf dem Boden
+    ship.balloon = 0;
+    CHECK(!ship.flyable());
+    ship.propeller = true;
+    CHECK(ship.flyable());
+    ship.modules = 2;
+    CHECK(!ship.flyable());                                         // kleiner Ballon traegt nur eine Gondel
+    ship.balloon = 1;
+    CHECK(ship.flyable());
+    ship.modules = 1;
+    const float y0 = ship.pos.y;
+    for (int i = 0; i < 80; ++i) vm.update(0.05f, w, sid, up);
+    CHECK(ship.pos.y > y0 + 2.0f && ship.engine.burning());         // steigt
+    VehicleInput fw;
+    fw.forward = 1.0f;
+    const float x0 = ship.pos.x;
+    for (int i = 0; i < 80; ++i) vm.update(0.05f, w, sid, fw);
+    CHECK(ship.pos.x > x0 + 2.0f || ship.pos.z != 0.5f);            // fliegt voran
+    // Ohne Fahrer bleibt es in der Luft stehen, wenn es festgemacht ist
+    ship.anchored = true;
+    const glm::vec3 held = ship.pos;
+    for (int i = 0; i < 80; ++i) vm.update(0.05f, w, 0, VehicleInput());
+    CHECK(ship.pos == held);
+    glm::vec3 lo, hi;
+    vehicleHull(ship, lo, hi);
+    CHECK(hi.y > 4.0f && hi.x > 3.0f);                              // Hohe Huelle mit Ballon
+    CHECK(balloonSizeOf(ITEM_BALLOON_L) == 2 && balloonItemOf(1) == ITEM_BALLOON_M && balloonSizeOf(ITEM_STICK) == -1);
 }
 
 static void testSteamSimulation() {
@@ -4842,8 +4973,10 @@ int main() {
     testSigns();
     testSteamBlocks();
     testSteamSimulation();
+    testVehicles();
     testPumps();
     testSteampunkToggle();
+    testVehicleSave();
     testMechFlow();
     testChurch();
     testItemIcons();

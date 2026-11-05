@@ -73,7 +73,14 @@ constexpr ItemId ITEM_TAR = ITEM_BASE + 68;
 constexpr ItemId ITEM_FUEL_OIL = ITEM_BASE + 69;
 constexpr ItemId ITEM_SALT = ITEM_BASE + 70;
 constexpr ItemId ITEM_BUCKET_DISTILLED = ITEM_BASE + 71;
-constexpr ItemId ITEM_LAST = ITEM_BASE + 71;
+// Fahrzeuge: Dampfboot, Gondel (Luftschiff-Modul), Ballon in drei Groessen, Dampfpropeller (mit Bordmaschine)
+constexpr ItemId ITEM_STEAMBOAT = ITEM_BASE + 72;
+constexpr ItemId ITEM_GONDOLA = ITEM_BASE + 73;
+constexpr ItemId ITEM_BALLOON_S = ITEM_BASE + 74;
+constexpr ItemId ITEM_BALLOON_M = ITEM_BASE + 75;
+constexpr ItemId ITEM_BALLOON_L = ITEM_BASE + 76;
+constexpr ItemId ITEM_PROPELLER = ITEM_BASE + 77;
+constexpr ItemId ITEM_LAST = ITEM_BASE + 77;
 inline bool isArmorItem(ItemId id) { return id >= ITEM_ARMOR_BASE && id < ITEM_ARMOR_BASE + 16; }
 inline int armorSlotOf(ItemId id) { return (id - ITEM_ARMOR_BASE) % 4; }
 inline int armorMaterialOf(ItemId id) { return (id - ITEM_ARMOR_BASE) / 4; }

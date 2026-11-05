@@ -37,6 +37,12 @@ public:
     glm::vec3 front() const;
     void look(float dxPixels, float dyPixels, float sensitivity);
     void update(float dt, const MoveInput& in, const World& world);
+    // Setzt die Fallhoehe zurueck (nach dem Aussteigen aus einem Fahrzeug)
+    void resetFall() {
+        peakY_ = pos.y;
+        airborne_ = false;
+        landedFall = 0.0f;
+    }
 
     // Ueberschneidet der Spieler den Block (x,y,z)?
     bool intersectsBlock(int x, int y, int z) const;

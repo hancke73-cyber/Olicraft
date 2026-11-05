@@ -186,6 +186,12 @@ const TileName TILE_NAMES[TILE_COUNT] = {
     {"water_pipe", "Wasserrohr"},
     {"pump", "Dampfpumpe"},
     {"outlet", "Wasserauslass"},
+    {"boat", "Dampfboot"},
+    {"gondola", "Gondel"},
+    {"balloon_s", "Ballon klein"},
+    {"balloon_m", "Ballon mittel"},
+    {"balloon_l", "Ballon gross"},
+    {"propeller", "Dampfpropeller"},
 };
 static_assert(sizeof(TILE_NAMES) / sizeof(TILE_NAMES[0]) == TILE_COUNT, "Kachelnamen passen nicht zur Kachelliste");
 

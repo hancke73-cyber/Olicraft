@@ -168,6 +168,9 @@ bool Game::init() {
 
     world_ = std::make_unique<World>(seed);
     entities_ = EntityManager(static_cast<uint32_t>(seed) ^ 0xA5A5u);
+    vehicles_.clear();
+    ridingId_ = 0;
+    engineVehicleId_ = 0;
     if (loaded) {
         applySave(sf);
     } else {
@@ -440,6 +443,7 @@ void Game::applySave(const SaveFile& sf) {
     world_->importChests(sf.chests);
     world_->importSigns(sf.signs);
     world_->importMachines(sf.machines);
+    for (const Vehicle& v : sf.vehicles) vehicles_.add(v);
     player_.pos = sf.player.pos;
     player_.yaw = sf.player.yaw;
     player_.pitch = sf.player.pitch;
@@ -918,6 +922,7 @@ void Game::closeInventory() {
     paletteWindow_ = false;
     furnaceWindow_ = false;
     machineWindow_ = false;
+    engineVehicleId_ = 0;
     chestWindow_ = false;
     tradeWindow_ = false;
     firstMouse_ = true;
@@ -1100,7 +1105,7 @@ void Game::inventoryClick(int button, int mods) {
     }
 
     if (furnaceWindow_ && machineWindow_) {
-        Machine* mach = world_->findMachine(machinePos_.x, machinePos_.y, machinePos_.z);
+        Machine* mach = activeMachine();
         const int fslot = layout.hitFurnace(m);
         ItemStack* st = mach && fslot >= 0 ? machineSlot(*mach, fslot) : nullptr;
         if (st) {
@@ -1335,7 +1340,12 @@ void Game::handleKey(int key, int action, int mods) {
     }
     if (key == GLFW_KEY_E) {
         if (inventoryOpen_) closeInventory();
+        else if (ridingId_ != 0) openVehicleEngine(ridingId_);
         else openInventory();
+        return;
+    }
+    if (key == GLFW_KEY_F && ridingId_ != 0 && !inventoryOpen_) {
+        dismountVehicle();
         return;
     }
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
@@ -1521,6 +1531,7 @@ void Game::die() {
     closeInventory();
     inventoryOpen_ = false;
     player_.flying = false;
+    dismountVehicle();
 }
 
 void Game::respawn() {
@@ -1665,7 +1676,7 @@ void Game::update(float dt) {
             }
         }
         if (!creative_) player_.flying = false;
-        player_.update(dt, in, *world_);
+        if (!updateVehicles(dt, in)) player_.update(dt, in, *world_);
 
         {
             const float hspeed = std::sqrt(player_.vel.x * player_.vel.x + player_.vel.z * player_.vel.z);
@@ -1876,6 +1887,10 @@ void Game::placeBlockOrUse() {
         }
     }
     if (sel.empty() || (!steampunkEnabled() && isSteampunkItem(sel.id))) return;
+    if (sel.id == ITEM_STEAMBOAT || sel.id == ITEM_GONDOLA) {
+        useVehicleItem(sel);
+        return;
+    }
     if (sel.id == ITEM_BUCKET || sel.id == ITEM_BUCKET_WATER || sel.id == ITEM_BUCKET_LAVA) {
         useBucket();
         return;
@@ -2128,6 +2143,11 @@ void Game::updateInteraction(float dt) {
     const float blockDist =
         target_.hit ? glm::length(glm::vec3(target_.block) + glm::vec3(0.5f) - eye) - 0.5f : 1e9f;
     const bool mobFirst = mob && mobT <= blockDist;
+    float vehT = 0.0f;
+    Vehicle* veh = vehicles_.raycast(eye, dir, REACH_VEHICLE, vehT);
+    if (veh && veh->id == ridingId_) veh = nullptr;  // das eigene Fahrzeug ist nicht im Weg
+    const bool vehFirst = veh && vehT <= blockDist && (!mobFirst || vehT < mobT);
+    targetVehicleId_ = vehFirst ? veh->id : 0;
 
     const bool left = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     const bool right = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
@@ -2141,7 +2161,10 @@ void Game::updateInteraction(float dt) {
 
     // Linke Maustaste: angreifen oder abbauen
     breakProgress_ = 0.0f;
-    if (left && mobFirst) {
+    if (left && vehFirst) {
+        breaking_ = false;
+        hitVehicle(*veh);
+    } else if (left && mobFirst) {
         breaking_ = false;
         if (attackTimer_ <= 0.0f) {
             entities_.hurtMob(*mob, creative_ ? 20 : attackDamage(inventory_.slots[slot_]), player_.pos);
@@ -2182,7 +2205,9 @@ void Game::updateInteraction(float dt) {
 
     // Rechte Maustaste: handeln, setzen / essen
     if (right && placeTimer_ <= 0.0f) {
-        if (mobFirst && mob->type == MobType::Villager && !mob->dead()) {
+        if (vehFirst) {
+            interactVehicle(*veh);
+        } else if (mobFirst && mob->type == MobType::Villager && !mob->dead()) {
             placeTimer_ = 0.4f;
             openTrade(mob->profession);
         } else {
@@ -2409,6 +2434,7 @@ void Game::render() {
 
     entityBatches_.clear();
     entities_.buildMesh(*world_, f.camPos, gameTime_, entityBatches_);
+    vehicles_.buildMesh(*world_, f.camPos, gameTime_, entityBatches_);
     if (camMode_ != CameraMode::First) {  // eigenes Spielermodell in der Ansicht von hinten oder vorn
         Pose pose;
         pose.pos = player_.pos - f.camPos;
@@ -2450,6 +2476,9 @@ void Game::render() {
         h.signOpen = true;
         for (size_t i = 0; i < 4; ++i) h.signLines[i] = signText_.lines[i];
         h.signLine = signLine_;
+    } else if (!inventoryOpen_ && !dead_ && vehicles_.find(ridingId_ != 0 ? ridingId_ : targetVehicleId_)) {
+        h.infoLines = vehicleInfo(*vehicles_.find(ridingId_ != 0 ? ridingId_ : targetVehicleId_));
+        h.infoShow = true;
     } else if (target_.hit && !inventoryOpen_ && !dead_ &&
                (isMachineBlock(world_->getBlock(target_.block.x, target_.block.y, target_.block.z)) || isSteamPart(world_->getBlock(target_.block.x, target_.block.y, target_.block.z)) ||
                 isMechPart(world_->getBlock(target_.block.x, target_.block.y, target_.block.z)))) {
@@ -2498,9 +2527,9 @@ void Game::render() {
         for (const BookItem& it : list) h.book.entries.push_back(it.hud);
     }
     if (furnaceWindow_ && machineWindow_) {
-        if (Machine* mach = world_->findMachine(machinePos_.x, machinePos_.y, machinePos_.z)) {
+        if (Machine* mach = activeMachine()) {
             h.machineMode = mach->kind == MachineKind::Boiler ? 1 : 2;
-            h.windowTitle = mach->kind == MachineKind::Boiler ? "Dampfkessel" : "Destillierapparat";
+            h.windowTitle = engineVehicleId_ != 0 ? "Bordkessel" : (mach->kind == MachineKind::Boiler ? "Dampfkessel" : "Destillierapparat");
             if (const ItemStack* s0 = machineSlot(*mach, 0)) h.furnaceIn = *s0;
             if (const ItemStack* s1 = machineSlot(*mach, 1)) h.furnaceFuel = *s1;
             if (const ItemStack* s2 = machineSlot(*mach, 2)) h.furnaceOut = *s2;
@@ -2592,6 +2621,7 @@ bool Game::saveWorld() {
     world_->exportChests(sf.chests);
     world_->exportSigns(sf.signs);
     world_->exportMachines(sf.machines);
+    sf.vehicles = vehicles_.list();
     sf.player.hasSpawn = true;
     sf.player.spawn = spawnPoint_;
     std::string err;
