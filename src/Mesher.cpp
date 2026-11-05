@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdint>
 
+#include <glm/glm.hpp>
+
 #include "Atlas.h"
 #include "BlockShape.h"
 #include "Faces.h"
@@ -312,6 +314,76 @@ void emitShaped(const Ctx& c, int x, int y, int z, BlockId b, std::vector<Vertex
     }
 }
 
+// Dachkeil: glatte Schraege. a: Lage entlang der Richtung der hohen Seite (0 niedrig, 1 hoch), s: seitlich, h: Hoehe.
+void emitWedge(const Ctx& c, int x, int y, int z, BlockId b, std::vector<Vertex>& out) {
+    const BlockInfo& bi = blockInfo(b);
+    const int f = wedgeFacing(b);
+    const float sky = std::max(c.skyAt(x, y, z), c.skyAt(x, y + 1, z));
+    const float light = std::max(c.lightAt(x, y, z), c.lightAt(x, y + 1, z)) / static_cast<float>(MAX_LIGHT);
+    auto P = [&](float a, float s, float h) -> glm::vec3 {
+        switch (f) {
+            case 0: return {a, h, s};
+            case 1: return {1.0f - a, h, s};
+            case 2: return {s, h, a};
+            default: return {s, h, 1.0f - a};
+        }
+    };
+    static const int DX[4] = {1, -1, 0, 0}, DZ[4] = {0, 0, 1, -1};
+    const glm::vec3 dir(static_cast<float>(DX[f]), 0.0f, static_cast<float>(DZ[f]));
+    const glm::vec3 side(static_cast<float>(f >= 2 ? 1 : 0), 0.0f, static_cast<float>(f >= 2 ? 0 : 1));  // Richtung s -> 1
+    // Eine Flaeche aus vier Punkten (a, s, h) mit Texturkoordinaten; die Ecken werden so geordnet, dass sie von aussen gegen den Uhrzeigersinn laufen
+    auto quad = [&](const float pts[4][3], const float uv[4][2], const glm::vec3& outward, float shade, const UVRect& r) {
+        glm::vec3 p[4];
+        for (int k = 0; k < 4; ++k) p[k] = P(pts[k][0], pts[k][1], pts[k][2]);
+        int order[4] = {0, 1, 2, 3};
+        if (glm::dot(glm::cross(p[1] - p[0], p[3] - p[0]), outward) < 0.0f) {
+            order[1] = 3;
+            order[3] = 1;
+        }
+        for (int k = 0; k < 4; ++k) {
+            const int i = order[k];
+            Vertex v;
+            v.x = static_cast<float>(x) + p[i].x;
+            v.y = static_cast<float>(y) + p[i].y;
+            v.z = static_cast<float>(z) + p[i].z;
+            v.u = r.u0 + (r.u1 - r.u0) * uv[i][0];
+            v.v = r.v0 + (r.v1 - r.v0) * uv[i][1];
+            v.shade = shade;
+            v.sky = sky;
+            v.light = light;
+            out.push_back(v);
+        }
+    };
+    const UVRect top = tileUV(bi.top), sideTile = tileUV(bi.side);
+    // unten
+    if (!c.opaqueAt(x, y - 1, z)) {
+        const float pts[4][3] = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}};
+        const float uv[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+        quad(pts, uv, glm::vec3(0, -1, 0), faceDef(3).shade, tileUV(bi.bottom));
+    }
+    // hohe Rueckseite
+    if (!c.opaqueAt(x + DX[f], y, z + DZ[f])) {
+        const float pts[4][3] = {{1, 0, 0}, {1, 1, 0}, {1, 1, 1}, {1, 0, 1}};
+        const float uv[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+        quad(pts, uv, dir, faceDef(f < 2 ? 0 : 4).shade, sideTile);
+    }
+    // Schraege
+    {
+        const float pts[4][3] = {{0, 0, 0}, {0, 1, 0}, {1, 1, 1}, {1, 0, 1}};
+        const float uv[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+        quad(pts, uv, glm::normalize(glm::vec3(0, 1, 0) - dir), faceDef(2).shade * 0.94f, top);
+    }
+    // zwei dreieckige Seiten (viertes Eck doppelt)
+    for (int sd = 0; sd < 2; ++sd) {
+        const int nx = sd == 0 ? -static_cast<int>(side.x) : static_cast<int>(side.x), nz = sd == 0 ? -static_cast<int>(side.z) : static_cast<int>(side.z);
+        if (c.opaqueAt(x + nx, y, z + nz)) continue;
+        const float s = static_cast<float>(sd);
+        const float pts[4][3] = {{0, s, 0}, {1, s, 0}, {1, s, 1}, {1, s, 1}};
+        const float uv[4][2] = {{0, 0}, {1, 0}, {1, 1}, {1, 1}};
+        quad(pts, uv, glm::vec3(static_cast<float>(nx), 0.0f, static_cast<float>(nz)), faceDef(f < 2 ? 4 : 0).shade, sideTile);
+    }
+}
+
 }  // namespace
 
 void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out) {
@@ -332,6 +404,10 @@ void buildChunkMesh(const BlockId* padded, const uint8_t* light, MeshOutput& out
                 }
                 if (isPlant(b)) {
                     emitPlant(c, x, y, z, b, out.opaque);
+                    continue;
+                }
+                if (blockInfo(b).shape == SH_WEDGE) {
+                    emitWedge(c, x, y, z, b, out.opaque);
                     continue;
                 }
                 if (blockInfo(b).shape != SH_FULL) {

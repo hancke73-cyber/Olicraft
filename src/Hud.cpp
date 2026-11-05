@@ -59,6 +59,20 @@ void HudBatch::itemIcon(ItemId id, float cx, float cy, float s) {
     const float w = 0.866f * s;
     // Teilformen (Treppe, Platte, Zaun, Mauer, Bett, Acker) als Quader in derselben Schraegansicht wie der Vollblock
     const Shape shape = id < BLOCK_COUNT ? blockInfo(static_cast<BlockId>(id)).shape : SH_FULL;
+    if (shape == SH_WEDGE) {  // glatte Schraege, hohe Seite hinten
+        auto P2 = [&](float pp, float qq, float hh) { return glm::vec2(cx + (qq - pp) * w, cy - s + (pp + qq) * 0.5f * s + (1.0f - hh) * s); };
+        {
+            const glm::vec2 pt[4] = {P2(0, 0, 1), P2(0, 1, 1), P2(1, 1, 0), P2(1, 0, 0)};
+            const glm::vec2 uv[4] = {{top.u0, top.v1}, {top.u1, top.v1}, {top.u1, top.v0}, {top.u0, top.v0}};
+            quad(pt, uv, glm::vec4(0.95f, 0.95f, 0.95f, 1.0f), HUD_TEX_ATLAS);
+        }
+        {
+            const glm::vec2 pt[4] = {P2(0, 1, 1), P2(1, 1, 0), P2(0, 1, 0), P2(0, 1, 0)};
+            const glm::vec2 uv[4] = {{side.u1, side.v1}, {side.u0, side.v0}, {side.u1, side.v0}, {side.u1, side.v0}};
+            quad(pt, uv, glm::vec4(0.58f, 0.58f, 0.58f, 1.0f), HUD_TEX_ATLAS);
+        }
+        return;
+    }
     if (shape != SH_FULL) {
         struct Part { float p0, p1, q0, q1, h0, h1; };
         Part parts[5];

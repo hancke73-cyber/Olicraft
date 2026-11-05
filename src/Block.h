@@ -133,6 +133,9 @@ enum Block : BlockId {
     // Umgedrehte Treppen (hohe Seite unten): gleiche Anordnung wie STAIRS_BASE. Am Ende, damit alte Spielstaende gueltig bleiben.
     STAIRS_TOP_BASE,
     STAIRS_TOP_END = STAIRS_TOP_BASE + 19,
+    // Dachkeile: glatte Schraege ueber die ganze Zelle, 5 Materialien x 4 Richtungen (Richtung der hohen Seite: +X, -X, +Z, -Z)
+    WEDGE_BASE,
+    WEDGE_END = WEDGE_BASE + 19,
     BLOCK_COUNT
 };
 
@@ -285,7 +288,7 @@ enum Tile : int {
 enum ToolClass : uint8_t { TOOL_NONE = 0, TOOL_PICKAXE, TOOL_AXE, TOOL_SHOVEL, TOOL_SWORD, TOOL_HOE };
 
 // Form eines Blocks: Vollwuerfel oder Teilform (genaue Boxen siehe BlockShape.h)
-enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND, SH_LADDER, SH_BED };
+enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND, SH_LADDER, SH_BED, SH_WEDGE };
 
 struct BlockInfo {
     const char* name;
@@ -338,6 +341,10 @@ inline int stairFacing(BlockId id) { return stairIndex(id) % 4; }  // Richtung d
 inline BlockId makeStairs(int material, int facing, bool top = false) {
     return static_cast<BlockId>((top ? STAIRS_TOP_BASE : STAIRS_BASE) + material * 4 + facing);
 }
+inline bool isWedge(BlockId id) { return id >= WEDGE_BASE && id <= WEDGE_END; }
+inline int wedgeMaterial(BlockId id) { return (id - WEDGE_BASE) / 4; }
+inline int wedgeFacing(BlockId id) { return (id - WEDGE_BASE) % 4; }  // Richtung der hohen Seite
+inline BlockId makeWedge(int material, int facing) { return static_cast<BlockId>(WEDGE_BASE + material * 4 + facing); }
 inline bool isSlab(BlockId id) { return id >= SLAB_BASE && id <= SLAB_END; }
 inline int slabMaterial(BlockId id) { return (id - SLAB_BASE) / 2; }
 inline bool slabIsTop(BlockId id) { return (id - SLAB_BASE) % 2 == 1; }

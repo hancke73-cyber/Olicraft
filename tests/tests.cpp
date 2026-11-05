@@ -2923,7 +2923,7 @@ static void testPartsAndFarming() {
                 const BlockId g = makeGate(mat, op == 1, ax);
                 CHECK(isGate(g) && gateMaterial(g) == mat && gateOpen(g) == (op == 1) && gateAxis(g) == ax && blockInfo(g).solid == (op == 0));
             }
-    CHECK(BLOCK_COUNT <= 200);  // darueber beginnen die Gegenstands-Ids
+    CHECK(BLOCK_COUNT <= 256);  // darueber beginnen die Gegenstands-Ids
     // Items: nur Grundformen sind gueltige Gegenstaende
     CHECK(itemValid(makeStairs(0, 0)) && !itemValid(makeStairs(0, 1)) && itemValid(makeSlab(2, false)) && !itemValid(makeSlab(2, true)));
     CHECK(!itemValid(makeDoor(0, false, false, 0)) && itemValid(ITEM_DOOR_WOOD) && itemValid(ITEM_DOOR_IRON) && !itemValid(LANTERN_HANG) && itemValid(LANTERN));
@@ -3395,7 +3395,7 @@ static void testCreativeTabsAndGui() {
 }
 
 static void testStairCorners() {
-    CHECK(BLOCK_COUNT <= 200);  // darueber beginnen die Gegenstands-IDs
+    CHECK(BLOCK_COUNT <= 256);  // Bloecke sind 8 Bit gross, Gegenstaende beginnen bei 256
     // IDs: alle Materialien, Richtungen und beide Lagen sind eindeutig und kehren zurueck
     std::set<int> ids;
     for (int m = 0; m < STAIR_MATERIALS; ++m)
@@ -3648,6 +3648,138 @@ static void testChurch() {
     CHECK(checked >= 3);
 }
 
+static void testWedges() {
+    // IDs, Form, Gegenstand
+    CHECK(BLOCK_COUNT <= 256 && WEDGE_BASE > STAIRS_TOP_END);
+    std::set<int> ids;
+    for (int m = 0; m < STAIR_MATERIALS; ++m)
+        for (int f = 0; f < 4; ++f) {
+            const BlockId b = makeWedge(m, f);
+            CHECK(isWedge(b) && wedgeMaterial(b) == m && wedgeFacing(b) == f && !isStairs(b) && !isSlab(b));
+            CHECK(blockInfo(b).shape == SH_WEDGE && blockInfo(b).solid && !blockInfo(b).opaque && blockInfo(b).drop == makeWedge(m, 0));
+            CHECK(ids.insert(b).second);
+            CHECK(itemValid(b) == (f == 0));
+            CHECK(blockDropItem(b) == makeWedge(m, 0));
+        }
+    CHECK(ids.size() == 20 && !isWedge(STAIRS_TOP_END) && !isWedge(AIR));
+    CHECK(std::string(blockInfo(makeWedge(0, 0)).name) == "Bretterkeil");
+    // Kollision: vier Stufen, die zur hohen Seite ansteigen
+    auto none = [](int, int, int) { return static_cast<BlockId>(AIR); };
+    Box bx[MAX_BOXES];
+    for (int f = 0; f < 4; ++f) {
+        CHECK(blockBoxes(makeWedge(0, f), 0, 0, 0, none, false, bx) == 4);
+        float vol = 0.0f;
+        for (int i = 0; i < 4; ++i) {
+            vol += (bx[i].x1 - bx[i].x0) * (bx[i].y1 - bx[i].y0) * (bx[i].z1 - bx[i].z0);
+            CHECK(bx[i].y0 == 0.0f && bx[i].x0 >= 0 && bx[i].x1 <= 1 && bx[i].z0 >= 0 && bx[i].z1 <= 1);
+        }
+        CHECK(std::fabs(vol - 0.625f) < 1e-5f);  // 0,25 * (0,25 + 0,5 + 0,75 + 1)
+        // hohe Seite liegt in Richtung f
+        const float hi = f == 0 ? bx[3].x0 : (f == 1 ? 1.0f - bx[3].x1 : (f == 2 ? bx[3].z0 : 1.0f - bx[3].z1));
+        CHECK(bx[3].y1 == 1.0f && std::fabs(hi - 0.75f) < 1e-5f);
+    }
+    // Mesher: 5 Flaechen (unten, Rueckseite, Schraege, zwei Dreiecke), Winding nach aussen, Culling gegen volle Nachbarn
+    {
+        auto build = [&](int f, const std::vector<std::array<int, 4>>& blocks) {
+            std::vector<BlockId> pad(PAD_VOLUME, AIR);
+            pad[padIndex(8 + 1, 50, 8 + 1)] = makeWedge(1, f);
+            for (const auto& b : blocks) pad[padIndex(b[0] + 1, b[1], b[2] + 1)] = static_cast<BlockId>(b[3]);
+            MeshOutput out;
+            buildChunkMesh(pad.data(), nullptr, out);
+            return out;
+        };
+        for (int f = 0; f < 4; ++f) {
+            const MeshOutput o = build(f, {});
+            CHECK(o.opaque.size() == 5 * 4);
+            // jede Flaeche zeigt in eine der fuenf erwarteten Richtungen, jede Richtung kommt genau einmal vor
+            static const int DXw[4] = {1, -1, 0, 0}, DZw[4] = {0, 0, 1, -1};
+            const glm::vec3 dirv(static_cast<float>(DXw[f]), 0.0f, static_cast<float>(DZw[f]));
+            const glm::vec3 sidev(f >= 2 ? 1.0f : 0.0f, 0.0f, f >= 2 ? 0.0f : 1.0f);
+            const glm::vec3 expect[5] = {glm::vec3(0, -1, 0), dirv, glm::normalize(glm::vec3(0, 1, 0) - dirv), -sidev, sidev};
+            int matched[5] = {};
+            bool inCell = true;
+            for (size_t q = 0; q + 3 < o.opaque.size(); q += 4) {
+                const glm::vec3 a(o.opaque[q].x, o.opaque[q].y, o.opaque[q].z), b(o.opaque[q + 1].x, o.opaque[q + 1].y, o.opaque[q + 1].z),
+                    c(o.opaque[q + 2].x, o.opaque[q + 2].y, o.opaque[q + 2].z), d(o.opaque[q + 3].x, o.opaque[q + 3].y, o.opaque[q + 3].z);
+                const glm::vec3 n = glm::normalize(glm::cross(b - a, c - a) + glm::cross(c - a, d - a));
+                for (int e = 0; e < 5; ++e)
+                    if (glm::dot(n, expect[e]) > 0.99f) ++matched[e];
+                for (const glm::vec3& p : {a, b, c, d})
+                    if (p.x < 7.99f || p.x > 9.01f || p.y < 49.99f || p.y > 51.01f || p.z < 7.99f || p.z > 9.01f) inCell = false;
+            }
+            bool windingOk = true;
+            for (int e = 0; e < 5; ++e) windingOk = windingOk && matched[e] == 1;            CHECK(windingOk && inCell);
+            // Die Schraege: Normale zeigt nach oben und weg von der hohen Seite
+            bool slope = false;
+            static const int DX[4] = {1, -1, 0, 0}, DZ[4] = {0, 0, 1, -1};
+            for (size_t q = 0; q + 3 < o.opaque.size(); q += 4) {
+                const glm::vec3 a(o.opaque[q].x, o.opaque[q].y, o.opaque[q].z), b(o.opaque[q + 1].x, o.opaque[q + 1].y, o.opaque[q + 1].z),
+                    c(o.opaque[q + 2].x, o.opaque[q + 2].y, o.opaque[q + 2].z);
+                const glm::vec3 n = glm::normalize(glm::cross(b - a, c - a));
+                if (n.y > 0.5f && n.y < 0.95f && n.x * DX[f] + n.z * DZ[f] < -0.5f) slope = true;
+            }
+            CHECK(slope);
+        }
+        // volle Nachbarn verdecken je eine Flaeche des Keils (der Stein daneben hat 6 eigene Flaechen)
+        CHECK(build(0, {{8, 49, 8, STONE}}).opaque.size() == (4 + 6) * 4);  // darunter
+        CHECK(build(0, {{9, 50, 8, STONE}}).opaque.size() == (4 + 6) * 4);  // hinter der hohen Seite
+        CHECK(build(0, {{8, 50, 7, STONE}}).opaque.size() == (4 + 6) * 4);  // seitlich
+        CHECK(build(0, {{8, 50, 9, STONE}}).opaque.size() == (4 + 6) * 4);
+        CHECK(build(0, {{7, 50, 8, STONE}}).opaque.size() == (5 + 6) * 4);  // an der niedrigen Seite bleibt alles sichtbar
+    }
+    // Spieler laeuft die Schraege hinauf (Stufen von 0,25 ohne Sprung) und stoesst am Vollblock an
+    {
+        World w(4);
+        w.setMeshingEnabled(false);
+        w.loadAround(glm::vec3(0.0f), 2);
+        const int gy = 100;
+        for (int x = -8; x <= 12; ++x)
+            for (int z = -8; z <= 8; ++z) {
+                for (int y = gy; y < gy + 8; ++y) w.setBlock(x, y, z, AIR);
+                w.setBlock(x, gy - 1, z, STONE);
+            }
+        for (int x = 3; x <= 5; ++x) w.setBlock(x, gy, 0, makeWedge(0, 0));  // hohe Seite +x
+        w.setBlock(6, gy, 0, STONE);
+        w.setBlock(6, gy + 1, 0, STONE);  // zwei hoch: ein Hindernis, das nicht ueberstiegen wird
+        Player p;
+        p.pos = glm::vec3(1.5f, static_cast<float>(gy), 0.5f);
+        p.yaw = 0.0f;
+        MoveInput in;
+        in.forward = 1.0f;
+        float maxY = 0.0f;
+        for (int i = 0; i < 60; ++i) {
+            p.update(0.05f, in, w);
+            maxY = std::max(maxY, p.pos.y - static_cast<float>(gy));
+        }
+        CHECK(maxY > 0.9f && maxY < 1.2f);  // ganz oben, aber ohne zu springen
+        CHECK(p.pos.x < 5.8f && p.pos.x > 4.5f);  // der Vollblock dahinter haelt auf, der Spieler steht oben auf dem Keil
+        // Hindernis von der hohen Seite: der Keil ist eine Wand
+        Player q;
+        q.pos = glm::vec3(8.5f, static_cast<float>(gy), 3.5f);
+        q.yaw = 180.0f;
+        w.setBlock(6, gy, 3, makeWedge(0, 0));
+        w.setBlock(6, gy + 1, 3, AIR);
+        w.setBlock(7, gy, 3, AIR);
+        for (int i = 0; i < 60; ++i) q.update(0.05f, in, w);
+        CHECK(q.pos.y - gy < 1.2f);
+        // Raycast trifft die Stufe des Keils
+        const RayHit hit = w.raycast(glm::vec3(3.5f, gy + 3.0f, 0.5f), glm::vec3(0, -1, 0), 6.0f);
+        CHECK(hit.hit && hit.block == glm::ivec3(3, gy, 0) && hit.normal == glm::ivec3(0, 1, 0));
+    }
+    // Rezept und Auswahl
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (auto& c : cells) g[c.first] = {c.second, 1};
+        return g;
+    };
+    CHECK(matchRecipe(grid(3, {{0, PLANKS}, {3, PLANKS}, {4, PLANKS}}).data(), 3) == ItemStack({makeWedge(0, 0), 4}));
+    CHECK(matchRecipe(grid(3, {{0, BRICKS}, {3, BRICKS}, {4, BRICKS}}).data(), 3).id == makeWedge(3, 0));
+    CHECK(matchRecipe(grid(3, {{0, PLANKS}, {1, PLANKS}, {2, PLANKS}}).data(), 3).id == makeSlab(0, false));  // Platten unveraendert
+    int inTab = 0;
+    for (ItemId id : creativeTabItems(1)) inTab += isWedge(static_cast<BlockId>(id < BLOCK_COUNT ? id : 0)) ? 1 : 0;
+    CHECK(inTab == 5);
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -3885,6 +4017,7 @@ int main() {
     testArmor();
     testParticlesAndGraphics();
     testWorlds();
+    testWedges();
     testChurch();
     testItemIcons();
     testStairCorners();

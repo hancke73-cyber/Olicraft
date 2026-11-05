@@ -56,6 +56,7 @@ const SoundDef& soundDef(SoundId id) { return DEFS[static_cast<int>(id)]; }
 
 Material blockMaterial(BlockId b) {
     if (isStairs(b)) return blockMaterial(stairMaterialBlock(stairMaterial(b)));
+    if (isWedge(b)) return blockMaterial(stairMaterialBlock(wedgeMaterial(b)));
     if (isSlab(b)) return blockMaterial(stairMaterialBlock(slabMaterial(b)));
     if (isDoor(b)) return doorMaterial(b) == 0 ? Material::Wood : Material::Stone;
     if (isGate(b)) return gateMaterial(b) == 0 ? Material::Wood : Material::Stone;

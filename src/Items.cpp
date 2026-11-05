@@ -15,6 +15,7 @@ static const std::vector<ItemId> TAB_ITEMS[CREATIVE_TAB_COUNT] = {
     {PLANKS, BRICKS, STONE_BRICKS, GLASS, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, COAL_BLOCK,
      STAIRS_BASE, STAIRS_BASE + 4, STAIRS_BASE + 8, STAIRS_BASE + 12, STAIRS_BASE + 16,
      SLAB_BASE, SLAB_BASE + 2, SLAB_BASE + 4, SLAB_BASE + 6, SLAB_BASE + 8,
+     WEDGE_BASE, WEDGE_BASE + 4, WEDGE_BASE + 8, WEDGE_BASE + 12, WEDGE_BASE + 16,
      FENCE, WALL_COBBLE, WALL_BRICKS, GATE_BASE, GATE_BASE + 4, ITEM_DOOR_WOOD, ITEM_DOOR_IRON},
     // Dekoration
     {WOOL_WHITE, WOOL_RED, WOOL_BLUE, WOOL_GREEN, WOOL_YELLOW, WOOL_BLACK, GLASS_PANE, IRON_BARS, LANTERN, TORCH, LAMP,
@@ -58,6 +59,7 @@ bool itemValid(ItemId id) {
             return false;
         const BlockId b = static_cast<BlockId>(id);
         if (isStairs(b)) return stairFacing(b) == 0 && !stairIsTop(b);
+        if (isWedge(b)) return wedgeFacing(b) == 0;
         if (isSlab(b)) return !slabIsTop(b);
         if (isDoor(b) || b == LANTERN_HANG || isCrop(b) || isBedPart(b)) return false;
         if (isLadder(b)) return b == LADDER_BASE;

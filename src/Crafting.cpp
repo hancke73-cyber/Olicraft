@@ -83,6 +83,7 @@ std::vector<Recipe> buildRecipes() {
         const ItemId mat = stairMaterialBlock(m);
         v.push_back(make({"M  ", "MM ", "MMM"}, {{'M', mat}}, {makeStairs(m, 0), 4}));
         v.push_back(make({"MMM"}, {{'M', mat}}, {makeSlab(m, false), 6}));
+        v.push_back(make({"M ", "MM"}, {{'M', mat}}, {makeWedge(m, 0), 4}));  // Dachkeile
     }
     v.push_back(make({"PSP", "PSP"}, {{'P', PLANKS}, {'S', ITEM_STICK}}, {FENCE, 3}));
     v.push_back(make({"SPS", "SPS"}, {{'P', PLANKS}, {'S', ITEM_STICK}}, {makeGate(0, false, 0), 2}));

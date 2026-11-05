@@ -104,6 +104,15 @@ struct InfoTable {
                 i.shape = SH_STAIRS;
                 i.drop = makeStairs(m, 0);
             }
+            static const char* WEDGE_NAMES[STAIR_MATERIALS] = {"Bretterkeil", "Bruchsteinkeil", "Steinziegelkeil", "Ziegelkeil", "Sandsteinkeil"};
+            for (int f = 0; f < 4; ++f) {
+                BlockInfo& i = infos[makeWedge(m, f)];
+                i = mb;
+                i.name = WEDGE_NAMES[m];
+                i.opaque = false;
+                i.shape = SH_WEDGE;
+                i.drop = makeWedge(m, 0);
+            }
             for (int t = 0; t < 2; ++t) {
                 BlockInfo& i = infos[makeSlab(m, t == 1)];
                 i = mb;

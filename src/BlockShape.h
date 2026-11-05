@@ -73,6 +73,16 @@ int blockBoxes(BlockId b, int x, int y, int z, const G& get, bool visual, Box* o
             if (slabIsTop(b)) add(0, 0.5f, 0, 1, 1, 1);
             else add(0, 0, 0, 1, 0.5f, 1);
             return n;
+        case SH_WEDGE: {
+            // Schraege als vier Stufen von je 0,25 (Kollision und Strahl); gezeichnet wird die glatte Flaeche
+            const int f = wedgeFacing(b);
+            for (int i = 0; i < 4; ++i) {
+                const float lo = f == 0 || f == 2 ? i * 0.25f : 1.0f - (i + 1) * 0.25f, hi = lo + 0.25f, hgt = (i + 1) * 0.25f;
+                if (f <= 1) add(lo, 0, 0, hi, hgt, 1);
+                else add(0, 0, lo, 1, hgt, hi);
+            }
+            return n;
+        }
         case SH_STAIRS: {
             const bool top = stairIsTop(b);
             const int f = stairFacing(b);

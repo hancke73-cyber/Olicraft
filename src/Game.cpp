@@ -1880,6 +1880,8 @@ void Game::placeBlockOrUse() {
             else if (target_.normal.y < 0) top = true;
             else top = hitPoint.y - static_cast<float>(p.y) > 0.5f;
             id = makeStairs(stairMaterial(id), lookDir, top);
+        } else if (isWedge(id)) {
+            id = makeWedge(wedgeMaterial(id), lookDir);  // hohe Seite in Blickrichtung
         } else if (isSlab(id)) {
             const int mat = slabMaterial(id);
             const BlockId tb2 = world_->getBlock(target_.block.x, target_.block.y, target_.block.z);
@@ -2330,6 +2332,12 @@ void Game::applyDemo() {
                 }
         }
         put(17, 3, 3, BRICKS);
+        // glatter Giebel aus Dachkeilen (zwei Reihen mit First in der Mitte) und eine Rampe
+        for (int x = 30; x <= 36; ++x) {
+            put(x, 0, 0, makeWedge(3, 3));  // hohe Seiten zeigen nach aussen, in der Mitte laeuft der First
+            put(x, 0, 1, makeWedge(3, 2));
+        }
+        for (int k = 0; k < 3; ++k) put(30 + k, 0, 4, makeWedge(1, 0));
         // Bogen mit umgedrehten Treppen unter der Decke
         for (int z = 0; z <= 2; ++z) {
             for (int y = 0; y <= 2; ++y) {
@@ -3290,6 +3298,12 @@ int Game::selfTest() {
         world_->setBlock(7, gy + 2, -13, AIR);
         world_->setBlock(6, gy + 2, -13, AIR);
         world_->setBlock(6, gy + 3, -13, AIR);
+        // Dachkeil auf den Boden: hohe Seite in Blickrichtung (+x)
+        inventory_.slots[0] = {makeWedge(2, 0), 4};
+        aim(7.5f, gy + 2.0f, -12.5f, 0.0f, -1.0f, 0.0f);
+        placeBlockOrUse();
+        SCHECK(world_->getBlock(7, gy, -13) == makeWedge(2, 0) && inventory_.slots[0].count == 3);
+        world_->setBlock(7, gy, -13, AIR);
         // Platte: von oben unten, von unten oben, zweite Platte ergibt einen Vollblock
         inventory_.slots[0] = {makeSlab(1, false), 6};
         aim(10.5f, gy + 2.0f, -12.5f, 0.0f, -1.0f, 0.0f);
