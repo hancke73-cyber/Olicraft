@@ -92,6 +92,7 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
             case K::Market: depth = 5; width = 9; break;
             case K::Tower: depth = 5; width = 5; break;
             case K::GateHouse: depth = 1; width = 9; break;
+            case K::Church: depth = 11; width = 7; break;
             case K::House: depth = width = rng.range(0, 3) == 0 ? 5 : 7; break;
             default: depth = width = 7; break;
         }
@@ -147,6 +148,9 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
     // Dorftor am Rand
     for (int attempt = 0; attempt < 16; ++attempt)
         if (tryPlace(K::GateHouse, rng.uniform() * 6.2831853f, 34.0f)) break;
+    // Kirche: nach allem anderen versucht, damit die uebrigen Gebaeude unveraendert bleiben (nicht jedes Dorf hat Platz)
+    for (int attempt = 0; attempt < 80; ++attempt)
+        if (tryPlace(K::Church, rng.uniform() * 6.2831853f, 14.0f + rng.uniform() * 17.0f)) break;
 
     // Wege: von jeder Tuer zum Zentrum, erst entlang der Tuerachse, dann quer
     std::vector<std::pair<int, int>> seen;
@@ -188,7 +192,7 @@ Village VillageGenerator::build(int cellX, int cellZ, bool& exists) const {
                 addPath(x, z);
             }
         }
-        if (v.villagerSpawns.size() < 8 && b.kind != K::GateHouse && b.kind != K::Tower && b.kind != K::Barn)
+        if (v.villagerSpawns.size() < 8 && b.kind != K::GateHouse && b.kind != K::Tower && b.kind != K::Barn && b.kind != K::Church)
             v.villagerSpawns.emplace_back(b.door.x, height(b.door.x, b.door.y) + 1, b.door.y);
     }
     // Truhen, Betten, Tiere
@@ -390,7 +394,7 @@ void VillageGenerator::placeInChunk(Chunk& chunk) const {
             const int g = b.groundY;
             const bool farm = b.kind == K::Farm;
             // Gelaende: Fundament auffuellen, Ueberstehendes abtragen, Baeume und Pflanzen im Umfeld entfernen
-            const int roofRoom = b.kind == K::Tower ? 18 : 14;
+            const int roofRoom = b.kind == K::Church ? 20 : (b.kind == K::Tower ? 18 : 14);
             for (int z = b.z0 - 1; z <= b.z1 + 1; ++z)
                 for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) {
                     if (!P.inside(x, z)) continue;
@@ -677,6 +681,94 @@ void VillageGenerator::placeInChunk(Chunk& chunk) const {
                     P.set(b.x0 + 1, g + 1, b.z0 + 1, LANTERN);
                     for (const glm::ivec3& c : v.chests)
                         if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);
+                    break;
+                }
+                case K::Church: {
+                    // Kirchenschiff 11 x 7: Steinziegelwaende, Fenster, roter Mittelgang, Baenke, Altar mit Truhe,
+                    // Walmdach aus Bruchsteintreppen und vorn ein Glockenturm mit offener Glockenstube und Spitze
+                    const int D = b.depth(), half = b.width() / 2;
+                    const BlockId roofSolid = stairMaterialBlock(1);
+                    for (int z = b.z0; z <= b.z1; ++z)
+                        for (int x = b.x0; x <= b.x1; ++x) {
+                            const int u = doorAlongX ? (b.facing == 0 ? b.x1 - x : x - b.x0) : (b.facing == 2 ? b.z1 - z : z - b.z0);
+                            const int w = wallOff(x, z), aw = std::abs(w);
+                            const bool endWall = u == 0 || u == D - 1, sideWall = aw == half;
+                            const bool perim = endWall || sideWall, isCorner = endWall && sideWall;
+                            P.set(x, g, z, perim ? COBBLE : (w == 0 && u >= 1 && u <= D - 3 ? WOOL_RED : PLANKS));
+                            for (int y = g + 1; y <= g + 5; ++y) {
+                                if (!perim) {
+                                    P.set(x, y, z, AIR);
+                                    continue;
+                                }
+                                BlockId bl = isCorner ? SPRUCE_LOG : (y == g + 1 ? COBBLE : STONE_BRICKS);
+                                if (!isCorner) {
+                                    if (sideWall && u % 2 == 0 && u >= 2 && u <= D - 3 && y >= g + 2 && y <= g + 4) bl = GLASS_PANE;  // hohe Fenster
+                                    else if (u == 0 && w == 0 && y <= g + 2) bl = AIR;                                              // Tuer
+                                    else if (u == 0 && w == 0 && y >= g + 3 && y <= g + 4) bl = GLASS_PANE;                         // Oberlicht
+                                    else if (u == D - 1 && ((w == 0 && y >= g + 2 && y <= g + 4) || (aw == 1 && y == g + 3))) bl = GLASS_PANE;  // Kreuzfenster
+                                }
+                                P.set(x, y, z, bl);
+                            }
+                        }
+                    {
+                        int dx0, dz0;
+                        cellAt(0, 0, dx0, dz0);
+                        P.set(dx0, g + 1, dz0, makeDoor(0, false, false, b.facing));
+                        P.set(dx0, g + 2, dz0, makeDoor(0, true, false, b.facing));
+                    }
+                    // Decke und Dach mit Ueberstand
+                    for (int z = b.z0 - 1; z <= b.z1 + 1; ++z)
+                        for (int x = b.x0 - 1; x <= b.x1 + 1; ++x) P.set(x, g + 6, z, roofSolid);
+                    roofPitched(P, b.x0 - 1, b.z0 - 1, b.x1 + 1, b.z1 + 1, g + 6, 1, roofSolid);
+                    // Baenke (Treppen, Lehne zur Tuer), Altar mit Buecherregalen und Lichtern
+                    for (int u = 3; u <= 7; u += 2)
+                        for (int w = -2; w <= 2; ++w) {
+                            if (w == 0) continue;
+                            int px, pz;
+                            cellAt(u, w, px, pz);
+                            P.set(px, g + 1, pz, makeStairs(0, b.facing));
+                        }
+                    for (int w = -1; w <= 1; w += 2) {
+                        int px, pz;
+                        cellAt(D - 2, w, px, pz);
+                        P.set(px, g + 1, pz, BOOKSHELF);
+                        P.set(px, g + 2, pz, LANTERN);
+                    }
+                    for (int u = 3; u <= 6; u += 3) {
+                        int px, pz;
+                        cellAt(u, 0, px, pz);
+                        P.set(px, g + 5, pz, LANTERN_HANG);
+                    }
+                    for (const glm::ivec3& c : v.chests)
+                        if (c.x >= b.x0 && c.x <= b.x1 && c.z >= b.z0 && c.z <= b.z1) P.set(c.x, c.y, c.z, CHEST);
+                    // Glockenturm ueber dem Eingang (3 x 3): Boden, vier Pfeiler, offene Glockenstube, Spitze
+                    {
+                        int ax, az, bx, bz;
+                        cellAt(0, -1, ax, az);
+                        cellAt(2, 1, bx, bz);
+                        const int tx0 = std::min(ax, bx), tx1 = std::max(ax, bx), tz0 = std::min(az, bz), tz1 = std::max(az, bz);
+                        const int tcx = (tx0 + tx1) / 2, tcz = (tz0 + tz1) / 2;
+                        for (int z = tz0; z <= tz1; ++z)
+                            for (int x = tx0; x <= tx1; ++x) {
+                                const bool edge = x == tx0 || x == tx1 || z == tz0 || z == tz1;
+                                const bool isCorner = (x == tx0 || x == tx1) && (z == tz0 || z == tz1);
+                                P.set(x, g + 6, z, STONE_BRICKS);
+                                for (int y = g + 7; y <= g + 10; ++y) {
+                                    if (!edge) {
+                                        P.set(x, y, z, y == g + 10 ? STONE_BRICKS : AIR);  // Kappe, an der die "Glocke" haengt
+                                        continue;
+                                    }
+                                    BlockId bl = STONE_BRICKS;
+                                    if (!isCorner && (y == g + 8 || y == g + 9)) bl = IRON_BARS;  // Schallloecher der Glockenstube
+                                    P.set(x, y, z, bl);
+                                }
+                                if (!edge) P.set(x, g + 11, z, STONE_BRICKS);
+                            }
+                        P.set(tcx, g + 9, tcz, LANTERN_HANG);  // "Glocke"
+                        roofPitched(P, tx0 - 1, tz0 - 1, tx1 + 1, tz1 + 1, g + 11, 1, roofSolid);
+                        P.set(tcx, g + 14, tcz, FENCE);
+                        P.set(tcx, g + 15, tcz, LANTERN);
+                    }
                     break;
                 }
                 case K::GateHouse: {

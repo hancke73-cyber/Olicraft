@@ -2639,7 +2639,7 @@ static void testVillages() {
     };
     CHECK(at(v->center.x, v->groundY, v->center.y) == WATER);                              // Brunnen
     CHECK(at(v->center.x + 2, v->groundY + 2, v->center.y + 2) == FENCE && at(v->center.x, v->groundY + 4, v->center.y) == PLANKS);
-    int kinds[9] = {};
+    int kinds[10] = {};
     for (size_t i = 1; i < v->buildings.size(); ++i) {
         const VillageBuilding& b = v->buildings[i];
         ++kinds[b.kind];
@@ -3516,6 +3516,82 @@ static void testItemIcons() {
     }
 }
 
+static void testChurch() {
+    // Kirchen: in mehreren Seeds suchen, Verteilung pruefen, den Bau im Detail pruefen
+    int villages = 0, withChurch = 0, checked = 0;
+    for (int seed = 1; seed <= 6; ++seed) {
+        TerrainGenerator tg(seed);
+        for (int cz = -3; cz <= 3; ++cz)
+            for (int cx = -3; cx <= 3; ++cx) {
+                const Village* v = tg.villages().villageInCell(cx, cz);
+                if (!v) continue;
+                ++villages;
+                const VillageBuilding* ch = nullptr;
+                int churches = 0;
+                for (const VillageBuilding& b : v->buildings)
+                    if (b.kind == VillageBuilding::Church) { ch = &b; ++churches; }
+                CHECK(churches <= 1);
+                if (!ch) continue;
+                ++withChurch;
+                CHECK(ch->depth() == 11 && ch->width() == 7);
+                CHECK(std::abs(ch->x0 - v->center.x) <= VillageGenerator::RADIUS && std::abs(ch->x1 - v->center.x) <= VillageGenerator::RADIUS);
+                CHECK(std::abs(ch->z0 - v->center.y) <= VillageGenerator::RADIUS && std::abs(ch->z1 - v->center.y) <= VillageGenerator::RADIUS);
+                for (const VillageBuilding& o : v->buildings)
+                    if (&o != ch) CHECK(o.x1 < ch->x0 || ch->x1 < o.x0 || o.z1 < ch->z0 || ch->z1 < o.z0);
+                // keine Dorfbewohner erscheinen an der Kirche
+                for (const glm::ivec3& s : v->villagerSpawns) CHECK(!(s.x == ch->door.x && s.z == ch->door.y));
+                if (checked >= 3) continue;
+                ++checked;
+                // Chunks rund um die Kirche erzeugen
+                std::map<std::pair<int, int>, std::unique_ptr<Chunk>> chunks;
+                for (int pz = (ch->z0 - 4) >> 4; pz <= (ch->z1 + 4) >> 4; ++pz)
+                    for (int px = (ch->x0 - 4) >> 4; px <= (ch->x1 + 4) >> 4; ++px) {
+                        auto it = chunks.emplace(std::make_pair(px, pz), std::make_unique<Chunk>(px, pz)).first;
+                        tg.generate(*it->second);
+                    }
+                auto at = [&](int x, int y, int z) -> BlockId {
+                    auto it = chunks.find({x >> 4, z >> 4});
+                    if (it == chunks.end() || y < 0 || y >= CHUNK_H) return AIR;
+                    return it->second->get(x & 15, y, z & 15);
+                };
+                const int g = ch->groundY;
+                const glm::ivec2 door = ch->cell(0, 0);
+                const BlockId lo = at(door.x, g + 1, door.y), up = at(door.x, g + 2, door.y);
+                CHECK(isDoor(lo) && isDoor(up) && !doorUpper(lo) && doorUpper(up) && doorFacing(lo) == ch->facing);
+                // Mittelgang rot, Fenster, Baenke mit Lehne zur Tuer, Altar, Truhe, Decke
+                for (int u = 1; u <= 8; ++u) {
+                    const glm::ivec2 c = ch->cell(u, 0);
+                    CHECK(at(c.x, g, c.y) == WOOL_RED && at(c.x, g + 1, c.y) == AIR && at(c.x, g + 4, c.y) == AIR);
+                }
+                bool panes = false;
+                for (int u = 2; u <= 8; u += 2) panes = panes || isPane(at(ch->cell(u, 3).x, g + 3, ch->cell(u, 3).y));
+                CHECK(panes);
+                const glm::ivec2 pew = ch->cell(3, 1);
+                CHECK(isStairs(at(pew.x, g + 1, pew.y)) && stairFacing(at(pew.x, g + 1, pew.y)) == ch->facing);
+                CHECK(at(ch->cell(9, 1).x, g + 1, ch->cell(9, 1).y) == BOOKSHELF && at(ch->cell(9, -1).x, g + 2, ch->cell(9, -1).y) == LANTERN);
+                CHECK(at(ch->cell(9, 0).x, g + 1, ch->cell(9, 0).y) == CHEST);
+                bool chestRegistered = false;
+                for (const glm::ivec3& c : v->chests) chestRegistered = chestRegistered || (c.x == ch->cell(9, 0).x && c.z == ch->cell(9, 0).y && c.y == g + 1);
+                CHECK(chestRegistered);
+                CHECK(isSolid(at(ch->cell(5, 0).x, g + 6, ch->cell(5, 0).y)));
+                CHECK(at(ch->cell(3, 0).x, g + 5, ch->cell(3, 0).y) == LANTERN_HANG);
+                CHECK(isStairs(at(ch->x0 - 1, g + 6, ch->z0 - 1)) || isStairs(at(ch->x0 - 1, g + 6, (ch->z0 + ch->z1) / 2)));
+                // Turm: Glockenstube offen mit Schallloechern, Spitze
+                const glm::ivec2 mid = ch->cell(1, 0);
+                CHECK(at(mid.x, g + 9, mid.y) == LANTERN_HANG && isSolid(at(mid.x, g + 10, mid.y)));
+                CHECK(isPane(at(ch->cell(1, 1).x, g + 8, ch->cell(1, 1).y)) && isSolid(at(ch->cell(0, 1).x, g + 8, ch->cell(0, 1).y)));
+                CHECK(at(mid.x, g + 14, mid.y) == FENCE && at(mid.x, g + 15, mid.y) == LANTERN);
+                // Wand ist geschlossen (keine Luecke ausser Tuer und Fenster) und ringsum steht Erde
+                for (int u = 0; u < ch->depth(); ++u)
+                    for (int s : {-3, 3}) CHECK(at(ch->cell(u, s).x, g + 1, ch->cell(u, s).y) != AIR);
+                for (int w = -3; w <= 3; ++w) CHECK(at(ch->cell(10, w).x, g + 1, ch->cell(10, w).y) != AIR);
+            }
+    }
+    CHECK(villages >= 15 && withChurch >= 3);
+    CHECK(withChurch * 100 / villages >= 40 && withChurch * 100 / villages <= 98);  // die meisten Doerfer haben Platz dafuer
+    CHECK(checked >= 3);
+}
+
 static void testWorlds() {
     // Namen
     CHECK(sanitizeWorldName("Meine Welt") == "Meine Welt");
@@ -3753,6 +3829,7 @@ int main() {
     testArmor();
     testParticlesAndGraphics();
     testWorlds();
+    testChurch();
     testItemIcons();
     testStairCorners();
     testCreativeTabsAndGui();
