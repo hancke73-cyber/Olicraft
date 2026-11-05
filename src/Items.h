@@ -68,7 +68,12 @@ constexpr ItemId ITEM_ARMOR_BASE = ITEM_BASE + 49;
 constexpr ItemId ITEM_BUCKET = ITEM_BASE + 65;
 constexpr ItemId ITEM_BUCKET_WATER = ITEM_BASE + 66;
 constexpr ItemId ITEM_BUCKET_LAVA = ITEM_BASE + 67;
-constexpr ItemId ITEM_LAST = ITEM_BASE + 67;
+// Steampunk: Teer, Heizoel (Brennstoff), Salz, Eimer mit destilliertem Wasser
+constexpr ItemId ITEM_TAR = ITEM_BASE + 68;
+constexpr ItemId ITEM_FUEL_OIL = ITEM_BASE + 69;
+constexpr ItemId ITEM_SALT = ITEM_BASE + 70;
+constexpr ItemId ITEM_BUCKET_DISTILLED = ITEM_BASE + 71;
+constexpr ItemId ITEM_LAST = ITEM_BASE + 71;
 inline bool isArmorItem(ItemId id) { return id >= ITEM_ARMOR_BASE && id < ITEM_ARMOR_BASE + 16; }
 inline int armorSlotOf(ItemId id) { return (id - ITEM_ARMOR_BASE) % 4; }
 inline int armorMaterialOf(ItemId id) { return (id - ITEM_ARMOR_BASE) / 4; }

@@ -166,6 +166,23 @@ const TileName TILE_NAMES[TILE_COUNT] = {
     {"bucket_water", "Wassereimer"},
     {"bucket_lava", "Lavaeimer"},
     {"sign", "Schild"},
+    {"brass", "Messingplatte"},
+    {"boiler", "Dampfkessel"},
+    {"boiler_lit", "Dampfkessel (an)"},
+    {"pipe", "Dampfrohr"},
+    {"shaft", "Antriebswelle"},
+    {"motor", "Dampfmotor"},
+    {"still", "Destillierapparat"},
+    {"drill", "Bohrmaschine"},
+    {"conveyor_px", "Foerderband +X"},
+    {"conveyor_nx", "Foerderband -X"},
+    {"conveyor_pz", "Foerderband +Z"},
+    {"conveyor_nz", "Foerderband -Z"},
+    {"lift", "Dampflift"},
+    {"tar", "Teer"},
+    {"fuel_oil", "Heizoel"},
+    {"salt", "Salz"},
+    {"bucket_distilled", "Eimer mit destilliertem Wasser"},
 };
 static_assert(sizeof(TILE_NAMES) / sizeof(TILE_NAMES[0]) == TILE_COUNT, "Kachelnamen passen nicht zur Kachelliste");
 

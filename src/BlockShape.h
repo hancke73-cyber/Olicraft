@@ -22,6 +22,8 @@ inline bool shapeConnects(BlockId self, BlockId other) {
         case SH_FENCE: return isFence(other) || isGate(other) || isFullSolidBlock(other);
         case SH_WALL: return isWall(other) || isGate(other) || isFullSolidBlock(other);
         case SH_PANE: return isPane(other) || isFullSolidBlock(other) || other == GLASS;
+        case SH_PIPE: return isSteamPart(other);
+        case SH_SHAFT: return isMechPart(other);
         default: return false;
     }
 }
@@ -215,6 +217,46 @@ int blockBoxes(BlockId b, int x, int y, int z, const G& get, bool visual, Box* o
         }
         case SH_BED:
             add(0, 0, 0, 1, 9 * S, 1);
+            return n;
+        case SH_PIPE:
+        case SH_SHAFT: {
+            // Mittelstueck und je ein Arm zu jedem verbundenen Nachbarn (alle sechs Richtungen)
+            const bool shaft = bi.shape == SH_SHAFT;
+            const float lo = (shaft ? 6 : 5) * S, hi = (shaft ? 10 : 11) * S;
+            const bool c[6] = {shapeConnects(b, get(x + 1, y, z)), shapeConnects(b, get(x - 1, y, z)), shapeConnects(b, get(x, y + 1, z)),
+                               shapeConnects(b, get(x, y - 1, z)), shapeConnects(b, get(x, y, z + 1)), shapeConnects(b, get(x, y, z - 1))};
+            add(lo, lo, lo, hi, hi, hi);
+            if (c[0]) add(hi, lo, lo, 1, hi, hi);
+            if (c[1]) add(0, lo, lo, lo, hi, hi);
+            if (c[2]) add(lo, hi, lo, hi, 1, hi);
+            if (c[3]) add(lo, 0, lo, hi, lo, hi);
+            if (c[4]) add(lo, lo, hi, hi, hi, 1);
+            if (c[5]) add(lo, lo, 0, hi, hi, lo);
+            return n;
+        }
+        case SH_DRILL: {
+            // Gehaeuse und davor der Bohrkopf (schmaler); f: Richtung des Bohrers
+            const int f = drillFacing(b);
+            const float body = 11 * S, a = 6 * S, bb = 10 * S;
+            switch (f) {
+                case 0: add(0, 0, 0, body, 1, 1); add(body, a, a, 1, bb, bb); break;
+                case 1: add(1 - body, 0, 0, 1, 1, 1); add(0, a, a, 1 - body, bb, bb); break;
+                case 2: add(0, 0, 0, 1, 1, body); add(a, a, body, bb, bb, 1); break;
+                case 3: add(0, 0, 1 - body, 1, 1, 1); add(a, a, 0, bb, bb, 1 - body); break;
+                case 4: add(0, 0, 0, 1, body, 1); add(a, body, a, bb, 1, bb); break;
+                default: add(0, 1 - body, 0, 1, 1, 1); add(a, 0, a, bb, 1 - body, bb); break;
+            }
+            return n;
+        }
+        case SH_CONVEYOR:
+            add(0, 0, 0, 1, 4 * S, 1);
+            return n;
+        case SH_LIFT:
+            if (!visual) return 0;  // der Lift hat keine Kollision, er traegt
+            add(0, 0, 0, 3 * S, 1, 3 * S);
+            add(13 * S, 0, 0, 1, 1, 3 * S);
+            add(0, 0, 13 * S, 3 * S, 1, 1);
+            add(13 * S, 0, 13 * S, 1, 1, 1);
             return n;
         case SH_SIGN: {
             if (!visual) return 0;  // Schilder haben keine Kollision, sind aber anwaehlbar

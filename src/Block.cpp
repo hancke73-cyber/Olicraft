@@ -150,6 +150,29 @@ struct InfoTable {
                 for (int axis = 0; axis < 2; ++axis)
                     thin(makeGate(mat, open == 1, axis), mat == 0 ? "Holztor" : "Eisentor", mat == 0 ? TILE_GATE_WOOD : TILE_GATE_IRON,
                          mat == 0 ? 1.5f : 4.0f, makeGate(mat, false, 0), mat == 0 ? TOOL_AXE : TOOL_PICKAXE, mat == 0 ? 0 : 1, SH_GATE, open == 0);
+        // Steampunk-Maschinen
+        {
+            auto cube = [&](BlockId id, const char* name, Tile top, Tile side, float hardness, Shape shape = SH_FULL, bool opaque = true, bool solid = true) {
+                BlockInfo& i = infos[id];
+                i = {name, solid, opaque, false, opaque, false, true, top, TILE_BRASS, side, hardness, id, TOOL_PICKAXE, 1, false, shape};
+            };
+            cube(BOILER, "Dampfkessel", TILE_BRASS, TILE_BOILER, 3.0f);
+            cube(BOILER_LIT, "Dampfkessel (an)", TILE_BRASS, TILE_BOILER_LIT, 3.0f);
+            infos[BOILER_LIT].drop = BOILER;
+            cube(PIPE, "Dampfrohr", TILE_PIPE, TILE_PIPE, 1.5f, SH_PIPE, false);
+            cube(SHAFT, "Antriebswelle", TILE_SHAFT, TILE_SHAFT, 1.5f, SH_SHAFT, false);
+            cube(MOTOR, "Dampfmotor", TILE_BRASS, TILE_MOTOR, 3.0f);
+            cube(STILL, "Destillierapparat", TILE_BRASS, TILE_STILL, 3.0f);
+            for (int f = 0; f < 6; ++f) {
+                cube(makeDrill(f), "Bohrmaschine", TILE_BRASS, TILE_DRILL, 3.0f, SH_DRILL, false);
+                infos[makeDrill(f)].drop = makeDrill(0);
+            }
+            for (int f = 0; f < 4; ++f) {
+                cube(makeConveyor(f), "Foerderband", static_cast<Tile>(TILE_CONVEYOR_BASE + f), TILE_BRASS, 1.5f, SH_CONVEYOR, false);
+                infos[makeConveyor(f)].drop = makeConveyor(0);
+            }
+            cube(LIFT, "Dampflift", TILE_LIFT, TILE_LIFT, 1.5f, SH_LIFT, false, false);
+        }
         // Schilder (nicht fest, aber anklickbar)
         for (int w = 0; w < 2; ++w)
             for (int f = 0; f < 4; ++f) thin(makeSign(w == 1, f), "Schild", TILE_SIGN, 0.5f, SIGN_BASE, TOOL_AXE, 0, SH_SIGN, false);

@@ -3781,7 +3781,7 @@ static void testWedges() {
 }
 
 static void testBuckets() {
-    CHECK(ITEM_BUCKET == ITEM_BASE + 65 && ITEM_LAST == ITEM_BUCKET_LAVA && ITEM_BUCKET_WATER == ITEM_BUCKET + 1);
+    CHECK(ITEM_BUCKET == ITEM_BASE + 65 && ITEM_BUCKET_LAVA == ITEM_BASE + 67 && ITEM_BUCKET_WATER == ITEM_BUCKET + 1);
     for (ItemId id : {ITEM_BUCKET, ITEM_BUCKET_WATER, ITEM_BUCKET_LAVA}) {
         CHECK(itemValid(id) && !itemInfo(id).isBlock && std::string(itemInfo(id).name).size() > 3);
     }
@@ -3979,6 +3979,111 @@ static void testSigns() {
     st.signLine = 1;
     buildHud(hb, st, 1280, 720);
     CHECK(!hb.verts.empty() && hb.verts.size() % 6 == 0);
+}
+
+static void testSteamBlocks() {
+    CHECK(BLOCK_COUNT <= 256);
+    // IDs, Namen, Formen
+    struct Spec { BlockId id; const char* name; Shape shape; bool solid; };
+    const Spec specs[] = {{BOILER, "Dampfkessel", SH_FULL, true}, {BOILER_LIT, "Dampfkessel (an)", SH_FULL, true}, {PIPE, "Dampfrohr", SH_PIPE, true},
+                          {SHAFT, "Antriebswelle", SH_SHAFT, true}, {MOTOR, "Dampfmotor", SH_FULL, true}, {STILL, "Destillierapparat", SH_FULL, true},
+                          {LIFT, "Dampflift", SH_LIFT, false}};
+    std::set<int> ids;
+    for (const Spec& s : specs) {
+        CHECK(std::string(blockInfo(s.id).name) == s.name && blockInfo(s.id).shape == s.shape && blockInfo(s.id).solid == s.solid);
+        CHECK(ids.insert(s.id).second);
+    }
+    for (int f = 0; f < 6; ++f) {
+        CHECK(isDrill(makeDrill(f)) && drillFacing(makeDrill(f)) == f && blockInfo(makeDrill(f)).shape == SH_DRILL && ids.insert(makeDrill(f)).second);
+        CHECK(blockInfo(makeDrill(f)).drop == DRILL_BASE && std::string(blockInfo(makeDrill(f)).name) == "Bohrmaschine");
+    }
+    for (int f = 0; f < 4; ++f) {
+        CHECK(isConveyor(makeConveyor(f)) && conveyorFacing(makeConveyor(f)) == f && blockInfo(makeConveyor(f)).shape == SH_CONVEYOR && ids.insert(makeConveyor(f)).second);
+        CHECK(blockInfo(makeConveyor(f)).top == TILE_CONVEYOR_BASE + f && blockInfo(makeConveyor(f)).drop == CONVEYOR_BASE);
+    }
+    CHECK(ids.size() == 7 + 6 + 4 && !isDrill(CONVEYOR_BASE) && !isConveyor(LIFT) && !isDrill(SIGN_END));
+    CHECK(blockInfo(BOILER_LIT).drop == BOILER && lightEmission(BOILER_LIT) == 12 && lightEmission(BOILER) == 0);
+    CHECK(blockInfo(BOILER).side == TILE_BOILER && blockInfo(BOILER_LIT).side == TILE_BOILER_LIT && blockInfo(MOTOR).side == TILE_MOTOR);
+    // Gegenstaende: nur Grundformen, kein "an"-Kessel
+    for (BlockId b : {BOILER, PIPE, SHAFT, MOTOR, STILL, DRILL_BASE, CONVEYOR_BASE, LIFT}) CHECK(itemValid(b));
+    CHECK(!itemValid(BOILER_LIT) && !itemValid(makeDrill(1)) && !itemValid(makeConveyor(2)));
+    for (ItemId id : {ITEM_TAR, ITEM_FUEL_OIL, ITEM_SALT, ITEM_BUCKET_DISTILLED}) CHECK(itemValid(id) && !itemInfo(id).isBlock);
+    CHECK(ITEM_LAST == ITEM_BUCKET_DISTILLED && ITEM_BUCKET_DISTILLED == ITEM_BASE + 71);
+    CHECK(std::string(itemInfo(ITEM_TAR).name) == "Teer" && std::string(itemInfo(ITEM_FUEL_OIL).name) == "Heizoel" && std::string(itemInfo(ITEM_SALT).name) == "Salz");
+    CHECK(itemInfo(ITEM_BUCKET_DISTILLED).maxStack == 1 && itemInfo(ITEM_TAR).maxStack == 64 && itemInfo(ITEM_FUEL_OIL).iconSide == TILE_FUEL_OIL);
+    // Verbindungen: Rohr nur zu Dampfteilen, Welle nur zu mechanischen Teilen
+    CHECK(isSteamPart(PIPE) && isSteamPart(BOILER) && isSteamPart(BOILER_LIT) && isSteamPart(MOTOR) && isSteamPart(STILL) && !isSteamPart(SHAFT) && !isSteamPart(makeDrill(0)));
+    CHECK(isMechPart(SHAFT) && isMechPart(MOTOR) && isMechPart(makeDrill(3)) && isMechPart(makeConveyor(1)) && isMechPart(LIFT) && !isMechPart(PIPE) && !isMechPart(BOILER));
+    CHECK(isMachineBlock(BOILER) && isMachineBlock(STILL) && isMachineBlock(makeDrill(5)) && isMachineBlock(MOTOR) && !isMachineBlock(PIPE) && !isMachineBlock(LIFT));
+    std::map<std::array<int, 3>, BlockId> w;
+    auto get = [&](int x, int y, int z) {
+        auto it = w.find({x, y, z});
+        return it == w.end() ? static_cast<BlockId>(AIR) : it->second;
+    };
+    Box bx[MAX_BOXES];
+    auto boxes = [&](BlockId b) { return blockBoxes(b, 0, 0, 0, get, false, bx); };
+    CHECK(boxes(PIPE) == 1);                                // allein: nur das Mittelstueck
+    w[{1, 0, 0}] = PIPE;
+    CHECK(boxes(PIPE) == 2 && bx[1].x1 == 1.0f);            // Arm nach +X
+    w[{0, 1, 0}] = BOILER;
+    w[{0, 0, -1}] = MOTOR;
+    CHECK(boxes(PIPE) == 4);                                // Kessel oben und Motor hinten verbinden auch
+    w[{-1, 0, 0}] = SHAFT;
+    CHECK(boxes(PIPE) == 4);                                // Welle ist kein Dampfteil
+    w[{0, -1, 0}] = STONE;
+    CHECK(boxes(PIPE) == 4);                                // feste Bloecke verbinden nicht
+    w.clear();
+    CHECK(boxes(SHAFT) == 1);
+    w[{0, 0, 1}] = makeConveyor(0);
+    w[{0, -1, 0}] = MOTOR;
+    w[{-1, 0, 0}] = PIPE;
+    CHECK(boxes(SHAFT) == 3);                                // Foerderband und Motor, nicht das Rohr
+    // Die Mittelstuecke liegen in der Zelle, Welle ist duenner als das Rohr
+    w.clear();
+    boxes(PIPE);
+    const float pipeW = bx[0].x1 - bx[0].x0;
+    boxes(SHAFT);
+    CHECK(bx[0].x1 - bx[0].x0 < pipeW);
+    // Bohrer: Gehaeuse und Kopf in der gewaehlten Richtung
+    for (int f = 0; f < 6; ++f) {
+        CHECK(boxes(makeDrill(f)) == 2);
+        const Box head = bx[1];
+        const float ext[6] = {head.x1, 1.0f - head.x0, head.z1, 1.0f - head.z0, head.y1, 1.0f - head.y0};
+        CHECK(ext[f] == 1.0f);
+        float vol = 0.0f;
+        for (int i = 0; i < 2; ++i) vol += (bx[i].x1 - bx[i].x0) * (bx[i].y1 - bx[i].y0) * (bx[i].z1 - bx[i].z0);
+        CHECK(vol > 0.6f && vol < 0.9f);
+    }
+    // Foerderband: flach (0,25), Lift ohne Kollision
+    CHECK(boxes(makeConveyor(2)) == 1 && bx[0].y1 == 0.25f);
+    CHECK(blockBoxes(LIFT, 0, 0, 0, get, false, bx) == 0 && blockBoxes(LIFT, 0, 0, 0, get, true, bx) == 4);
+    // Rezepte
+    auto grid = [](int n, std::initializer_list<std::pair<int, ItemId>> cells) {
+        std::vector<ItemStack> g(static_cast<size_t>(n * n));
+        for (auto& c : cells) g[c.first] = {c.second, 1};
+        return g;
+    };
+    const ItemId I = ITEM_IRON_INGOT;
+    CHECK(matchRecipe(grid(3, {{0, I}, {1, I}, {2, I}}).data(), 3) == ItemStack({PIPE, 6}));
+    CHECK(matchRecipe(grid(3, {{1, I}, {4, I}, {7, I}}).data(), 3) == ItemStack({SHAFT, 6}));
+    CHECK(matchRecipe(grid(3, {{0, I}, {1, I}, {2, I}, {3, I}, {4, FURNACE}, {5, I}, {6, I}, {7, I}, {8, I}}).data(), 3) == ItemStack({BOILER, 1}));
+    CHECK(matchRecipe(grid(3, {{0, I}, {1, PIPE}, {2, I}, {3, I}, {4, ITEM_GOLD_INGOT}, {5, I}, {6, I}, {7, I}, {8, I}}).data(), 3) == ItemStack({MOTOR, 1}));
+    CHECK(matchRecipe(grid(3, {{0, GLASS}, {1, I}, {2, GLASS}, {3, PIPE}, {4, ITEM_BUCKET}, {5, PIPE}, {6, I}, {7, I}, {8, I}}).data(), 3) == ItemStack({STILL, 1}));
+    CHECK(matchRecipe(grid(3, {{0, I}, {1, I}, {2, I}, {3, I}, {4, MOTOR}, {5, I}, {6, I}, {7, ITEM_IRON_PICKAXE}, {8, I}}).data(), 3) == ItemStack({DRILL_BASE, 1}));
+    CHECK(matchRecipe(grid(3, {{0, I}, {1, I}, {2, I}, {3, ITEM_STICK}, {4, ITEM_STICK}, {5, ITEM_STICK}}).data(), 3) == ItemStack({CONVEYOR_BASE, 6}));
+    CHECK(matchRecipe(grid(3, {{0, I}, {2, I}, {3, GLASS}, {4, I}, {5, GLASS}, {6, I}, {8, I}}).data(), 3) == ItemStack({LIFT, 2}));
+    // Auswahl: alles im Reiter Stationen bzw. Rohstoffe
+    std::set<ItemId> st(creativeTabItems(4).begin(), creativeTabItems(4).end());
+    for (BlockId b : {BOILER, PIPE, SHAFT, MOTOR, STILL, DRILL_BASE, CONVEYOR_BASE, LIFT}) CHECK(st.count(b));
+    std::set<ItemId> raw(creativeTabItems(6).begin(), creativeTabItems(6).end());
+    CHECK(raw.count(ITEM_TAR) && raw.count(ITEM_FUEL_OIL) && raw.count(ITEM_SALT));
+    // Kacheln: alle neuen haben Namen und sind nicht leer (Atlas gezeichnet)
+    std::set<std::string> files;
+    for (int t = TILE_BRASS; t < TILE_COUNT; ++t) {
+        CHECK(std::string(tileName(t).file).size() > 2 && std::string(tileName(t).name).size() > 2);
+        CHECK(files.insert(tileName(t).file).second);
+    }
+    CHECK(std::string(tileName(TILE_BOILER).name) == "Dampfkessel" && std::string(tileName(TILE_TAR).name) == "Teer");
 }
 
 static void testWorlds() {
@@ -4221,6 +4326,7 @@ int main() {
     testWedges();
     testBuckets();
     testSigns();
+    testSteamBlocks();
     testChurch();
     testItemIcons();
     testStairCorners();

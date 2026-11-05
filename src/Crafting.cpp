@@ -107,6 +107,15 @@ std::vector<Recipe> buildRecipes() {
     }
     v.push_back(make({"S S", "SSS", "S S"}, {{'S', ITEM_STICK}}, {LADDER_BASE, 3}));
     v.push_back(make({"I I", " I "}, {{'I', ITEM_IRON_INGOT}}, {ITEM_BUCKET, 1}));
+    // Steampunk
+    v.push_back(make({"III"}, {{'I', ITEM_IRON_INGOT}}, {PIPE, 6}));
+    v.push_back(make({"I", "I", "I"}, {{'I', ITEM_IRON_INGOT}}, {SHAFT, 6}));
+    v.push_back(make({"III", "IFI", "III"}, {{'I', ITEM_IRON_INGOT}, {'F', FURNACE}}, {BOILER, 1}));
+    v.push_back(make({"IPI", "IGI", "III"}, {{'I', ITEM_IRON_INGOT}, {'P', PIPE}, {'G', ITEM_GOLD_INGOT}}, {MOTOR, 1}));
+    v.push_back(make({"GIG", "PBP", "III"}, {{'G', GLASS}, {'I', ITEM_IRON_INGOT}, {'P', PIPE}, {'B', ITEM_BUCKET}}, {STILL, 1}));
+    v.push_back(make({"III", "IMI", "IKI"}, {{'I', ITEM_IRON_INGOT}, {'M', MOTOR}, {'K', ITEM_IRON_PICKAXE}}, {DRILL_BASE, 1}));
+    v.push_back(make({"III", "SSS"}, {{'I', ITEM_IRON_INGOT}, {'S', ITEM_STICK}}, {CONVEYOR_BASE, 6}));
+    v.push_back(make({"I I", "GIG", "I I"}, {{'I', ITEM_IRON_INGOT}, {'G', GLASS}}, {LIFT, 2}));
     v.push_back(make({"PPP", "PPP", " S "}, {{'P', PLANKS}, {'S', ITEM_STICK}}, {SIGN_BASE, 3}));
     // Landwirtschaft
     v.push_back(make({"WWW"}, {{'W', ITEM_WHEAT}}, {ITEM_BREAD, 1}));

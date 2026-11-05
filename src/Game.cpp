@@ -2422,6 +2422,11 @@ void Game::applyDemo() {
             put(x, 0, 1, makeWedge(3, 2));
         }
         for (int k = 0; k < 3; ++k) put(30 + k, 0, 4, makeWedge(1, 0));
+        for (int z = -2; z <= 8; ++z)  // zusaetzliche Flaeche fuer die hinteren Teile der Buehne
+            for (int x = 17; x <= 60; ++x) {
+                for (int y = gy + 1; y <= gy + 8; ++y) world_->setBlock(ox + x, y, oz + z, AIR);
+                world_->setBlock(ox + x, gy, oz + z, GRASS);
+            }
         // Schilder: Stehschild mit Text und ein Wandschild
         put(40, 0, 0, makeSign(false, 3));
         put(43, 0, 0, STONE);
@@ -2435,6 +2440,28 @@ void Game::applyDemo() {
             t2.lines = {"Schmiede", "", "", ""};
             world_->setSign(ox + 42, gy + 2, oz + 0, t2);
         }
+        // Steampunk: Kessel, Rohre, Motor, Welle, Bohrer, Band, Lift, Destille
+        put(50, 0, 0, BOILER);
+        put(51, 0, 0, BOILER_LIT);
+        put(50, 1, 0, PIPE);
+        put(50, 2, 0, PIPE);
+        put(51, 1, 0, PIPE);
+        put(52, 1, 0, PIPE);
+        put(53, 1, 0, MOTOR);
+        put(54, 1, 0, SHAFT);
+        put(55, 1, 0, SHAFT);
+        put(56, 1, 0, makeDrill(0));
+        put(52, 0, 0, STILL);
+        put(52, 2, 0, PIPE);
+        for (int k = 0; k < 4; ++k) {
+            put(50 + k, 0, 3, makeConveyor(k));
+            put(50 + k, 0, 5, makeDrill(k));
+        }
+        put(55, 0, 3, makeDrill(4));
+        put(56, 0, 3, makeDrill(5));
+        put(55, 0, 5, LIFT);
+        put(55, 1, 5, LIFT);
+        put(55, 2, 5, LIFT);
         // Bogen mit umgedrehten Treppen unter der Decke
         for (int z = 0; z <= 2; ++z) {
             for (int y = 0; y <= 2; ++y) {

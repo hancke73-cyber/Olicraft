@@ -24,7 +24,7 @@ static const std::vector<ItemId> TAB_ITEMS[CREATIVE_TAB_COUNT] = {
     {TALL_GRASS, FERN, FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, FLOWER_WHITE, MUSHROOM_RED, MUSHROOM_BROWN, DEAD_BUSH,
      SUGAR_CANE, BERRY_BUSH, CACTUS, ITEM_SEEDS},
     // Stationen
-    {CRAFTING_TABLE, FURNACE, CHEST, BED},
+    {CRAFTING_TABLE, FURNACE, CHEST, BED, BOILER, PIPE, SHAFT, MOTOR, STILL, DRILL_BASE, CONVEYOR_BASE, LIFT},
     // Werkzeuge und Ruestung
     {ITEM_WOODEN_PICKAXE, ITEM_WOODEN_AXE, ITEM_WOODEN_SHOVEL, ITEM_WOODEN_SWORD, ITEM_HOE_WOOD,
      ITEM_STONE_PICKAXE, ITEM_STONE_AXE, ITEM_STONE_SHOVEL, ITEM_STONE_SWORD, ITEM_HOE_STONE,
@@ -35,10 +35,10 @@ static const std::vector<ItemId> TAB_ITEMS[CREATIVE_TAB_COUNT] = {
      ITEM_ARMOR_BASE + 4, ITEM_ARMOR_BASE + 5, ITEM_ARMOR_BASE + 6, ITEM_ARMOR_BASE + 7,
      ITEM_ARMOR_BASE + 8, ITEM_ARMOR_BASE + 9, ITEM_ARMOR_BASE + 10, ITEM_ARMOR_BASE + 11,
      ITEM_ARMOR_BASE + 12, ITEM_ARMOR_BASE + 13, ITEM_ARMOR_BASE + 14, ITEM_ARMOR_BASE + 15,
-     ITEM_BUCKET, ITEM_BUCKET_WATER, ITEM_BUCKET_LAVA},
+     ITEM_BUCKET, ITEM_BUCKET_WATER, ITEM_BUCKET_LAVA, ITEM_BUCKET_DISTILLED},
     // Rohstoffe
     {ITEM_STICK, ITEM_COAL, ITEM_IRON_INGOT, ITEM_GOLD_INGOT, ITEM_DIAMOND, ITEM_CLAY_BALL, ITEM_BRICK, ITEM_PAPER, ITEM_BOOK,
-     ITEM_DYE_RED, ITEM_DYE_YELLOW, ITEM_DYE_BLUE, ITEM_DYE_GREEN, ITEM_DYE_BLACK, ITEM_LEATHER},
+     ITEM_DYE_RED, ITEM_DYE_YELLOW, ITEM_DYE_BLUE, ITEM_DYE_GREEN, ITEM_DYE_BLACK, ITEM_LEATHER, ITEM_TAR, ITEM_FUEL_OIL, ITEM_SALT},
     // Essen
     {ITEM_WHEAT, ITEM_BREAD, ITEM_CARROT, ITEM_MEAT, ITEM_COOKED_MEAT, ITEM_BERRIES},
 };
@@ -62,6 +62,9 @@ bool itemValid(ItemId id) {
         if (isStairs(b)) return stairFacing(b) == 0 && !stairIsTop(b);
         if (isWedge(b)) return wedgeFacing(b) == 0;
         if (isSign(b)) return b == SIGN_BASE;
+        if (b == BOILER_LIT) return false;
+        if (isDrill(b)) return b == DRILL_BASE;
+        if (isConveyor(b)) return b == CONVEYOR_BASE;
         if (isSlab(b)) return !slabIsTop(b);
         if (isDoor(b) || b == LANTERN_HANG || isCrop(b) || isBedPart(b)) return false;
         if (isLadder(b)) return b == LADDER_BASE;
@@ -85,7 +88,7 @@ const ItemInfo& itemInfo(ItemId id) {
     if (!init) {
         for (int i = 1; i < BLOCK_COUNT; ++i) {
             const BlockInfo& bi = blockInfo(static_cast<BlockId>(i));
-            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i)) || isLadder(static_cast<BlockId>(i)) || isSign(static_cast<BlockId>(i))};
+            cache[i] = {bi.name, 64, true, bi.top, bi.side, TOOL_NONE, 0, 0, 1.0f, 2, i == TORCH || isPlant(static_cast<BlockId>(i)) || isPane(static_cast<BlockId>(i)) || isLantern(static_cast<BlockId>(i)) || isGate(static_cast<BlockId>(i)) || isLadder(static_cast<BlockId>(i)) || isSign(static_cast<BlockId>(i)) || static_cast<BlockId>(i) == PIPE || static_cast<BlockId>(i) == SHAFT || static_cast<BlockId>(i) == LIFT || isConveyor(static_cast<BlockId>(i))};
         }
         init = true;
     }
@@ -143,6 +146,10 @@ const ItemInfo& itemInfo(ItemId id) {
         {"Eimer", 16, false, TILE_BUCKET, TILE_BUCKET, TOOL_NONE, 0, 0, 1.0f, 2},
         {"Wassereimer", 1, false, TILE_BUCKET_WATER, TILE_BUCKET_WATER, TOOL_NONE, 0, 0, 1.0f, 2},
         {"Lavaeimer", 1, false, TILE_BUCKET_LAVA, TILE_BUCKET_LAVA, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Teer", 64, false, TILE_TAR, TILE_TAR, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Heizoel", 64, false, TILE_FUEL_OIL, TILE_FUEL_OIL, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Salz", 64, false, TILE_SALT, TILE_SALT, TOOL_NONE, 0, 0, 1.0f, 2},
+        {"Destilliertes Wasser", 1, false, TILE_BUCKET_DISTILLED, TILE_BUCKET_DISTILLED, TOOL_NONE, 0, 0, 1.0f, 2},
     };
     if (id >= ITEM_STICK && id <= ITEM_LAST) return items[id - ITEM_STICK];
     if (id > 0 && id < BLOCK_COUNT) return cache[id];

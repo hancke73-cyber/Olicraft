@@ -139,6 +139,20 @@ enum Block : BlockId {
     // Schilder: id = SIGN_BASE + (Wand ? 4 : 0) + Richtung, in die die Vorderseite zeigt (+X, -X, +Z, -Z); Stehschilder haben einen Pfosten
     SIGN_BASE,
     SIGN_END = SIGN_BASE + 7,
+    // Steampunk: Dampfkessel (aus/an), Dampfrohr, Antriebswelle, Dampfmotor, Destillierapparat
+    BOILER,
+    BOILER_LIT,
+    PIPE,
+    SHAFT,
+    MOTOR,
+    STILL,
+    // Bohrmaschine, Richtung des Bohrers: 0 +X, 1 -X, 2 +Z, 3 -Z, 4 oben, 5 unten
+    DRILL_BASE,
+    DRILL_END = DRILL_BASE + 5,
+    // Foerderband, Richtung: 0 +X, 1 -X, 2 +Z, 3 -Z
+    CONVEYOR_BASE,
+    CONVEYOR_END = CONVEYOR_BASE + 3,
+    LIFT,
     BLOCK_COUNT
 };
 
@@ -288,6 +302,21 @@ enum Tile : int {
     TILE_BUCKET_WATER,
     TILE_BUCKET_LAVA,
     TILE_SIGN,
+    TILE_BRASS,
+    TILE_BOILER,
+    TILE_BOILER_LIT,
+    TILE_PIPE,
+    TILE_SHAFT,
+    TILE_MOTOR,
+    TILE_STILL,
+    TILE_DRILL,
+    TILE_CONVEYOR_BASE,  // + Richtung 0..3
+    TILE_CONVEYOR_END = TILE_CONVEYOR_BASE + 3,
+    TILE_LIFT,
+    TILE_TAR,
+    TILE_FUEL_OIL,
+    TILE_SALT,
+    TILE_BUCKET_DISTILLED,
     TILE_COUNT
 };
 
@@ -295,7 +324,7 @@ enum Tile : int {
 enum ToolClass : uint8_t { TOOL_NONE = 0, TOOL_PICKAXE, TOOL_AXE, TOOL_SHOVEL, TOOL_SWORD, TOOL_HOE };
 
 // Form eines Blocks: Vollwuerfel oder Teilform (genaue Boxen siehe BlockShape.h)
-enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND, SH_LADDER, SH_BED, SH_WEDGE, SH_SIGN };
+enum Shape : uint8_t { SH_FULL = 0, SH_STAIRS, SH_SLAB, SH_FENCE, SH_WALL, SH_PANE, SH_DOOR, SH_GATE, SH_LANTERN, SH_FARMLAND, SH_LADDER, SH_BED, SH_WEDGE, SH_SIGN, SH_PIPE, SH_SHAFT, SH_DRILL, SH_CONVEYOR, SH_LIFT };
 
 struct BlockInfo {
     const char* name;
@@ -352,6 +381,20 @@ inline bool isSign(BlockId id) { return id >= SIGN_BASE && id <= SIGN_END; }
 inline bool signIsWall(BlockId id) { return (id - SIGN_BASE) >= 4; }
 inline int signFacing(BlockId id) { return (id - SIGN_BASE) % 4; }  // Richtung der Vorderseite
 inline BlockId makeSign(bool wall, int facing) { return static_cast<BlockId>(SIGN_BASE + (wall ? 4 : 0) + facing); }
+// --- Dampfmaschinen
+inline bool isBoiler(BlockId id) { return id == BOILER || id == BOILER_LIT; }
+inline bool isDrill(BlockId id) { return id >= DRILL_BASE && id <= DRILL_END; }
+inline int drillFacing(BlockId id) { return id - DRILL_BASE; }  // 0 +X, 1 -X, 2 +Z, 3 -Z, 4 oben, 5 unten
+inline BlockId makeDrill(int facing) { return static_cast<BlockId>(DRILL_BASE + facing); }
+inline bool isConveyor(BlockId id) { return id >= CONVEYOR_BASE && id <= CONVEYOR_END; }
+inline int conveyorFacing(BlockId id) { return id - CONVEYOR_BASE; }
+inline BlockId makeConveyor(int facing) { return static_cast<BlockId>(CONVEYOR_BASE + facing); }
+// Dampfanschluss: hier fliesst Dampf durch bzw. wird er erzeugt oder verbraucht
+inline bool isSteamPart(BlockId id) { return id == PIPE || isBoiler(id) || id == MOTOR || id == STILL; }
+// Mechanische Verbindung: Welle, Motor und alles, was Antrieb bekommt
+inline bool isMechPart(BlockId id) { return id == SHAFT || id == MOTOR || isDrill(id) || isConveyor(id) || id == LIFT; }
+// Maschinen mit eigenem Zustand (Inhalt, Fortschritt)
+inline bool isMachineBlock(BlockId id) { return isBoiler(id) || id == STILL || isDrill(id) || id == MOTOR; }
 inline bool isWedge(BlockId id) { return id >= WEDGE_BASE && id <= WEDGE_END; }
 inline int wedgeMaterial(BlockId id) { return (id - WEDGE_BASE) / 4; }
 inline int wedgeFacing(BlockId id) { return (id - WEDGE_BASE) % 4; }  // Richtung der hohen Seite
@@ -427,6 +470,7 @@ inline int lightEmission(BlockId id) {
     if (isTorch(id)) return 14;
     if (id >= LAVA && id <= LAVA_FALL) return 15;
     if (id == FURNACE_LIT) return 13;
+    if (id == BOILER_LIT) return 12;
     if (id == LAMP) return 15;
     if (id == LANTERN || id == LANTERN_HANG) return 15;
     return 0;

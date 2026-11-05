@@ -1133,12 +1133,186 @@ void drawBucket(TileCanvas& c, int tile, int fill) {
         put(c, x, 11, hc);
     }
     if (fill != 0) {
-        const Rgba col = fill == 1 ? Rgba{44, 104, 214, 255} : Rgba{244, 120, 20, 255};
+        const Rgba col = fill == 1 ? Rgba{44, 104, 214, 255} : (fill == 2 ? Rgba{244, 120, 20, 255} : Rgba{150, 226, 236, 255});
         for (int y = 5; y <= 6; ++y)
             for (int x = 4; x <= 11; ++x) {
                 const int d = static_cast<int>((rnd(x, y, tile + 7) - 0.5f) * 26);
                 put(c, x, 15 - y, shade(col, d));
             }
+    }
+}
+
+// ---- Steampunk-Kacheln -----------------------------------------------------------------------------------------
+void fillNoise(TileCanvas& c, int tile, Rgba base, int amp) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) c.set(x, y, shade(base, static_cast<int>((rnd(x, y, tile) - 0.5f) * amp)));
+}
+void rivets(TileCanvas& c, Rgba col, int inset) {
+    for (int x : {inset, 15 - inset})
+        for (int y : {inset, 15 - inset}) {
+            put(c, x, y, col);
+            put(c, x + 1, y, shade(col, -40));
+        }
+}
+void disc(TileCanvas& c, float cx, float cy, float r, Rgba col, int tile) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const float dx = x - cx, dy = y - cy;
+            if (dx * dx + dy * dy <= r * r) put(c, x, y, shade(col, static_cast<int>((rnd(x, y, tile, 5) - 0.5f) * 14)));
+        }
+}
+
+void drawBrass(TileCanvas& c) {
+    fillNoise(c, TILE_BRASS, {188, 144, 62, 255}, 22);
+    for (int i = 0; i < 16; ++i) {
+        put(c, i, 0, {124, 90, 36, 255});
+        put(c, i, 15, {124, 90, 36, 255});
+        put(c, 0, i, {124, 90, 36, 255});
+        put(c, 15, i, {124, 90, 36, 255});
+    }
+    rivets(c, {236, 200, 110, 255}, 2);
+}
+
+void drawBoilerTile(TileCanvas& c, int tile, bool lit) {
+    fillNoise(c, tile, {160, 88, 52, 255}, 20);
+    for (int x = 0; x < 16; ++x) {  // zwei Nietbaender
+        for (int y : {2, 13}) put(c, x, y, {104, 56, 34, 255});
+        if (x % 3 == 1) {
+            put(c, x, 3, {222, 160, 110, 255});
+            put(c, x, 12, {222, 160, 110, 255});
+        }
+    }
+    disc(c, 7.5f, 10.0f, 3.2f, {226, 224, 214, 255}, tile);  // Manometer
+    for (int i = 0; i < 4; ++i) put(c, 8 + i / 2, 10 + i / 2, {190, 40, 36, 255});
+    // Feuerklappe
+    for (int y = 4; y <= 7; ++y)
+        for (int x = 4; x <= 11; ++x) {
+            if (lit) put(c, x, y, {255, 140 + static_cast<int>(rnd(x, y, tile, 3) * 90), 24, 255});
+            else put(c, x, y, {36, 30, 28, 255});
+        }
+    for (int x = 4; x <= 11; ++x) put(c, x, 8, {90, 90, 96, 255});
+}
+
+void drawPipeTile(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int d = static_cast<int>((rnd(x, y, TILE_PIPE) - 0.5f) * 10) + (y > 8 ? -14 : (y < 4 ? 16 : 0));
+            c.set(x, y, shade({196, 150, 70, 255}, d));
+        }
+    for (int x : {2, 13})
+        for (int y = 0; y < 16; ++y) put(c, x, y, {120, 84, 34, 255});
+}
+
+void drawShaftTile(TileCanvas& c) {
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const int d = static_cast<int>((rnd(x, y, TILE_SHAFT) - 0.5f) * 10) + (x % 8 == 0 ? -30 : 0);
+            c.set(x, y, shade({120, 124, 134, 255}, d));
+        }
+}
+
+void drawMotorTile(TileCanvas& c) {
+    fillNoise(c, TILE_MOTOR, {74, 78, 88, 255}, 16);
+    disc(c, 7.5f, 7.5f, 5.6f, {188, 144, 62, 255}, TILE_MOTOR);  // Schwungrad
+    disc(c, 7.5f, 7.5f, 2.2f, {60, 60, 66, 255}, TILE_MOTOR);
+    for (int i = 0; i < 8; ++i) {  // Speichen
+        const float a = i * 0.7853982f;
+        put(c, static_cast<int>(7.5f + std::cos(a) * 4.0f), static_cast<int>(7.5f + std::sin(a) * 4.0f), {120, 88, 36, 255});
+    }
+    rivets(c, {170, 174, 184, 255}, 1);
+}
+
+void drawStillTile(TileCanvas& c) {
+    fillNoise(c, TILE_STILL, {176, 134, 60, 255}, 18);
+    for (int y = 3; y <= 12; ++y)
+        for (int x = 4; x <= 11; ++x) {
+            const bool edge = x == 4 || x == 11 || y == 3 || y == 12;
+            if (edge) put(c, x, y, {96, 72, 34, 255});
+            else put(c, x, y, shade({120, 196, 190, 255}, (y < 8 ? -20 : 0) + static_cast<int>((rnd(x, y, TILE_STILL, 2) - 0.5f) * 20)));
+        }
+    for (const int bx : {6, 8, 9}) put(c, bx, 5 + bx % 3, {230, 250, 248, 255});  // Blasen
+    rivets(c, {236, 200, 110, 255}, 1);
+}
+
+void drawDrillTile(TileCanvas& c) {
+    fillNoise(c, TILE_DRILL, {92, 96, 106, 255}, 14);
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            if (((x + y) / 3) % 2 == 0 && (y < 3 || y > 12)) put(c, x, y, {222, 176, 40, 255});  // Warnstreifen
+    disc(c, 7.5f, 7.5f, 3.4f, {70, 72, 80, 255}, TILE_DRILL);
+    disc(c, 7.5f, 7.5f, 1.6f, {188, 190, 200, 255}, TILE_DRILL);
+}
+
+// Foerderband: dunkles Band mit Schienen, Pfeilspitzen zeigen in Laufrichtung (0 +X, 1 -X, 2 +Z, 3 -Z)
+void drawConveyorTile(TileCanvas& c, int dir) {
+    const int tile = TILE_CONVEYOR_BASE + dir;
+    fillNoise(c, tile, {58, 58, 64, 255}, 10);
+    for (int i = 0; i < 16; ++i) {
+        if (dir <= 1) {
+            put(c, i, 0, {170, 130, 56, 255});
+            put(c, i, 15, {170, 130, 56, 255});
+        } else {
+            put(c, 0, i, {170, 130, 56, 255});
+            put(c, 15, i, {170, 130, 56, 255});
+        }
+    }
+    // Pfeilspitzen: zwei Stueck entlang der Laufrichtung
+    for (int k = 0; k < 2; ++k) {
+        const int base = 3 + k * 6;
+        for (int w = -3; w <= 3; ++w) {
+            const int back = base - (3 - std::abs(w));  // Spitze vorn
+            int x, y;
+            switch (dir) {
+                case 0: x = back + 3; y = 7 + w; break;
+                case 1: x = 15 - (back + 3); y = 7 + w; break;
+                case 2: x = 7 + w; y = back + 3; break;
+                default: x = 7 + w; y = 15 - (back + 3); break;
+            }
+            put(c, x, y, {222, 186, 70, 255});
+        }
+    }
+}
+
+void drawLiftTile(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 0; y < TILE_PX; ++y)
+        for (int x = 0; x < TILE_PX; ++x) {
+            const bool post = x <= 2 || x >= 13;
+            const bool ring = y % 5 == 0 && x > 2 && x < 13;
+            if (!post && !ring) continue;
+            put(c, x, y, shade(post ? Rgba{186, 142, 60, 255} : Rgba{150, 150, 160, 255}, static_cast<int>((rnd(x, y, TILE_LIFT) - 0.5f) * 14)));
+        }
+}
+
+void drawTarItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 3; y < 13; ++y)
+        for (int x = 3; x < 13; ++x) {
+            const float dx = (x - 7.5f) / 4.6f, dy = (y - 7.5f) / 3.6f;
+            if (dx * dx + dy * dy > 1.0f) continue;
+            put(c, x, y, shade({36, 32, 30, 255}, static_cast<int>((rnd(x, y, TILE_TAR) - 0.5f) * 14) + (y > 8 ? 18 : 0)));
+        }
+    put(c, 6, 9, {120, 118, 124, 255});
+}
+
+void drawFuelOilItem(TileCanvas& c) {  // Kanister
+    clearTile(c);
+    for (int y = 2; y < 14; ++y)
+        for (int x = 4; x < 12; ++x) put(c, x, y, shade({196, 132, 28, 255}, static_cast<int>((rnd(x, y, TILE_FUEL_OIL) - 0.5f) * 14) + (x < 6 ? 14 : 0)));
+    for (int x = 4; x < 12; ++x) {
+        put(c, x, 2, {110, 70, 16, 255});
+        put(c, x, 13, {110, 70, 16, 255});
+    }
+    for (int x = 5; x < 8; ++x) put(c, x, 14, {96, 98, 106, 255});  // Ausguss
+    for (int y = 5; y < 10; ++y)
+        for (int x = 6; x < 10; ++x) put(c, x, y, {232, 220, 180, 255});  // Etikett
+}
+
+void drawSaltItem(TileCanvas& c) {
+    clearTile(c);
+    for (int y = 2; y < 11; ++y) {
+        const int half = 6 - (y - 2) / 2;
+        for (int x = 8 - half; x < 8 + half; ++x) put(c, x, y, shade({236, 236, 240, 255}, static_cast<int>((rnd(x, y, TILE_SALT) - 0.5f) * 26) - (x > 8 ? 14 : 0)));
     }
 }
 
@@ -1355,6 +1529,29 @@ std::vector<uint8_t> generateAtlasPixels() {
     make(TILE_FARMLAND, drawFarmland);
     make(TILE_LADDER, drawLadder);
     make(TILE_SIGN, drawSignTile);
+    make(TILE_BRASS, drawBrass);
+    {
+        TileCanvas b0(px, TILE_BOILER), b1(px, TILE_BOILER_LIT);
+        drawBoilerTile(b0, TILE_BOILER, false);
+        drawBoilerTile(b1, TILE_BOILER_LIT, true);
+    }
+    make(TILE_PIPE, drawPipeTile);
+    make(TILE_SHAFT, drawShaftTile);
+    make(TILE_MOTOR, drawMotorTile);
+    make(TILE_STILL, drawStillTile);
+    make(TILE_DRILL, drawDrillTile);
+    for (int d = 0; d < 4; ++d) {
+        TileCanvas cv(px, TILE_CONVEYOR_BASE + d);
+        drawConveyorTile(cv, d);
+    }
+    make(TILE_LIFT, drawLiftTile);
+    make(TILE_TAR, drawTarItem);
+    make(TILE_FUEL_OIL, drawFuelOilItem);
+    make(TILE_SALT, drawSaltItem);
+    {
+        TileCanvas bd(px, TILE_BUCKET_DISTILLED);
+        drawBucket(bd, TILE_BUCKET_DISTILLED, 3);
+    }
     {
         TileCanvas b0(px, TILE_BUCKET), b1(px, TILE_BUCKET_WATER), b2(px, TILE_BUCKET_LAVA);
         drawBucket(b0, TILE_BUCKET, 0);
