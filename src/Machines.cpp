@@ -83,6 +83,7 @@ float World::powerAt(int x, int y, int z) const {
 
 World::MechFlow World::mechFlow(const glm::vec3& feet) const {
     MechFlow f;
+    if (!steampunkEnabled()) return f;
     const int x = static_cast<int>(std::floor(feet.x)), z = static_cast<int>(std::floor(feet.z));
     const int by = static_cast<int>(std::floor(feet.y - 0.1f));
     const BlockId below = getBlock(x, by, z);
@@ -139,7 +140,7 @@ bool World::drillTarget(const glm::ivec3& pos, int facing, glm::ivec3& out) cons
 }
 
 void World::tickMachines(float dt) {
-    if (machines_.empty()) {
+    if (machines_.empty() || !steampunkEnabled()) {
         if (!power_.empty()) power_.clear();
         machineAccum_ = 0.0f;
         return;

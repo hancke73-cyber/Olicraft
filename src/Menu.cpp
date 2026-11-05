@@ -26,6 +26,7 @@ Widget slider(int id, const std::string& text, float fraction, float x, float y,
     wd.fraction = std::max(0.0f, std::min(1.0f, fraction));
     return wd;
 }
+constexpr int SETTINGS_ROWS = 15;  // Zeilen der Einstellungen (bestimmt die Stufe der Oberflaeche)
 }  // namespace
 
 MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
@@ -41,7 +42,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
         case MenuScreen::NewWorld: s = std::max(1.0f, std::min(wantedS, std::floor((0.70f * H - 8.0f) / 128.0f))); break;
         case MenuScreen::Pause: s = guiScaleFit(h, 150.0f, wantedS); break;
         case MenuScreen::Graphics: s = guiScaleFit(h, 170.0f, wantedS); break;
-        default: s = guiScaleFit(h, 14 * 24.0f + 20.0f, wantedS); break;  // Einstellungen: 14 Zeilen
+        default: s = guiScaleFit(h, SETTINGS_ROWS * 24.0f + 20.0f, wantedS); break;
     }
     m.scale = s;
     const float bw = 200.0f * s, bh = 20.0f * s, gap = 4.0f * s;
@@ -155,7 +156,7 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     }
 
     m.title = "Einstellungen";
-    const int rows = 14;
+    const int rows = SETTINGS_ROWS;
     const float total = rows * bh + (rows - 1) * gap + 24.0f * s;
     float y = std::floor((h - total) * 0.5f) + 24.0f * s;
     m.titlePos = {0.0f, y - 22.0f * s};
@@ -202,6 +203,8 @@ MenuLayout buildMenu(MenuScreen screen, const MenuState& st, int w, int h) {
     m.widgets.push_back(button(W_FULLSCREEN, std::string("Vollbild: ") + (st.fullscreen ? "An" : "Aus"), x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_MODE, std::string("Spielmodus: ") + (st.creative ? "Kreativ" : "Survival"), x, y, bw, bh));
+    y += bh + gap;
+    m.widgets.push_back(button(W_STEAMPUNK, std::string("Steampunk: ") + (st.steampunk ? "An" : "Aus"), x, y, bw, bh));
     y += bh + gap;
     m.widgets.push_back(button(W_GRAPHICS, "Grafik ...", x, y, bw, bh));
     y += bh + gap;

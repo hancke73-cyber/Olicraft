@@ -38,6 +38,7 @@ enum WidgetId {
     W_GFX_FILTER,
     W_GFX_ANISO,
     W_GUI_SIZE,
+    W_STEAMPUNK,
     W_TO_MAIN,
     W_VSYNC,
     W_FULLSCREEN,
@@ -115,6 +116,7 @@ struct MenuState {
     bool clouds = true, particles = true;
     int texFilter = 0, anisotropy = 8;
     int guiSize = 0;
+    bool steampunk = true;
     bool fullscreen = false;
     bool creative = false;
 };

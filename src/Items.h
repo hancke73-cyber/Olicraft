@@ -133,6 +133,11 @@ constexpr int CREATIVE_TAB_COUNT = 8;
 constexpr int CREATIVE_SEARCH_TAB = CREATIVE_TAB_COUNT;
 const char* creativeTabName(int tab);                    // Gelaende, Baumaterial, Dekoration, Pflanzen, Stationen, Werkzeuge, Rohstoffe, Essen, Suche
 ItemId creativeTabIcon(int tab);                         // Symbol des Reiters (ITEM_NONE bei der Suche)
+// Steampunk-Erweiterung (Einstellung): aus blendet ihre Bloecke und Gegenstaende in Kreativ-Inventar und Rezepten aus,
+// Maschinen ruhen. Alle Steampunk-Bloecke stehen am Ende der Blockliste (ab BOILER), alle Steampunk-Gegenstaende ab ITEM_TAR.
+bool steampunkEnabled();
+void setSteampunkEnabled(bool on);
+bool isSteampunkItem(ItemId id);
 const std::vector<ItemId>& creativeTabItems(int tab);    // jeder Gegenstand steht in genau einem Themenreiter
 // Alle Gegenstaende, deren Name den Suchtext enthaelt (ohne Gross/Klein, Umlaute als ae, oe, ue); leerer Text: alle
 std::vector<ItemId> creativeSearch(const std::string& query);

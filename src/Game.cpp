@@ -51,6 +51,7 @@ Game::~Game() { shutdown(); }
 
 bool Game::init() {
     if (!opt_.noSave) loadSettings(opt_.settingsPath, settings_);
+    setSteampunkEnabled(settings_.steampunk);
     if (opt_.distanceCli) settings_.renderDistance = opt_.renderDistance;
     if (opt_.vsyncCli) settings_.vsync = opt_.vsync;
     settings_.clamp();
@@ -575,6 +576,7 @@ MenuState Game::menuState() const {
     s.texFilter = settings_.texFilter;
     s.anisotropy = settings_.anisotropy;
     s.guiSize = settings_.guiSize;
+    s.steampunk = settings_.steampunk;
     for (const WorldEntry& w : worlds_)
         s.worldLabels.push_back(w.name + "  (" + (w.creative ? "Kreativ" : "Survival") + ", Seed " + std::to_string(w.seed) + ")");
     s.worldSel = worldSel_;
@@ -653,6 +655,7 @@ void Game::activateWidget(int index, const MenuLayout& menu, glm::vec2 mouse) {
             break;
         case W_GRAPHICS: screen_ = MenuScreen::Graphics; break;
         case W_GFX_SHADOWS: settings_.shadows = (settings_.shadows + 1) % 3; persistSettings(); break;
+        case W_STEAMPUNK: settings_.steampunk = !settings_.steampunk; setSteampunkEnabled(settings_.steampunk); updateSearch(); persistSettings(); break;
         case W_GFX_CLOUDS: settings_.clouds = !settings_.clouds; persistSettings(); break;
         case W_GFX_PARTICLES: settings_.particles = !settings_.particles; persistSettings(); break;
         case W_GFX_FILTER: settings_.texFilter = 1 - settings_.texFilter; persistSettings(); break;
@@ -1860,7 +1863,7 @@ void Game::placeBlockOrUse() {
             openSign(target_.block);
             return;
         }
-        if (isBoiler(tb) || tb == STILL) {
+        if ((isBoiler(tb) || tb == STILL) && steampunkEnabled()) {
             openMachine(target_.block);
             return;
         }
@@ -1872,7 +1875,7 @@ void Game::placeBlockOrUse() {
             return;
         }
     }
-    if (sel.empty()) return;
+    if (sel.empty() || (!steampunkEnabled() && isSteampunkItem(sel.id))) return;
     if (sel.id == ITEM_BUCKET || sel.id == ITEM_BUCKET_WATER || sel.id == ITEM_BUCKET_LAVA) {
         useBucket();
         return;

@@ -4160,6 +4160,71 @@ static void testMechFlow() {
     CHECK(!em.items().empty() && em.items()[0].pos.x > 4.0f);
 }
 
+static void testSteampunkToggle() {
+    // Einstellung wird gespeichert und geladen
+    Settings s;
+    CHECK(s.steampunk);
+    s.steampunk = false;
+    const std::string path = "olicraft_test_steam.cfg";
+    CHECK(saveSettings(path, s));
+    Settings r;
+    CHECK(loadSettings(path, r) && !r.steampunk);
+    std::remove(path.c_str());
+    CHECK(isSteampunkItem(BOILER) && isSteampunkItem(LIFT) && isSteampunkItem(ITEM_TAR) && isSteampunkItem(ITEM_BUCKET_DISTILLED));
+    CHECK(!isSteampunkItem(FURNACE) && !isSteampunkItem(ITEM_BUCKET) && !isSteampunkItem(ITEM_IRON_INGOT) && !isSteampunkItem(SIGN_BASE));
+
+    // Ein: Rezepte und Kreativ-Listen enthalten Steampunk
+    auto countRecipes = [] {
+        int n = 0;
+        for (const Recipe& rec : recipes()) n += isSteampunkItem(rec.result.id) ? 1 : 0;
+        return n;
+    };
+    auto inCreative = [](ItemId id) {
+        for (int t = 0; t < CREATIVE_TAB_COUNT; ++t)
+            for (ItemId x : creativeTabItems(t))
+                if (x == id) return true;
+        return false;
+    };
+    const size_t allRecipes = recipes().size();
+    const int allCreative = creativeItemCount();
+    CHECK(countRecipes() > 0 && inCreative(BOILER) && inCreative(ITEM_TAR));
+    // Aus: nichts davon, alles andere bleibt
+    setSteampunkEnabled(false);
+    CHECK(countRecipes() == 0 && recipes().size() < allRecipes && recipes().size() > 50);
+    CHECK(!inCreative(BOILER) && !inCreative(ITEM_TAR) && !inCreative(DRILL_BASE) && inCreative(FURNACE) && inCreative(ITEM_BUCKET));
+    CHECK(creativeItemCount() < allCreative);
+    for (ItemId id : creativeSearch("")) CHECK(!isSteampunkItem(id));
+    ItemStack cells[9];
+    cells[0] = cells[1] = cells[2] = {ITEM_IRON_INGOT, 1, 0};
+    CHECK(matchRecipe(cells, 3).empty());  // Rohr gibt es nicht
+    // Maschinen ruhen
+    {
+        World w(9);
+        w.setMeshingEnabled(false);
+        w.loadAround(glm::vec3(0.0f), 3);
+        const int gy = 100;
+        for (int x = -2; x <= 6; ++x)
+            for (int z = -2; z <= 2; ++z) {
+                for (int y = gy; y < gy + 4; ++y) w.setBlock(x, y, z, AIR);
+                w.setBlock(x, gy - 1, z, STONE);
+            }
+        w.setBlock(0, gy, 0, BOILER);
+        w.setBlock(1, gy, 0, PIPE);
+        w.setBlock(2, gy, 0, MOTOR);
+        w.setBlock(3, gy, 0, makeConveyor(0));
+        Machine& b = *w.findMachine(0, gy, 0);
+        b.slots[0] = {ITEM_COAL, 3, 0};
+        b.water = 500.0f;
+        for (int i = 0; i < 40; ++i) w.tick(0.25f);
+        CHECK(!b.burning() && w.powerAt(3, gy, 0) == 0.0f && w.mechFlow(glm::vec3(3.5f, gy + 0.25f, 0.5f)).belt == glm::vec3(0.0f));
+        setSteampunkEnabled(true);
+        for (int i = 0; i < 40; ++i) w.tick(0.25f);
+        CHECK(w.powerAt(3, gy, 0) > 0.5f);
+    }
+    setSteampunkEnabled(true);
+    CHECK(recipes().size() == allRecipes && creativeItemCount() == allCreative);
+}
+
 static void testSteamSimulation() {
     World w(9);
     w.setMeshingEnabled(false);
@@ -4716,6 +4781,7 @@ int main() {
     testSigns();
     testSteamBlocks();
     testSteamSimulation();
+    testSteampunkToggle();
     testMechFlow();
     testChurch();
     testItemIcons();

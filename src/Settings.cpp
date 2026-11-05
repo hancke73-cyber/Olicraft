@@ -59,8 +59,8 @@ bool loadSettings(const std::string& path, Settings& s) {
         } else if (key == "gui_size") {
             long v = std::strtol(val.c_str(), &end, 10);
             if (end != val.c_str()) s.guiSize = static_cast<int>(v);
-        } else if (key == "clouds" || key == "particles") {
-            (key == "clouds" ? s.clouds : s.particles) = val == "1" || val == "true" || val == "an";
+        } else if (key == "clouds" || key == "particles" || key == "steampunk") {
+            (key == "clouds" ? s.clouds : key == "particles" ? s.particles : s.steampunk) = val == "1" || val == "true" || val == "an";
         } else if (key == "vsync") {
             s.vsync = val == "1" || val == "true" || val == "an";
         }
@@ -83,6 +83,7 @@ bool saveSettings(const std::string& path, const Settings& s) {
     f << "shadows=" << s.shadows << "\n";
     f << "clouds=" << (s.clouds ? 1 : 0) << "\n";
     f << "particles=" << (s.particles ? 1 : 0) << "\n";
+    f << "steampunk=" << (s.steampunk ? 1 : 0) << "\n";
     f << "tex_filter=" << s.texFilter << "\n";
     f << "anisotropy=" << s.anisotropy << "\n";
     f << "gui_size=" << s.guiSize << "\n";

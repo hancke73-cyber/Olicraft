@@ -1,5 +1,7 @@
 #include "Items.h"
 
+#include <array>
+
 #include <cctype>
 
 namespace oc {
@@ -43,13 +45,31 @@ static const std::vector<ItemId> TAB_ITEMS[CREATIVE_TAB_COUNT] = {
     {ITEM_WHEAT, ITEM_BREAD, ITEM_CARROT, ITEM_MEAT, ITEM_COOKED_MEAT, ITEM_BERRIES},
 };
 
-static const std::vector<ItemId>& creativeFlat() {
-    static const std::vector<ItemId> flat = [] {
-        std::vector<ItemId> v;
-        for (const auto& t : TAB_ITEMS) v.insert(v.end(), t.begin(), t.end());
-        return v;
+static bool g_steampunk = true;
+bool steampunkEnabled() { return g_steampunk; }
+void setSteampunkEnabled(bool on) { g_steampunk = on; }
+bool isSteampunkItem(ItemId id) { return (id >= BOILER && id < BLOCK_COUNT) || (id >= ITEM_TAR && id <= ITEM_LAST); }
+
+// Themenlisten ohne die Steampunk-Gegenstaende (fuer ausgeschaltete Erweiterung)
+static const std::vector<ItemId>* const tabLists(bool steam) {
+    static const std::array<std::vector<ItemId>, CREATIVE_TAB_COUNT> plain = [] {
+        std::array<std::vector<ItemId>, CREATIVE_TAB_COUNT> a;
+        for (int t = 0; t < CREATIVE_TAB_COUNT; ++t)
+            for (ItemId id : TAB_ITEMS[t])
+                if (!isSteampunkItem(id)) a[static_cast<size_t>(t)].push_back(id);
+        return a;
     }();
-    return flat;
+    return steam ? TAB_ITEMS : plain.data();
+}
+
+static const std::vector<ItemId>& creativeFlat() {
+    static const auto build = [](bool steam) {
+        std::vector<ItemId> v;
+        for (int t = 0; t < CREATIVE_TAB_COUNT; ++t) v.insert(v.end(), tabLists(steam)[t].begin(), tabLists(steam)[t].end());
+        return v;
+    };
+    static const std::vector<ItemId> all = build(true), plain = build(false);
+    return g_steampunk ? all : plain;
 }
 
 bool itemValid(ItemId id) {
@@ -202,7 +222,7 @@ ItemId creativeTabIcon(int tab) {
 
 const std::vector<ItemId>& creativeTabItems(int tab) {
     static const std::vector<ItemId> none;
-    return tab >= 0 && tab < CREATIVE_TAB_COUNT ? TAB_ITEMS[tab] : none;
+    return tab >= 0 && tab < CREATIVE_TAB_COUNT ? tabLists(g_steampunk)[tab] : none;
 }
 
 static std::string searchNormalize(const std::string& in) {

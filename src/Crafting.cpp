@@ -160,8 +160,14 @@ bool matchesAt(const Recipe& rec, const ItemStack* cells, int n, int r0, int c0,
 }  // namespace
 
 const std::vector<Recipe>& recipes() {
-    static const std::vector<Recipe> r = buildRecipes();
-    return r;
+    static const std::vector<Recipe> all = buildRecipes();
+    static const std::vector<Recipe> plain = [] {
+        std::vector<Recipe> v;
+        for (const Recipe& r : all)
+            if (!isSteampunkItem(r.result.id)) v.push_back(r);
+        return v;
+    }();
+    return steampunkEnabled() ? all : plain;
 }
 
 namespace {
