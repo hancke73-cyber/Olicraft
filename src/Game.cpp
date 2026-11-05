@@ -3644,6 +3644,65 @@ int Game::selfTest() {
         setPaused(false);
     }
 
+    // 26. Ruestung anlegen: Kreativ-Inventar (Reihe unter dem Auswahlfeld) und Werkbank
+    {
+        setPaused(false);
+        if (inventoryOpen_) closeInventory();
+        cursor_.clear();
+        for (ItemStack& a : inventory_.armor) a.clear();
+        auto clickAt = [&](glm::vec2 fbPos, int button, int mods) {
+            const double sx = static_cast<double>(winW_cur_) / fbW_, sy = static_cast<double>(winH_cur_) / fbH_;
+            curX_ = fbPos.x * sx;
+            curY_ = fbPos.y * sy;
+            inventoryClick(button, mods);
+        };
+        creative_ = true;
+        openInventory();
+        SCHECK(paletteWindow_ && invLayout().armor);
+        const glm::vec2 half = glm::vec2(invLayout().pitch() * 0.5f);
+        for (int i = 0; i < 4; ++i) {  // vier Plaetze, alle im Fenster und unter dem Auswahlfeld
+            const glm::vec2 c = invLayout().armorPos(i) + half;
+            SCHECK(invLayout().hitArmor(c) == i && invLayout().inside(c) && invLayout().hitPalette(c) == -1 && invLayout().hitSlot(c) == -1);
+        }
+        // Aus dem Auswahlfeld holen: Reiter Werkzeuge, zweite Seite, Eisenbrustpanzer
+        const ItemId chest = makeArmorItem(1, 1);
+        clickAt(invLayout().tabPos(5) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        scrollPalette(1);
+        int idx = -1;
+        for (size_t i = 0; i < paletteItems().size(); ++i)
+            if (paletteItems()[i] == chest) idx = static_cast<int>(i);
+        const int vi = idx - creativeScroll_ * InvLayout::PALETTE_COLS;
+        SCHECK(idx >= 0 && vi >= 0 && vi < InvLayout::PALETTE_PAGE);
+        clickAt(invLayout().palettePos(vi) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.id == chest);
+        clickAt(invLayout().armorPos(2) + half, GLFW_MOUSE_BUTTON_LEFT, 0);  // falscher Platz (Hose)
+        SCHECK(cursor_.id == chest && inventory_.armor[2].empty());
+        clickAt(invLayout().armorPos(1) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.empty() && inventory_.armor[1].id == chest && inventory_.armorPoints() == itemInfo(chest).armorPoints);
+        clickAt(invLayout().armorPos(1) + half, GLFW_MOUSE_BUTTON_LEFT, 0);  // wieder abnehmen
+        SCHECK(cursor_.id == chest && inventory_.armor[1].empty());
+        cursor_.clear();
+        // Umschalt-Klick aus dem Rucksack legt an
+        inventory_.slots[12] = {makeArmorItem(3, 0), 1, 0};
+        clickAt(invLayout().slotPos(12) + half, GLFW_MOUSE_BUTTON_LEFT, GLFW_MOD_SHIFT);
+        SCHECK(inventory_.armor[0].id == makeArmorItem(3, 0) && inventory_.slots[12].empty());
+        closeInventory();
+        // Werkbank
+        for (ItemStack& a : inventory_.armor) a.clear();
+        openInventory(true);
+        SCHECK(craftSize_ == 3 && !paletteWindow_ && invLayout().armor);
+        for (int i = 0; i < 4; ++i) {
+            const glm::vec2 c = invLayout().armorPos(i) + half;
+            SCHECK(invLayout().hitArmor(c) == i && invLayout().inside(c) && invLayout().hitCraft(c) == -1 && invLayout().hitSlot(c) == -1);
+        }
+        cursor_ = {makeArmorItem(2, 3), 1, 0};
+        clickAt(invLayout().armorPos(3) + half, GLFW_MOUSE_BUTTON_LEFT, 0);
+        SCHECK(cursor_.empty() && inventory_.armor[3].id == makeArmorItem(2, 3));
+        closeInventory();
+        for (ItemStack& a : inventory_.armor) a.clear();
+        creative_ = false;
+    }
+
 #undef SCHECK
     std::printf("Selbsttest: %d Pruefungen, %d fehlgeschlagen\n", checks, failed);
     return failed;

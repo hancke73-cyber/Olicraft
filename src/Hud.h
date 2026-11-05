@@ -67,7 +67,7 @@ struct InvLayout {
     glm::vec2 storageTop{0.0f};  // linke obere Ecke der Rucksack-Reihen
     glm::vec2 hotbarTop{0.0f};   // linke obere Ecke der Hotbar im Fenster
     static constexpr int PALETTE_COLS = 9;
-    static constexpr int PALETTE_ROWS = 5;  // sichtbare Reihen; mehr Eintraege werden gescrollt
+    static constexpr int PALETTE_ROWS = 4;  // sichtbare Reihen; mehr Eintraege werden gescrollt (darunter die Ruestungsreihe)
     static constexpr int PALETTE_PAGE = PALETTE_COLS * PALETTE_ROWS;
     glm::vec2 tabsTop{0.0f};   // linke obere Ecke der Reiterleiste (Kreativ)
     glm::vec2 titlePos{0.0f};  // Titel bzw. Suchzeile
@@ -90,7 +90,11 @@ struct InvLayout {
     glm::vec2 craftPos(int index) const;
     glm::vec2 chestPos(int index) const;  // Truhenplatz 0..26
     int hitChest(glm::vec2 m) const;      // -1: keiner
-    glm::vec2 armorPos(int i) const { return craftTop - glm::vec2(pitch(), 0.0f) + glm::vec2(0.0f, i * pitch()); }
+    glm::vec2 armorTop{0.0f};  // Kreativ: linkes Ende der Ruestungsreihe unter dem Auswahlfeld
+    // Survival und Werkbank: Spalte links vom Raster, Kreativ: Reihe unter dem Auswahlfeld
+    glm::vec2 armorPos(int i) const {
+        return creative ? armorTop + glm::vec2(i * pitch(), 0.0f) : craftTop - glm::vec2(pitch(), 0.0f) + glm::vec2(0.0f, i * pitch());
+    }
     int hitArmor(glm::vec2 m) const;  // Ruestungsplatz 0..3 oder -1
     glm::vec2 tradePos(int row) const { return chestTop + glm::vec2(0.0f, row * pitch()); }
     int hitTrade(glm::vec2 m) const;      // Angebot unter der Maus oder -1

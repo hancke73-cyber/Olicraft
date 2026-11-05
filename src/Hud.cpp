@@ -163,8 +163,8 @@ static InvLayout layoutAt(float s, int w, int h, bool creative, int craftSize, b
     if (creative) height += pt + 2.0f * s;  // Reiterleiste
     height += title;
     float craftOffset = 0.0f;
-    if (creative) height += InvLayout::PALETTE_ROWS * pt + 8.0f * s;
-    l.armor = craftSize > 0 && !furnace && !chest && tradeRows == 0 && !creative;
+    if (creative) height += (InvLayout::PALETTE_ROWS + 1) * pt + 8.0f * s;  // Auswahlfeld und Ruestungsreihe
+    l.armor = creative || (craftSize > 0 && !furnace && !chest && tradeRows == 0);  // Kreativ: Reihe unter dem Auswahlfeld
     if (craftSize > 0) {
         craftOffset = height;
         height += std::max(craftSize, l.armor ? 4 : 0) * pt + 8.0f * s;
@@ -185,6 +185,7 @@ static InvLayout layoutAt(float s, int w, int h, bool creative, int craftSize, b
     l.tabsTop = l.panelPos + glm::vec2(pad, pad);
     l.titlePos = l.panelPos + glm::vec2(pad, creative ? pad + pt + 2.0f * s + 2.0f * s : 6.0f * s);
     l.paletteTop = l.panelPos + glm::vec2(pad, pad + title + (creative ? pt + 2.0f * s : 0.0f));
+    l.armorTop = l.paletteTop + glm::vec2(0.0f, InvLayout::PALETTE_ROWS * pt + 4.0f * s);
     l.craftTop = l.panelPos + glm::vec2(pad + pt, craftOffset);
     l.resultPos = l.panelPos + glm::vec2(pad + 6.0f * pt, craftOffset + (craftSize - 1) * 9.0f * s);
     l.chestTop = l.panelPos + glm::vec2(pad, chestOffset);
@@ -525,6 +526,10 @@ static void drawInventoryScreen(HudBatch& b, const HudState& st, int w, int h) {
                 static const char* hint[4] = {"H", "B", "O", "S"};
                 b.text(p.x + pt * 0.5f - 2.5f * s, p.y + pt * 0.5f - 3.5f * s, s, hint[i], glm::vec4(1, 1, 1, 0.25f));
             }
+        }
+        if (L.creative) {  // Kreativ: Beschriftung und Schutzpunkte neben der Ruestungsreihe
+            const glm::vec2 p = L.armorPos(4);
+            b.text(p.x + 4.0f * s, p.y + pt * 0.5f - 3.5f * s, s, "Schutz " + std::to_string(st.armorPoints) + "/20", glm::vec4(0.75f, 0.85f, 0.75f, 1.0f));
         }
         if (L.figure.z > 0.0f) {
             const float fx = L.figure.x, fy = L.figure.y, fw = L.figure.z, fh = L.figure.w;

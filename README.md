@@ -33,7 +33,7 @@ Ein Minecraft-Klon in C++17 mit OpenGL 3.3, GLFW und GLM. Alle Texturen werden b
 - Figuren-Texturen als aufgeklappte Netze (Skins, 64x32 bzw. 64x64): Spieler im Minecraft-Layout, dazu Schwein, Kuh, Schaf und Zombie
 - Leitern (4 Ausrichtungen, hängen an einer festen Wand, fallen ab ohne Träger): Hochklettern mit Leertaste oder Vorwärts, Umschalt hält an, sonst langsames Abrutschen, kein Fallschaden an der Leiter
 - Betten sind zweiteilig (Fuß und Kopf), Rechtsklick wie bisher. Dorfhäuser haben je zwei Betten
-- Rüstung in vier Materialien (Leder von Kühen, Eisen, Gold, Diamant) und vier Teilen (Helm, Brustpanzer, Hose, Stiefel). Eigene Rüstungsplätze im Inventar neben einer Spielerfigur, Rechtsklick mit dem Teil in der Hand oder Umschalt-Klick im Inventar legt es an, Schaden wird reduziert (volle Diamantrüstung 80 %), Teile nutzen sich ab, getragene Rüstung ist am Spielermodell sichtbar. Der Schmied im Dorf verkauft Eisenrüstung
+- Rüstung in vier Materialien (Leder von Kühen, Eisen, Gold, Diamant) und vier Teilen (Helm, Brustpanzer, Hose, Stiefel). Eigene Rüstungsplätze im Survival-Inventar neben einer Spielerfigur, an der Werkbank links vom 3x3-Raster und im Kreativ-Inventar als Reihe unter dem Auswahlfeld (mit Anzeige der Schutzpunkte), Rechtsklick mit dem Teil in der Hand oder Umschalt-Klick im Inventar legt es an, Schaden wird reduziert (volle Diamantrüstung 80 %), Teile nutzen sich ab, getragene Rüstung ist am Spielermodell sichtbar. Der Schmied im Dorf verkauft Eisenrüstung
 - Ego-Perspektive mit AABB-Kollision, Springen, Sprinten, Fliegen (Kreativ)
 - Tag-Nacht-Zyklus (10 Minuten): Himmelsverlauf mit Abendrot und Glanz um die Sonne, Sonne mit Strahlen (tief am Horizont größer und orange), Mond mit 8 Phasen und Kratern (wechselt jede Nacht), funkelnde Sterne in drei Größen und leichten Farbtönen, Nebel, Unterwasser-Effekt
 - Ambient Occlusion und einfaches Himmelslicht (Höhlen und Überhänge sind dunkler)
@@ -196,7 +196,6 @@ Noch nicht umgesetzt, in dieser Reihenfolge der Nennung:
 1. **Steampunk:** Dampfmaschinen, Rohre, Zahnräder, Maschinen und Fahrzeuge mit Dampfantrieb.
 2. **Mehrspieler:** Host im Spiel, Beitreten per IP und Port. Vorher wird die Netzwerkbibliothek geklärt.
 3. **Fahrzeuge:** Flugzeuge, Schiffe, Autos, Zeppeline usw.
-0. **Gemerkt, vom Nutzer gemeldet:** Im Kreativ-Inventar und an der Werkbank gibt es keine Rüstungsplätze (sie gibt es nur im Survival-Inventar mit 2x2-Raster). Dort soll man Rüstung anlegen können. Den Stil "Klötzchen" gibt es nicht mehr.
 4. **Weitere Bausteine:** Eimer, Schilder, glatte Dachkeile (Platz für Block-IDs nötig).
 5. **Dörfer ausbauen:** Zombie-Überfälle, Kirche.
 

@@ -669,6 +669,23 @@ static void testItemsAndInventory() {
         }
         CHECK(L.hitSlot(glm::vec2(1.0f, 1.0f)) == -1);
     }
+    // Ruestungsplaetze: Survival (2x2), Werkbank (3x3) und Kreativ haben vier Plaetze im Fenster, ohne Ueberlappung
+    for (int mode = 0; mode < 3; ++mode) {
+        for (auto dim : {std::make_pair(1280, 720), std::make_pair(800, 600), std::make_pair(1920, 1080)}) {
+            const InvLayout L = mode == 0 ? InvLayout::make(dim.first, dim.second, false, 2)
+                                          : (mode == 1 ? InvLayout::make(dim.first, dim.second, false, 3) : InvLayout::make(dim.first, dim.second, true));
+            CHECK(L.armor);
+            for (int i = 0; i < 4; ++i) {
+                const glm::vec2 c = L.armorPos(i) + glm::vec2(L.pitch() * 0.5f);
+                CHECK(L.hitArmor(c) == i && L.inside(c));
+                CHECK(L.hitSlot(c) == -1 && L.hitCraft(c) == -1 && L.hitPalette(c) == -1 && L.hitTab(c) == -1);
+                CHECK(L.armorPos(i).x >= L.panelPos.x && L.armorPos(i).x + L.pitch() <= L.panelPos.x + L.panelSize.x);
+                CHECK(L.armorPos(i).y >= L.panelPos.y && L.armorPos(i).y + L.pitch() <= L.panelPos.y + L.panelSize.y);
+            }
+            CHECK(!InvLayout::make(dim.first, dim.second, false, 0, false, true).armor);       // Truhe: keine Ruestung
+            CHECK(!InvLayout::make(dim.first, dim.second, false, 3, true).armor);              // Ofen: keine Ruestung
+        }
+    }
     // Schrift: Breite und HUD-Aufbau
     CHECK(textWidthPx("") == 0 && textWidthPx("A") == 5 && textWidthPx("AB") == 11);
     HudBatch batch;
