@@ -1,5 +1,7 @@
 #pragma once
+#include <array>
 #include <cstdint>
+#include <string>
 
 #include <glm/glm.hpp>
 
@@ -61,6 +63,10 @@ struct MachineDrop {
     glm::ivec3 pos;
     ItemStack item;
 };
+
+class World;
+// Name und zwei Zustandszeilen fuer Fadenkreuz-Anzeige und Fenster
+std::array<std::string, 3> machineInfo(World& w, const glm::ivec3& p);
 
 struct MachineSave {
     int32_t x = 0, y = 0, z = 0;

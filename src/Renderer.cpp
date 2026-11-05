@@ -449,10 +449,10 @@ bool Renderer::init(const TextureStore& textures) {
 
     // Himmelstexturen: Sonne, Mondphasen, Lichtkranz
     {
-        auto makeTex = [](GLuint& tex, int w, int h, const std::vector<uint8_t>& px, GLint filter) {
+        auto makeTex = [](GLuint& tex, int w, int h, const std::vector<uint8_t>& pixels, GLint filter) {
             glGenTextures(1, &tex);
             glBindTexture(GL_TEXTURE_2D, tex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

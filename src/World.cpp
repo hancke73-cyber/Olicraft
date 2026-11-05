@@ -757,9 +757,9 @@ RayHit World::raycast(const glm::vec3& origin, const glm::vec3& dir, float maxDi
             const int nb = blockBoxes(b, cell.x, cell.y, cell.z, get, true, boxes);
             float bestT = 1e30f;
             glm::ivec3 bestN(0);
-            for (int i = 0; i < nb; ++i) {
-                const float lo[3] = {cell.x + boxes[i].x0, cell.y + boxes[i].y0, cell.z + boxes[i].z0};
-                const float hi[3] = {cell.x + boxes[i].x1, cell.y + boxes[i].y1, cell.z + boxes[i].z1};
+            for (int bi = 0; bi < nb; ++bi) {
+                const float lo[3] = {cell.x + boxes[bi].x0, cell.y + boxes[bi].y0, cell.z + boxes[bi].z0};
+                const float hi[3] = {cell.x + boxes[bi].x1, cell.y + boxes[bi].y1, cell.z + boxes[bi].z1};
                 float t0 = 0.0f, t1 = maxDist;
                 int axisIn = -1, signIn = 0;
                 bool miss = false;

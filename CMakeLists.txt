@@ -48,6 +48,8 @@ target_include_directories(glad PUBLIC third_party/glad/include)
 add_executable(OliCraft
   src/main.cpp
   src/Game.cpp
+  src/GameDemo.cpp
+  src/GameSelfTest.cpp
   src/Block.cpp
   src/Noise.cpp
   src/Atlas.cpp

@@ -78,8 +78,8 @@ int main(int argc, char** argv) {
             opt.soundsDir = argv[++i];
         } else if (a == "--list-sounds") {
             std::puts("| Datei (ohne Endung) | Beschreibung | Dauer | Prompt (englisch) |\n|---|---|---|---|");
-            for (int i = 0; i < oc::SOUND_COUNT; ++i) {
-                const oc::SoundDef& d = oc::soundDef(static_cast<oc::SoundId>(i));
+            for (int k = 0; k < oc::SOUND_COUNT; ++k) {
+                const oc::SoundDef& d = oc::soundDef(static_cast<oc::SoundId>(k));
                 std::printf("| `%s` | %s | %.1f s | %s |\n", d.file, d.desc, d.seconds, d.prompt);
             }
             return 0;

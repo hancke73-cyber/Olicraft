@@ -398,4 +398,36 @@ void World::stepMachines(float dt) {
     }
 }
 
+// Anzeige am Fadenkreuz und im Fenster: Name, Zustand, Hinweis
+std::array<std::string, 3> machineInfo(World& w, const glm::ivec3& p) {
+    std::array<std::string, 3> out;
+    auto pct = [](float v) { return std::to_string(static_cast<int>(std::lround(std::max(0.0f, std::min(1.0f, v)) * 100.0f))) + " %"; };
+    const BlockId b = w.getBlock(p.x, p.y, p.z);
+    out[0] = blockInfo(b).name;
+    const Machine* m = w.findMachine(p.x, p.y, p.z);
+    if (isBoiler(b) && m) {
+        out[1] = "Wasser " + pct(m->water / BOILER_WATER_MAX) + (m->burning() ? "   brennt" : "   aus");
+        out[2] = m->burning() ? "Last " + pct(m->load) : (m->slots[0].empty() ? "Brennstoff fehlt" : (m->water <= 0.0f ? "Wasser fehlt" : "wartet auf Bedarf"));
+    } else if (b == STILL && m) {
+        if (m->working) out[1] = "Arbeitet " + pct(m->progress);
+        else if (m->slots[0].empty()) out[1] = "Leer";
+        else if (!stillRecipe(m->slots[0].id)) out[1] = "Unbekannter Stoff";
+        else out[1] = m->steam > 0.0f ? "Ausgabe voll" : "Dampf fehlt";
+        out[2] = "Dampf " + pct(m->steam);
+    } else if (b == MOTOR && m) {
+        out[1] = "Leistung " + pct(m->load);
+        out[2] = m->steam <= 0.0f ? "kein Dampf" : (m->steam < 0.99f ? "Dampf knapp" : "");
+    } else if (isDrill(b) && m) {
+        out[1] = "Antrieb " + pct(w.powerAt(p.x, p.y, p.z));
+        glm::ivec3 t;
+        if (w.drillTarget(p, drillFacing(b), t)) out[2] = std::string("Ziel: ") + blockInfo(w.getBlock(t.x, t.y, t.z)).name;
+        else out[2] = "Kein Ziel in Reichweite";
+    } else if (b == PIPE) {
+        out[1] = "Leitet Dampf";
+    } else if (isMechPart(b)) {
+        out[1] = "Antrieb " + pct(w.powerAt(p.x, p.y, p.z));
+    }
+    return out;
+}
+
 }  // namespace oc
